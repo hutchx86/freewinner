@@ -1,14 +1,7 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
-/*
- * bitmap.h - payload byte count for a BITMAP_S pixel format.
- *
- * The exported symbol is the platform bitmap size helper.  Only this one
- * entry point is live in the current link; the flip helper is omitted (see
- * spec/media_utils/bitmap.md section 3).
- */
-#ifndef BITMAP_H
-#define BITMAP_H
+#ifndef FREEWINNER_UTILS_BITMAP_H
+#define FREEWINNER_UTILS_BITMAP_H
 
 #include "media_utils_abi.h"
 
@@ -22,4 +15,4 @@ int BITMAP_S_GetdataSize(const BITMAP_S *pBitmap);
 }
 #endif
 
-#endif /* BITMAP_H */
+#endif /* FREEWINNER_UTILS_BITMAP_H */

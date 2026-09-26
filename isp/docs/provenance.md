@@ -189,16 +189,29 @@ in: they are fields of the injected-table contracts
 fill them with neutral values of our own: unity gains (256) and zero
 coefficients (`shim/awb/awb_shim.c`, `shim/iso_shim.c`).
 
+**Unit U2: the three remaining utilities (2026-09-26).** `src/utils/bitmap.c`,
+`frame_size.c` and `media_helpers.c` (one entry point each:
+`BITMAP_S_GetdataSize`, `getVideoFrameBufferSizeInfo`, `copy_MPP_CHN_S`) and
+their unit headers were re-produced through the same pipeline: an analyst
+wrote a behaviour-only spec, an independent reviewer checked it against the
+reference behaviour, and an implementer with only that spec and
+`include/media_utils_abi.h` wrote the code. The private differential
+harnesses (reference and new code linked into one ARM binary, exhaustive
+format x dimension sweeps, sabotage runs) pass for all three. The longest
+token run shared with the reference sources is the entry-point signature (at
+most 12 tokens). They are kept by owner decision (Q-U1) even though nothing
+in the current link calls them. `tests/test_utils_live.c` is the spec-based
+host test; the older `test_bitmap`, `test_frame_size` and `test_media_helpers`
+also pass against the new code.
+
 **Open items:**
 - `k_presets` (PLTM) is still vendor-ordered; see its table row.
 - `iir_g`/`fir_g` (AF) are still compiled in; unit T item T1 proposes removing
   them, since no stock tuning enables AF.
-- `bitmap.c`, `frame_size.c` and `media_helpers.c` have not been re-produced
-  through the clean-room process. The owner decision (Q-U1) was to keep and
-  re-produce them; the re-production has not been done.
-- `mw_headers/media/` and `mw_headers/vencoder.h`: whether their declaration
-  text is sufficiently re-expressed is a judgement call that has not had an
-  independent review.
+- `mw_headers/media/`: whether its declaration text is sufficiently
+  re-expressed is a judgement call that has not had an independent review.
+  (`mw_headers/vencoder.h` now only forwards to the codec's
+  `freecodec/venc_types.h`, which uses this project's own names.)
 
 Not distributable from this tree
 --------------------------------
