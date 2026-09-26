@@ -117,6 +117,7 @@ static void free_buffers(fc_enc_instance *e)
     for (i = 0; i < 2; i++) {
         free_one(e, &e->bufs.full[i]);
         free_one(e, &e->bufs.aux[i]);
+        free_one(e, &e->bufs.filt3d[i]);
     }
     free_one(e, &e->bufs.mb_info);
     free_one(e, &e->bufs.dblk);
@@ -174,6 +175,19 @@ static int alloc_buffers(fc_enc_instance *e)
 
     if (alloc_one(e, &e->bufs.mv, g->h_mb * 8u * fc_enc_align_up(g->w_mb, 4u)) != 0)
         goto fail;
+
+    /* 3D-filter planes: dst-height-MB * 12 * align8(dst-width-MB), two of them,
+     * memset 0xff (memory spec, allocation table 0x15d0). */
+    {
+        unsigned int f3d_size = g->h_mb * 12u * fc_enc_align_up(g->w_mb, 8u);
+
+        for (i = 0; i < 2; i++) {
+            if (alloc_one(e, &e->bufs.filt3d[i], f3d_size) != 0)
+                goto fail;
+            memset(e->bufs.filt3d[i].vir, 0xff, f3d_size);
+            e->memops->flush_cache(e->bufs.filt3d[i].vir, (int)f3d_size);
+        }
+    }
 
     e->bufs.bs = BitStreamCreate(e->params.vbv_no_cache ? 1 : 0, (int)e->params.vbv_size, e->memops,
                                  e->ve_ops, e->ve_self);
@@ -244,7 +258,7 @@ static void compute_persistent_regs(fc_enc_instance *e)
     cfg.qp_mad_sse_output_en = 0u;  /* bit 27 stays 0 (spec 12 sec 16 item 4) */
     cfg.fix_qp_enable = (unsigned int)e->params.fixed_qp_enable;
     cfg.fast_enc = e->params.fast_enc ? 1u : 0u;
-    cfg.filter_3d_level = 0u;       /* 3D filter unused */
+    cfg.filter_3d_level = e->params.filter_3d_level;
     cfg.th_smart_img_bin = 0x14u;   /* reference 0x74000014, spec 11 sec 2.5 */
     cfg.smart_en = 0u;
     cfg.smart_shift_bits = 0u;
@@ -529,10 +543,19 @@ static int enc_encode(void *h, fwm_venc_input_picture_t *in)
 
         if (e->params.fixed_qp_enable)
             qp = is_idr ? e->params.fixed_i_qp : e->params.fixed_p_qp;
+        else if (is_idr && e->last_p_qp > 0)
+            /* Divergence from the fixed IDR QP 37: a fixed I-QP is far coarser
+             * than the P pictures whenever rate control runs P below 37 (dark
+             * or static scenes), so detail visibly "snaps" at every IDR - once
+             * a second on a 1 s GOP (r35gb 2026-09-26). Code the IDR at the
+             * latest P picture's QP instead: the same quantisation keeps detail
+             * steady across the IDR (QP-2 also worked but made 1080p IDRs
+             * ~210 KB, bursts a weak Wi-Fi link struggles with). */
+            qp = clampi(e->last_p_qp, e->params.qp_min, e->params.qp_max);
         else if (is_idr)
-            qp = 37;
+            qp = 37;                    /* first picture: no P history yet */
         else
-            qp = clampi(rc_qp, e->params.qp_min, e->params.qp_max);
+            qp = e->last_p_qp = clampi(rc_qp, e->params.qp_min, e->params.qp_max);
     }
 
     if (is_idr)
@@ -588,7 +611,12 @@ static int enc_encode(void *h, fwm_venc_input_picture_t *in)
     rcfg.frame_count = n;
     rcfg.classify_engine_enable = e->params.fixed_qp_enable ? 0u : 1u;
     rcfg.mb_rc_enable = e->reg_info.mb_rc_enable;
-    rcfg.dynamic_me_enable = e->reg_info.dynamic_me_enable;
+    /* The 3D filter level can change live; dynamic ME runs only with it off
+     * (reg-shadow spec: dynamic-ME enable <- level == 0). */
+    rcfg.filter_3d_level = e->params.filter_3d_level;
+    rcfg.dynamic_me_enable = e->params.filter_3d_level == 0u;
+    rcfg.filter_3d_phy[0] = (unsigned int)((uintptr_t)e->bufs.filt3d[0].phy >> 8);
+    rcfg.filter_3d_phy[1] = (unsigned int)((uintptr_t)e->bufs.filt3d[1].phy >> 8);
     rcfg.qp_mad_sse_output_flag = 0u;   /* stays off, spec 12 section 16 item 4 */
     rcfg.use_img_bin_flag = 0u;
     rcfg.binned_image_output_enable = 0u;
@@ -1138,6 +1166,12 @@ static int enc_set_parameter(void *h, int index, void *param)
     case FWM_VENC_PARAM_FAST_ENCODE:
         e->params.fast_enc = *(int *)param;
         return FWM_VENC_RESULT_OK;
+    case FWM_VENC_PARAM_FILTER_3D: {
+        unsigned int lvl = *(unsigned char *)param;
+
+        e->params.filter_3d_level = lvl > 3u ? 3u : lvl;
+        return FWM_VENC_RESULT_OK;
+    }
     case FWM_VENC_PARAM_MAX_KEY_INTERVAL:
         e->params.max_key_interval = (unsigned int)*(int *)param;
         return FWM_VENC_RESULT_OK;

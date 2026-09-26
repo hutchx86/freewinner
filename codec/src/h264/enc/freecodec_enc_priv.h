@@ -66,6 +66,8 @@ typedef struct fc_enc_buffers {
     fc_enc_buf   dblk;
     fc_enc_buf   mbrc;
     fc_enc_buf   mv;
+    fc_enc_buf   filt3d[2];     /* 3D-filter planes (memory spec 0x15d0), always
+                                 * allocated so the level can change live */
 } fc_enc_buffers;
 
 /* -------------------------------------------------------------- parameters -- */
@@ -88,6 +90,7 @@ typedef struct fc_enc_params {
     int          cabac_enable;
     int          fixed_qp_enable;
     int          fast_enc;           /* 0x10 fast-mode bits (spec 11) */
+    unsigned int filter_3d_level;    /* 0 off, 1..3 (FWM_VENC_PARAM_FILTER_3D) */
     int          vbv_no_cache;       /* bitstream ring allocated uncached */
     int          fixed_i_qp, fixed_p_qp;
     int          qp_min, qp_max;
@@ -129,6 +132,7 @@ typedef struct fc_enc_instance {
     fc_enc_pic_state pic;
 
     freecodec_rc    rc;
+    int             last_p_qp;      /* QP of the latest P picture, 0 = none yet */
     int             initialised;   /* init() has succeeded at least once */
 
     freecodec_h264_reg_info_out reg_info;   /* persistent per-instance values */
