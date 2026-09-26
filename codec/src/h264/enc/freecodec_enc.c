@@ -296,6 +296,14 @@ static void build_sps_pps(fc_enc_instance *e)
         }
         left = ((e->geom.dst_w - show_w) / 2u) & ~1u;
         top = ((e->geom.dst_h - show_h) / 2u) & ~1u;
+        /* A set display offset moves the window off-centre (e.g. to crop a
+         * sensor's bad edge columns); ignored if it would leave dst. */
+        if (e->params.display_offset.left >= 0 &&
+            ((unsigned int)e->params.display_offset.left & ~1u) + show_w <= e->geom.dst_w)
+            left = (unsigned int)e->params.display_offset.left & ~1u;
+        if (e->params.display_offset.top >= 0 &&
+            ((unsigned int)e->params.display_offset.top & ~1u) + show_h <= e->geom.dst_h)
+            top = (unsigned int)e->params.display_offset.top & ~1u;
         right = e->geom.w16 - show_w - left;
         bottom = e->geom.h16 - show_h - top;
 
@@ -841,6 +849,8 @@ static void *enc_open(fwm_venc_base_config_t *cfg, unsigned int ic_version)
     e->params.qp_max = 50;
     e->params.max_qp_step = 2;      /* r2/02 section 2.4 */
     e->params.vbv_size = 8u * 1024u * 1024u;
+    e->params.display_offset.left = -1;     /* centred unless set */
+    e->params.display_offset.top = -1;
     e->params.color_fmt = cfg->input_format;
     e->params.stride = cfg->input_stride;
 
@@ -1191,6 +1201,9 @@ static int enc_set_parameter(void *h, int index, void *param)
         return set_overlay(e, (const fwm_venc_overlay_t *)param);
     case 0x7f000001: /* FWM_VENC_PARAM_DISPLAY_SIZE */
         e->params.display_size = *(fwm_venc_display_size_t *)param;
+        return FWM_VENC_RESULT_OK;
+    case FWM_VENC_PARAM_DISPLAY_OFFSET:
+        e->params.display_offset = *(fwm_venc_display_offset_t *)param;
         return FWM_VENC_RESULT_OK;
     case FWM_VENC_PARAM_H264_CONFIG: {
         fwm_venc_h264_config_t *p = (fwm_venc_h264_config_t *)param;

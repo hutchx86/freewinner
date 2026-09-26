@@ -854,29 +854,36 @@ static unsigned int rd_ue(struct bitrd *b)
     return ((1u << zeros) - 1u) + rd_bits(b, zeros);
 }
 
-/* 640x360 codes as 640x368 (16-aligned); the SPS must crop the 8 extra rows
- * even without an explicit display size. */
-static void test_sps_crop(void)
+/* Opens a w x h encoder, applies an optional display size / offset, and reads
+ * the SPS crop offsets (in 2-pixel units) into crop[4] = left, right, top,
+ * bottom. Returns 0 on success. mb[2] receives the coded size in MBs. */
+static int sps_crop(unsigned int w, unsigned int h, const fwm_venc_display_size_t *show,
+                    const fwm_venc_display_offset_t *off, unsigned int crop[4],
+                    unsigned int mb[2], const char *what)
 {
     fwm_venc_device_t *dev = &video_encoder_h264_ver2;
-    fwm_venc_base_config_t cfg = make_base_config(640, 360);
+    fwm_venc_base_config_t cfg = make_base_config(w, h);
     fwm_venc_header_blob_t hdr;
     unsigned char rbsp[128];
     unsigned int i, n = 0, zeros = 0;
     struct bitrd b;
-    void *h;
+    void *hd;
 
     install_fake_ve();
     install_fake_memops();
-    h = dev->open(&cfg, 0x21210u);
-    if (!h) { fail("crop: open() returned NULL"); return; }
-    dev->init(h, &cfg);
-    if (dev->get_parameter(h, FWM_VENC_PARAM_H264_SPS_PPS, &hdr) != FWM_VENC_RESULT_OK ||
+    hd = dev->open(&cfg, 0x21210u);
+    if (!hd) { fail(what); return -1; }
+    if (show)
+        dev->set_parameter(hd, FWM_VENC_PARAM_DISPLAY_SIZE, (void *)show);
+    if (off)
+        dev->set_parameter(hd, FWM_VENC_PARAM_DISPLAY_OFFSET, (void *)off);
+    dev->init(hd, &cfg);
+    if (dev->get_parameter(hd, FWM_VENC_PARAM_H264_SPS_PPS, &hdr) != FWM_VENC_RESULT_OK ||
         hdr.length < 6u || hdr.data[4] != 0x67u) {
-        fail("crop: SPS not available");
-        dev->uninit(h);
-        dev->close(h);
-        return;
+        fail(what);
+        dev->uninit(hd);
+        dev->close(hd);
+        return -1;
     }
     /* SPS payload after the start code and NAL header, emulation bytes
      * removed, up to the next start code. */
@@ -899,18 +906,65 @@ static void test_sps_crop(void)
     rd_ue(&b);                              /* log2_max_poc_lsb - 4 */
     rd_ue(&b);                              /* max_num_ref_frames */
     rd_bit(&b);                             /* gaps allowed */
-    checkf(rd_ue(&b) + 1u == 40u, "crop: 40 MB wide");
-    checkf(rd_ue(&b) + 1u == 23u, "crop: 23 MB high (368 coded rows)");
+    mb[0] = rd_ue(&b) + 1u;
+    mb[1] = rd_ue(&b) + 1u;
     checkf(rd_bit(&b) == 1u, "crop: frame_mbs_only");
     rd_bit(&b);                             /* direct_8x8_inference */
     checkf(rd_bit(&b) == 1u, "crop: frame_cropping_flag set");
-    checkf(rd_ue(&b) == 0u, "crop: left 0");
-    checkf(rd_ue(&b) == 0u, "crop: right 0");
-    checkf(rd_ue(&b) == 0u, "crop: top 0");
-    checkf(rd_ue(&b) == 4u, "crop: bottom 4 units (8 rows)");
+    for (i = 0; i < 4u; i++)
+        crop[i] = rd_ue(&b);
 
-    dev->uninit(h);
-    dev->close(h);
+    dev->uninit(hd);
+    dev->close(hd);
+    return 0;
+}
+
+/* 640x360 codes as 640x368 (16-aligned); the SPS must crop the 8 extra rows
+ * even without an explicit display size. */
+static void test_sps_crop(void)
+{
+    unsigned int c[4], mb[2];
+
+    if (sps_crop(640, 360, NULL, NULL, c, mb, "crop: 640x360 SPS") != 0)
+        return;
+    checkf(mb[0] == 40u, "crop: 40 MB wide");
+    checkf(mb[1] == 23u, "crop: 23 MB high (368 coded rows)");
+    checkf(c[0] == 0u, "crop: left 0");
+    checkf(c[1] == 0u, "crop: right 0");
+    checkf(c[2] == 0u, "crop: top 0");
+    checkf(c[3] == 4u, "crop: bottom 4 units (8 rows)");
+}
+
+/* r35gb geometry: 1936x1096 coded as 1936x1104, 1920x1080 shown. Without an
+ * offset the window is centred; an offset moves it, rounded down to even, and
+ * is ignored when the window would leave the picture. */
+static void test_sps_crop_offset(void)
+{
+    static const fwm_venc_display_size_t show = { 1920, 1080 };
+    static const struct {
+        int set, left, top;
+        unsigned int l, r, t, b;
+        const char *what;
+    } cases[] = {
+        { 0,  0,  0, 4, 4, 4, 8, "offset: unset -> centred" },
+        { 1, -1, -1, 4, 4, 4, 8, "offset: -1/-1 -> centred" },
+        { 1, 10, -1, 5, 3, 4, 8, "offset: left 10, top centred" },
+        { 1, 10, 12, 5, 3, 6, 6, "offset: left 10, top 12" },
+        { 1, 11, -1, 5, 3, 4, 8, "offset: odd left rounds down" },
+        { 1,  0,  0, 0, 8, 0, 12, "offset: 0/0 -> top-left" },
+        { 1, 20, 20, 4, 4, 4, 8, "offset: out of range ignored" },
+    };
+    unsigned int i, c[4], mb[2];
+
+    for (i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+        fwm_venc_display_offset_t off = { cases[i].left, cases[i].top };
+
+        if (sps_crop(1936, 1096, &show, cases[i].set ? &off : NULL, c, mb, cases[i].what) != 0)
+            continue;
+        checkf(mb[0] == 121u && mb[1] == 69u, cases[i].what);
+        checkf(c[0] == cases[i].l && c[1] == cases[i].r &&
+               c[2] == cases[i].t && c[3] == cases[i].b, cases[i].what);
+    }
 }
 
 /* The per-picture reset returns the engine's write position to 0: every
@@ -1151,6 +1205,7 @@ int main(void)
     test_lock_held_by_caller();
     test_input_config_at_init();
     test_sps_crop();
+    test_sps_crop_offset();
     test_publish_at_offset_0();
     test_overlay_set_parameter();
     test_live_rc_and_fastenc();
@@ -1160,7 +1215,7 @@ int main(void)
         return 1;
     printf("enc: lifecycle, confirmed bug fixes 1/2, error paths, bit-writer "
           "skip, register parity, two instances, take/return, ver1 alias, lock "
-          "contract, init-time input config, SPS crop, offset-0 publish, "
+          "contract, init-time input config, SPS crop + offset, offset-0 publish, "
           "overlay, live RC, fast-enc, VBV cache ok\n");
     return 0;
 }

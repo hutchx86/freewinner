@@ -19,4 +19,15 @@ typedef struct fwm_venc_display_size {
     int height;
 } fwm_venc_display_size_t;
 
+/* fwm_venc_display_offset_t *: position of the displayed window inside the
+ * encoded picture, in pixels (rounded down to even: 4:2:0 crop units). A
+ * negative value keeps that axis centred; an offset that would push the window
+ * past the picture edge is ignored. Unset (default): centred on both axes. */
+#define FWM_VENC_PARAM_DISPLAY_OFFSET 0x7f000002
+
+typedef struct fwm_venc_display_offset {
+    int left;
+    int top;
+} fwm_venc_display_offset_t;
+
 #endif

@@ -98,6 +98,7 @@ typedef struct fc_enc_params {
     int          roi_enable;
     fwm_venc_roi_t roi[8];
     fwm_venc_display_size_t display_size;
+    fwm_venc_display_offset_t display_offset;   /* <0: centred */
 } fc_enc_params;
 
 /* --------------------------------------------------------- per-picture NAL -- */
