@@ -4,7 +4,8 @@
 
 Integration/glue layer only. It does not implement AWB behaviour; it presents
 the clean-room AWB core (`src/awb/awb_clean.c`) to the Yi/mediad ISP
-framework through the SDK's `isp_awb_core_ops_t` contract.
+framework through the framework's `fwi_awb_core_ops_t` vtable (the same
+shape as the SDK's `isp_awb_core_ops_t`).
 
 ## Sources of truth
 
@@ -15,10 +16,12 @@ framework through the SDK's `isp_awb_core_ops_t` contract.
 | SDK stats grid (`struct isp_awb_stats_s`) | SDK `.../libisp/include/isp_manage.h` |
 | Vendor entity/config layout | the deployed `isp_3a_awb.o` (interface fact) |
 
-The shim builds against `include/freeisp/sdk_interop.h`, which reproduces the required
-libisp ABI inline, with the deployed v521 short-enum
+The shim builds against the generated `fwi_*` headers (`include/fwi_isp_api.h`),
+whose records are layout-identical to the SDK types listed above (the move off
+the SDK-shaped header on 2026-09-26 left the ARM object code unchanged,
+function by function). It uses the deployed v521 short-enum
 ABI (`-fshort-enums -DISP521_RTOS_ALGO=1 -DISP_VERSION=521`). Compile-time
-guards in the differential confirm the header matches the object:
+guards in the (private) differential confirmed the layout against the object:
 `sizeof(isp_awb_setting_t) == 0x24`, `awb_ini` at +0x30, `awb_sensor_info` at
 +0x123c, `test_cfg` at +0x12cc, `sizeof(struct isp_awb_stats_s) == 32768`.
 

@@ -12,10 +12,13 @@ reproduced. The register tier's provenance caveat — an earlier draft written w
 direct access to the vendor binary, later re-produced from a behaviour-only spec
 and re-verified — is recorded in `isp/docs/provenance.md`.
 
-The interoperability ABI surfaces (`isp/include/freeisp/sdk_interop.h` and the
-codec's VE and encoder ABI declarations) restate the struct, enum, macro and
-entry-point declarations required to match the deployed interface; those are
-interface facts, not copied implementation.
+The interoperability ABI surfaces (the generated `isp/include/fwi_*.h` records,
+the UAPI headers below, and the codec's VE and encoder ABI declarations) restate
+the layouts, enum values and entry points required to match the deployed
+interface; those are interface facts, not copied implementation. The ISP
+framework and media utilities (`isp/src/framework/`, `isp/src/utils/`) are the
+r1 clean-room re-implementation, which replaced an earlier tier that overlapped
+the vendor source (see `isp/docs/provenance.md`).
 
 Fuller statements: `isp/CREDITS.md`, `codec/CREDITS.md` and
 `isp/docs/provenance.md`.
@@ -127,9 +130,10 @@ by this notice and is a distribution-time decision.
 
 ## Acknowledgements
 
-- `isp/include/freeisp/sdk_interop.h` restates the libisp ABI declarations the
-  shim layer needs, so the tree builds against this repository alone and no
-  Allwinner SDK header is required.
+- The framework-facing ABI records (`isp/include/fwi_*.h`) are generated in this
+  project's own naming and format from layout facts of the deployed interface, so
+  the tree builds against this repository alone; no Allwinner SDK header is
+  included or required.
 
 ## References
 

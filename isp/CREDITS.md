@@ -12,10 +12,10 @@ a behaviour-only specification was written from observing the *deployed*
 on-camera binary (`libisp_algo_rtos.a`, ARMv7, Melis RTOS); the implementation
 was written from that specification and then verified
 against the deployed object under qemu-arm, module by module. No Allwinner
-implementation code or comments are reproduced. The interoperability ABI
-surface in `include/freeisp/sdk_interop.h` restates the struct, enum, macro and
-entry-point declarations required to match the deployed interface; these are
-interface facts, not copied implementation.
+implementation code or comments are reproduced. The framework-facing ABI
+records (`include/fwi_*.h`, generated in this project's own naming from layout
+facts) restate the layouts, enum values and entry points required to match the
+deployed interface; those are interface facts, not copied implementation.
 
 The large constant tables the algorithms need are not compiled in: they are
 located at runtime inside the camera's own stock `rmm` image and then cached to
@@ -46,9 +46,10 @@ parts are necessarily identical to upstream and which are this project's own.
 
 ## Acknowledgements
 
-- `include/freeisp/sdk_interop.h` restates the libisp ABI declarations the shim
-  layer needs, so it builds against this repository alone; no Allwinner SDK
-  header is included or required.
+- The framework-facing ABI records (`include/fwi_*.h`) are generated in this
+  project's own naming and format from layout facts of the deployed interface, so
+  the tree builds against this repository alone; no Allwinner SDK header is
+  included or required.
 
 All product names, trademarks and registered trademarks are the property of
 their respective owners and are used only for identification and

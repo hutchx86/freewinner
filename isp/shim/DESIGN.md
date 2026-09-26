@@ -4,7 +4,8 @@
 
 Integration/glue layer only. It does not implement ISO behaviour; it presents the
 clean-room ISO core (`src/iso/iso_clean.c`) to the Yi/mediad ISP
-framework through the SDK's `isp_iso_core_ops_t` contract.
+framework through the framework's `fwi_iso_cfg_core_ops_t` vtable (the same
+shape as the SDK's `isp_iso_core_ops_t`).
 
 Complete: the gain/luminance index path, the parameter/context plumbing, the
 live tuning-corpus mapping into `iso_ctx_t`, and the full per-module IQ writeback
@@ -23,9 +24,11 @@ field by field: 9 cases, 0 mismatches, sensitivity-checked.
 | SDK shared context (`struct isp_lib_context` and sub-structs) | SDK `.../libisp/include/isp_manage.h` + `isp_tuning/isp_tuning_priv.h` |
 | Vendor entity layout (config at offset 0) | the deployed `isp_iso_config.o` (interface fact) |
 
-The shim builds against `include/freeisp/sdk_interop.h`, which reproduces the required
-`isp_iso_config.h`/`isp_manage.h` ABI surface inline, so every `isp_gen` field
-access uses the framework's own offsets. `-DISP_VERSION=521` is required so
+The shim builds against the generated `fwi_*` headers (`include/fwi_isp_api.h`),
+whose records are layout-identical to the SDK types listed above (the move off
+the SDK-shaped header on 2026-09-26 left the ARM object code unchanged,
+function by function). Every `isp_gen` field access therefore uses the framework's own
+offsets. `-DISP_VERSION=521` is required so
 `isp_lib_context`/`isp_dynamic_config` match the deployed v521 framework.
 
 ## Name collision handling
@@ -40,7 +43,7 @@ its translation unit only:
 /* ... iso_exit/get/set/run ... */
 #include "iso_clean.h"
 #undef ...
-#include "freeisp/sdk_interop.h"  /* SDK names restored */
+#include "fwi_isp_api.h"         /* framework (fwi_*) names from here on */
 ```
 
 `iso_clean.c` is compiled separately with `-Diso_init=clean_iso_init ...` so the

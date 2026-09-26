@@ -6,6 +6,14 @@ Status: **proposal, ready to apply.** Written 2026-09-15 for the `yi-mediad`
 project. Nothing in the `yi-mediad` checkout was modified to produce it (the
 patch is authored read-only); the only file created is this one.
 
+> **Update 2026-09-26.** This is the historical integration and verification
+> record. Since then the vendor framework is gone (the r1 clean-room framework
+> replaced it) and the shims no longer speak the SDK ABI: each 3A shim hands the
+> framework its `fwi_*_core_ops_t` vtable directly, `base`/`module_cfg` take
+> `struct fwi_isp_ctx` / `struct fwi_hw_module_cfg`, and
+> `include/freeisp/sdk_interop.h` and the SDK-header build option were removed.
+> The SDK type names below describe the interface as it was verified.
+
 Target projects and trees:
 
 | Role | Path |

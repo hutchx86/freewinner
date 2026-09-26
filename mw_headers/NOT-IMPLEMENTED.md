@@ -77,6 +77,10 @@ this package.
 
 ## 4. Deviations from SPEC section 3.2's file mapping
 
+(Historical for the ISP headers: `isp_base.h`, `isp_comm.h`, `isp_3a_af.h` and
+`isp_manage.h` were deleted on 2026-09-26 with the rest of `isp*.h`, see
+section 7. The `utils/plat_type.h` note still applies.)
+
 - The shared base declarations (SPEC 3.2 maps `ISP_REG_TBL_LENGTH`,
   `ISP_GAMMA_TBL_LENGTH`, `isp_rgb2rgb_gain_offset`, `isp_sensor_info_t` and the
   module-config helper records to `isp_comm.h`) live in **`isp_base.h`**.  The
@@ -115,19 +119,21 @@ dropped vendor roots:
     function-like macro bodies. Every `#define` body is a bare literal or
     `(1<<n)`.
   - **But the declaration text does overlap heavily:** ~73.6% of this tree's
-    non-blank lines are normalised-identical to a vendor header line, and the
+    non-blank lines were normalised-identical to a vendor header line (measured
+    before the 18 ISP headers were removed on 2026-09-26; the remaining overlap
+    is chiefly in `media/`, `component/`, `utils/` and `vencoder.h`), and the
     overlap preserves the vendor's arbitrary blank-line placement and tab
     indentation (e.g. the `ISP_DENOISE_*` enum block). That is textual
     derivation of the declarations, not independent re-authoring.
   - The names/values/order are the ABI the deployed libisp archive and the
     clean 3A tier use, so they must be reproduced; reproducing the vendor's
     *formatting* was not required. This is within the project's documented
-    "interoperability ABI surfaces" exception (`CREDITS.md:15-18`, the same
-    technique as `isp/include/freeisp/sdk_interop.h`), but it is a **judgement
+    "interoperability ABI surfaces" exception (`CREDITS.md`, Provenance), but it
+    is a **judgement
     call under `AGENTS.md`'s flat "no vendor code"** and is flagged for Hutch.
     Remedy if the strict reading is adopted: re-author the declarations
-    (comments + independent formatting, renaming anything not ABI-bound as
-    `sdk_interop.h`/`*_abi.h` already do).
+    (comments + independent formatting, renaming anything not ABI-bound, as
+    the generated `isp/include/fwi_*.h` and the `*_abi.h` headers already do).
 - SPEC section 6.4 (end-to-end link + on-camera ABI oracle) belongs to the
   daemon owner.
 

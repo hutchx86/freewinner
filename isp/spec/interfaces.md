@@ -47,11 +47,11 @@ AFS is named differently from the other five. Its clean core keeps the
 defines none of the bare names `afs_get_params`, `afs_set_params` or `afs_isr`,
 and no bare `afs_run` either (the only `afs_run` in the tree is a file-local
 stand-in inside `tests/test_framework_manage.c:439`, which fills the ops member
-for the test and is not library surface). The SDK-shaped AFS surface is the
-shim's `afs_init`/`afs_exit`
-(`shim/afs/afs_shim.c:330,366`) plus the `isp_afs_run`/`isp_afs_set_params`/
-`isp_afs_get_params` member ops of `isp_afs_core_ops_t` (`shim/afs/afs_shim.c`
-installs them; `include/freeisp/sdk_interop.h` declares them). `afs_init`
+for the test and is not library surface). The framework-facing AFS surface is
+the shim's `afs_init`/`afs_exit` plus the `afs_set_params`/`afs_get_params`/
+`afs_run` members of `fwi_afs_core_ops_t` (`shim/afs/afs_shim.c` installs them;
+`include/framework_isp.h` declares `afs_init`; same shape as the SDK's
+`isp_afs_core_ops_t`). `afs_init`
 builds a clean core through `afs_clean_init` and forwards the ops to it. The
 SDK ops struct has no ISR slot; the clean core's interrupt-shaped entry is
 `afs_clean_isr`.

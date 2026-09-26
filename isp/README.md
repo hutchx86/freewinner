@@ -27,10 +27,10 @@ a behaviour-only specification was written from observing the *deployed*
 on-camera binary (`libisp_algo_rtos.a`, ARMv7, Melis RTOS); the implementation
 was written from that specification and then verified
 against the deployed object under qemu-arm, module by module. No Allwinner
-implementation code or comments are reproduced. The interoperability ABI
-surface (`include/freeisp/sdk_interop.h`) restates the struct, enum, macro and
-entry-point declarations required to match the deployed interface; those are
-interface facts, not copied implementation.
+implementation code or comments are reproduced. The framework-facing ABI
+records (`include/fwi_*.h`, generated in this project's own naming from layout
+facts) restate the layouts, enum values and entry points required to match the
+deployed interface; those are interface facts, not copied implementation.
 
 The large constant tables the algorithms need are not compiled in: they are
 located at runtime inside the camera's own stock `rmm` image and then cached to
@@ -77,25 +77,17 @@ merge-geometry cases in `tests/test_pltm.c` and the AWB tie-break case in
 `tests/test_awb.c`. Those tests still run here because the expected values are
 written into the test source; the harness and its goldens are not shipped.
 
-The `shim/` layer presents the clean cores through the SDK's
-`*_init`/`*_run` entry points, and includes the SDK-ABI adapter for the
-register/config dispatch tier (`shim/module_cfg/`, which translates the
-framework's real `struct isp_module_config` to and from the clean context). It
-builds against the repo's own `include/freeisp/sdk_interop.h`, which declares the
-required libisp ABI surface inline, so no Allwinner SDK headers are needed; it is
-still **not** part of the default `check`. Build it separately (add
-`CROSS=<prefix>` for the ARM targets):
+The `shim/` layer presents the clean cores to the framework: each 3A module's
+`*_init` returns its `fwi_*_core_ops_t` vtable, which the framework calls
+directly, and `shim/base/` and `shim/module_cfg/` translate the framework's
+`struct fwi_isp_ctx` / `struct fwi_hw_module_cfg` to and from the clean register
+tier. It builds against the generated `fwi_*` headers in `include/`; it is still
+**not** part of the default `check`. Build it separately (add `CROSS=<prefix>`
+for the ARM targets):
 
 ```sh
 make -C shim/ae                              # host test
 make -C shim/ae CROSS=<prefix> arm           # ARM target
-```
-
-For a differential build against the vendor header instead, pass the Allwinner
-libisp include directory and enable the override:
-
-```sh
-make -C shim/ae SDK_INC=<libisp include dir> FREEISP_SDK_INTEROP_VENDOR=1
 ```
 
 The runtime table feed under `shim/integration/` is SDK-free and builds

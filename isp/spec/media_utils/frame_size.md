@@ -174,8 +174,8 @@ The clean tree (`include/`, `src/`) does
    verbatim (the approach recommended by the media-utils plan: no private
    shim is needed), or
 2. add a clean ABI header that reproduces exactly the sizes, offsets and enum
-   values in §2.1–2.5 (the `include/freeisp/sdk_interop.h` pattern, with a
-   vendor-header escape hatch for the differential).
+   values in §2.1–2.5 (the approach the generated `include/fwi_*.h` headers
+   take).
 
 Whichever is chosen, the union of the used declarations must match §2 exactly;
 the unit itself must not be compiled `-fshort-enums`.

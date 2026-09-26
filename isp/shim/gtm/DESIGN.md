@@ -4,8 +4,9 @@
 
 Integration/glue layer only. It presents the clean-room GTM core
 (`src/gtm/gtm_clean.c`) to the Yi/mediad ISP framework through the
-SDK's `isp_gtm_core_ops_t` contract (`gtm_init` / `gtm_exit` /
-`isp_gtm_{get,set}_params` / `isp_gtm_run`). No algorithm is implemented here.
+framework's `fwi_gtm_core_ops_t` vtable (`gtm_init` / `gtm_exit` /
+`gtm_{get,set}_params` / `gtm_run`; the same shape as the SDK's
+`isp_gtm_core_ops_t`). No algorithm is implemented here.
 See the ISO pilot in `../DESIGN.md` for the shared approach.
 
 ## Sources of truth
@@ -18,9 +19,11 @@ See the ISO pilot in `../DESIGN.md` for the shared approach.
 | Shared context (`struct isp_lib_context`, `isp_gtm_stats_s`, `isp_drc_config`, `isp_gamma_config`) | SDK `.../libisp/include/isp_manage.h`, `isp_module_cfg.h` |
 | Vendor entity layout / run path | the deployed `isp_tone_mapping.o` (interface fact) |
 
-The shim builds against `include/freeisp/sdk_interop.h`, which reproduces the required
-`isp_tone_mapping.h`/`isp_manage.h` ABI surface inline, so every `isp_gen` field
-access uses the framework's own offsets; `-DISP521_RTOS_ALGO=1 -DISP_VERSION=521`
+The shim builds against the generated `fwi_*` headers (`include/fwi_isp_api.h`),
+whose records are layout-identical to the SDK types listed above (the move off
+the SDK-shaped header on 2026-09-26 left the ARM object code unchanged,
+function by function). Every `isp_gen` field access uses the framework's own offsets;
+`-DISP521_RTOS_ALGO=1 -DISP_VERSION=521`
 match the deployed v521 ABI.
 
 ## Name collision handling
