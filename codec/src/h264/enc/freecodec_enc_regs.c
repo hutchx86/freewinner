@@ -1,0 +1,35 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Copyright (C) 2026 freewinner contributors */
+
+/* Register access discipline (spec/12-encoder-device.md section 5.7): every
+ * read or write of the encoder-block/ISP-block register window goes through
+ * a volatile-qualified pointer, and these helpers are kept in their own
+ * translation unit AND marked noinline, so no caller can ever see through
+ * them to a non-volatile access pattern under any compiler, flag set or LTO
+ * configuration -- the type-level guarantee the spec asks for, not an
+ * accident of `noinline` alone saving a plain pointer (spec section 5.7/9/10:
+ * this is exactly the r3 mistake being closed off here). */
+
+#include "freecodec_enc_priv.h"
+
+__attribute__((noinline))
+uint32_t fc_enc_reg_read(volatile uint32_t *base, unsigned int word_off)
+{
+    return base[word_off];
+}
+
+__attribute__((noinline))
+void fc_enc_reg_write(volatile uint32_t *base, unsigned int word_off, uint32_t val)
+{
+    base[word_off] = val;
+}
+
+__attribute__((noinline))
+void fc_enc_reg_write_block(volatile uint32_t *base, const uint32_t *words,
+                            unsigned int n)
+{
+    unsigned int i;
+
+    for (i = 0; i < n; i++)
+        base[i] = words[i];
+}

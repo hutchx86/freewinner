@@ -1,0 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 freewinner contributors
+# media-utils phase 2: monotonic condition timeout + wall-clock helpers.
+# Built with the base CFLAGS (default 4-byte enums); never add -fshort-enums.
+$(BUILD)/test_systime: src/utils/systime.c tests/test_systime.c include/utils/systime.h include/media_utils_abi.h | $(BUILD)
+	$(CC) $(CPPFLAGS) $(CFLAGS) -pthread src/utils/systime.c tests/test_systime.c -o $@ $(LDFLAGS) -pthread

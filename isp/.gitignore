@@ -1,0 +1,10 @@
+# build output (any depth)
+build/
+build_arm/
+*.o
+*.a
+*.bin
+*.arm
+*.elf
+*.d
+*.deb

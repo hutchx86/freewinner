@@ -1,0 +1,75 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+/* pixel_format.c - unit U fourcc <-> fwm_pixel_format_e maps (21-utils.md §5) */
+#include "utils/pixel_format.h"
+#include "utils/frame_pool.h"
+
+
+fwm_pixel_format_e map_V4L2_PIX_FMT_to_PIXEL_FORMAT_E(int v4l2PixFmt)
+{
+    switch ((uint32_t)v4l2PixFmt) {
+    case V4L2_PIX_FMT_YUV420M:    return FWM_MM_PIXEL_FORMAT_YUV_PLANAR_420;
+    case V4L2_PIX_FMT_YVU420M:    return FWM_MM_PIXEL_FORMAT_YVU_PLANAR_420;
+    case V4L2_PIX_FMT_NV12M:    return FWM_MM_PIXEL_FORMAT_YUV_SEMIPLANAR_420;
+    case V4L2_PIX_FMT_NV21M:    return FWM_MM_PIXEL_FORMAT_YVU_SEMIPLANAR_420;
+    case V4L2_PIX_FMT_NV16M:    return FWM_MM_PIXEL_FORMAT_YUV_SEMIPLANAR_422;
+    case V4L2_PIX_FMT_NV61M:    return FWM_MM_PIXEL_FORMAT_YVU_SEMIPLANAR_422;
+    case V4L2_PIX_FMT_YUYV:    return FWM_MM_PIXEL_FORMAT_YUYV_PACKAGE_422;
+    case V4L2_PIX_FMT_FBC:     return FWM_MM_PIXEL_FORMAT_YUV_AW_AFBC;
+    case V4L2_PIX_FMT_LBC_2_0X:return FWM_MM_PIXEL_FORMAT_YUV_AW_LBC_2_0X;
+    case V4L2_PIX_FMT_LBC_2_5X:return FWM_MM_PIXEL_FORMAT_YUV_AW_LBC_2_5X;
+    case V4L2_PIX_FMT_LBC_1_0X:return FWM_MM_PIXEL_FORMAT_YUV_AW_LBC_1_0X;
+    case V4L2_PIX_FMT_SBGGR8:    return FWM_MM_PIXEL_FORMAT_RAW_SBGGR8;
+    case V4L2_PIX_FMT_SGBRG8:    return FWM_MM_PIXEL_FORMAT_RAW_SGBRG8;
+    case V4L2_PIX_FMT_SGRBG8:    return FWM_MM_PIXEL_FORMAT_RAW_SGRBG8;
+    case V4L2_PIX_FMT_SRGGB8:    return FWM_MM_PIXEL_FORMAT_RAW_SRGGB8;
+    case V4L2_PIX_FMT_SBGGR10:    return FWM_MM_PIXEL_FORMAT_RAW_SBGGR10;
+    case V4L2_PIX_FMT_SGBRG10:    return FWM_MM_PIXEL_FORMAT_RAW_SGBRG10;
+    case V4L2_PIX_FMT_SGRBG10:    return FWM_MM_PIXEL_FORMAT_RAW_SGRBG10;
+    case V4L2_PIX_FMT_SRGGB10:    return FWM_MM_PIXEL_FORMAT_RAW_SRGGB10;
+    case V4L2_PIX_FMT_SBGGR12:    return FWM_MM_PIXEL_FORMAT_RAW_SBGGR12;
+    case V4L2_PIX_FMT_SGBRG12:    return FWM_MM_PIXEL_FORMAT_RAW_SGBRG12;
+    case V4L2_PIX_FMT_SGRBG12:    return FWM_MM_PIXEL_FORMAT_RAW_SGRBG12;
+    case V4L2_PIX_FMT_SRGGB12:    return FWM_MM_PIXEL_FORMAT_RAW_SRGGB12;
+    case V4L2_PIX_FMT_MJPEG:
+    case V4L2_PIX_FMT_JPEG:
+    case V4L2_PIX_FMT_H264:
+        media_utils_log_error("compressed pixel format", (unsigned)v4l2PixFmt);
+        return FWM_MM_PIXEL_FORMAT_BUTT;
+    default:
+        return FWM_MM_PIXEL_FORMAT_BUTT;
+    }
+}
+
+int map_PIXEL_FORMAT_E_to_V4L2_PIX_FMT(fwm_pixel_format_e format)
+{
+    switch (format) {
+    case FWM_MM_PIXEL_FORMAT_YUV_PLANAR_420:      return V4L2_PIX_FMT_YUV420M;
+    case FWM_MM_PIXEL_FORMAT_YVU_PLANAR_420:      return V4L2_PIX_FMT_YVU420M;
+    case FWM_MM_PIXEL_FORMAT_YUV_SEMIPLANAR_420:  return V4L2_PIX_FMT_NV12M;
+    case FWM_MM_PIXEL_FORMAT_YVU_SEMIPLANAR_420:  return V4L2_PIX_FMT_NV21M;
+    case FWM_MM_PIXEL_FORMAT_YUV_SEMIPLANAR_422:  return V4L2_PIX_FMT_NV16M;
+    case FWM_MM_PIXEL_FORMAT_YVU_SEMIPLANAR_422:  return V4L2_PIX_FMT_NV61M;
+    case FWM_MM_PIXEL_FORMAT_YUYV_PACKAGE_422:    return V4L2_PIX_FMT_YUYV;
+    case FWM_MM_PIXEL_FORMAT_YUV_AW_AFBC:         return V4L2_PIX_FMT_FBC;
+    case FWM_MM_PIXEL_FORMAT_YUV_AW_LBC_2_0X:     return V4L2_PIX_FMT_LBC_2_0X;
+    case FWM_MM_PIXEL_FORMAT_YUV_AW_LBC_2_5X:     return V4L2_PIX_FMT_LBC_2_5X;
+    case FWM_MM_PIXEL_FORMAT_YUV_AW_LBC_1_0X:     return V4L2_PIX_FMT_LBC_1_0X;
+    case FWM_MM_PIXEL_FORMAT_RAW_SBGGR8:          return V4L2_PIX_FMT_SBGGR8;
+    case FWM_MM_PIXEL_FORMAT_RAW_SGBRG8:          return V4L2_PIX_FMT_SGBRG8;
+    case FWM_MM_PIXEL_FORMAT_RAW_SGRBG8:          return V4L2_PIX_FMT_SGRBG8;
+    case FWM_MM_PIXEL_FORMAT_RAW_SRGGB8:          return V4L2_PIX_FMT_SRGGB8;
+    /* two reference quirks, reproduced (21 §5) */
+    case FWM_MM_PIXEL_FORMAT_RAW_SBGGR10:         return V4L2_PIX_FMT_SBGGR8;
+    case FWM_MM_PIXEL_FORMAT_RAW_SBGGR12:         return V4L2_PIX_FMT_SBGGR10;
+    case FWM_MM_PIXEL_FORMAT_RAW_SGBRG10:         return V4L2_PIX_FMT_SGBRG10;
+    case FWM_MM_PIXEL_FORMAT_RAW_SGRBG10:         return V4L2_PIX_FMT_SGRBG10;
+    case FWM_MM_PIXEL_FORMAT_RAW_SRGGB10:         return V4L2_PIX_FMT_SRGGB10;
+    case FWM_MM_PIXEL_FORMAT_RAW_SGBRG12:         return V4L2_PIX_FMT_SGBRG12;
+    case FWM_MM_PIXEL_FORMAT_RAW_SGRBG12:         return V4L2_PIX_FMT_SGRBG12;
+    case FWM_MM_PIXEL_FORMAT_RAW_SRGGB12:         return V4L2_PIX_FMT_SRGGB12;
+    case FWM_MM_PIXEL_FORMAT_RGB_1555:            return V4L2_PIX_FMT_RGB555;
+    case FWM_MM_PIXEL_FORMAT_RGB_8888:            return V4L2_PIX_FMT_RGB32;
+    default:
+        return V4L2_PIX_FMT_YUV420M;
+    }
+}

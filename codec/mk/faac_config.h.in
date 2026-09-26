@@ -1,0 +1,20 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* Copyright (C) 2026 freewinner contributors */
+/*
+ * Build-time configuration for the FAAC library, mirroring the defines its
+ * meson build would generate for a minimal AAC-LC build. Boolean features are
+ * left undefined (not defined to 0) because FAAC tests them with `#ifdef` /
+ * `defined()`. LC output does not depend on the SBR knob.
+ */
+#ifndef FREECODEC_FAAC_CONFIG_H
+#define FREECODEC_FAAC_CONFIG_H
+
+#define PACKAGE         "faac"
+#define PACKAGE_VERSION "@FAAC_VERSION@"
+
+#define HAVE_GETOPT_H   1
+
+#define FAAC_SBR_DECIMATION 1
+#define MAX_CHANNELS        2
+
+#endif /* FREECODEC_FAAC_CONFIG_H */

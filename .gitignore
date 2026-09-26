@@ -1,0 +1,19 @@
+# build output (any depth)
+build/
+build_arm/
+*.o
+*.a
+*.so
+*.d
+*.elf
+*.arm
+*.bin
+*.deb
+
+# editor / OS
+*.swp
+*~
+.DS_Store
+
+# agent tooling / worktrees
+.claude/
