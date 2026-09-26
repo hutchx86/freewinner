@@ -31,8 +31,8 @@
 #define FENC_PERF_WIDE_H      2160u
 
 struct fenc_ctx {
-    VENC_CODEC_TYPE    codec;
-    VENC_DEVICE       *dev;        /* selected device table (process-global) */
+    fwm_venc_codec_e    codec;
+    fwm_venc_device_t       *dev;        /* selected device table (process-global) */
     void              *dev_handle;
     struct vb_mem_ops *memops;
     fc_ve_ops  *ve_ops;
@@ -41,18 +41,18 @@ struct fenc_ctx {
     int                initialised;
     int                perf_mode;  /* only meaningful on the 0x1639 IC */
     vb_frame_manager  *fbm;        /* input picture queues, alive when inited */
-    VencBaseConfig     base;       /* the caller's config, re-asserted at init */
-    VencInputBuffer    peek;       /* framework-owned peek storage */
+    fwm_venc_base_config_t     base;       /* the caller's config, re-asserted at init */
+    fwm_venc_input_picture_t    peek;       /* framework-owned peek storage */
 };
 
 /* --------------------------------------------------------------- helpers */
 
-static VENC_DEVICE *fenc_pick_device(VENC_CODEC_TYPE codec, unsigned int ic_version)
+static fwm_venc_device_t *fenc_pick_device(fwm_venc_codec_e codec, unsigned int ic_version)
 {
-    if (codec == VENC_CODEC_H264)
+    if (codec == FWM_VENC_CODEC_H264)
         return ic_version >= FENC_IC_H264_VER2_MIN ? &video_encoder_h264_ver2
                                                    : &video_encoder_h264_ver1;
-    /* VENC_CODEC_H264_VER2 names the ver2 device explicitly, bypassing the
+    /* FWM_VENC_CODEC_H264_VER2 names the ver2 device explicitly, bypassing the
      * IC-version test. */
     return &video_encoder_h264_ver2;
 }
@@ -72,7 +72,7 @@ static void fenc_create_unwind(struct fenc_ctx *ctx, int mem_inited, int dev_ope
 
 /* ------------------------------------------------------------ lifecycle */
 
-VideoEncoder *VideoEncCreate(VENC_CODEC_TYPE codecType)
+fwm_venc_handle_t *VideoEncCreate(fwm_venc_codec_e codecType)
 {
     struct fenc_ctx *ctx;
     fc_ve_config ve_cfg;
@@ -83,7 +83,7 @@ VideoEncoder *VideoEncCreate(VENC_CODEC_TYPE codecType)
     unsigned int ic_version = 0;
     int mem_inited = 0;
 
-    if (codecType != VENC_CODEC_H264 && codecType != VENC_CODEC_H264_VER2) {
+    if (codecType != FWM_VENC_CODEC_H264 && codecType != FWM_VENC_CODEC_H264_VER2) {
         FENC_LOG("codec type %d is not supported\n", (int)codecType);
         return NULL;
     }
@@ -134,52 +134,52 @@ VideoEncoder *VideoEncCreate(VENC_CODEC_TYPE codecType)
     mem_inited  = 1;
 
     ctx->base.memops     = memops;
-    ctx->base.veOpsS     = ve_ops;
-    ctx->base.pVeOpsSelf = ve_self;
+    ctx->base.engine_ops     = ve_ops;
+    ctx->base.engine = ve_self;
 
     ctx->dev_handle = ctx->dev->open(&ctx->base, ic_version);
     if (!ctx->dev_handle)
         goto fail;
 
-    return (VideoEncoder *)ctx;
+    return (fwm_venc_handle_t *)ctx;
 
 fail:
     fenc_create_unwind(ctx, mem_inited, 0);
     return NULL;
 }
 
-int VideoEncInit(VideoEncoder *encoder, VencBaseConfig *config)
+int VideoEncInit(fwm_venc_handle_t *encoder, fwm_venc_base_config_t *config)
 {
     struct fenc_ctx *ctx = (struct fenc_ctx *)encoder;
     int rc;
 
     if (!ctx || !config || ctx->initialised)
-        return VENC_RESULT_NULL_PTR;
+        return FWM_VENC_RESULT_NULL_PTR;
 
     /* The framework owns these three; re-assert them into the caller's record
      * before it is copied into the context. */
     config->memops     = ctx->memops;
-    config->veOpsS     = ctx->ve_ops;
-    config->pVeOpsSelf = ctx->ve_self;
+    config->engine_ops     = ctx->ve_ops;
+    config->engine = ctx->ve_self;
 
     ctx->fbm = FrameBufferManagerCreate(FENC_INPUT_SLOTS, ctx->memops,
                                         ctx->ve_ops, ctx->ve_self);
     if (!ctx->fbm) {
         FENC_LOG("input picture manager create failed\n");
-        return VENC_RESULT_NO_MEMORY;
+        return FWM_VENC_RESULT_NO_MEMORY;
     }
 
     /* Encoder-performance mode exists only on the 0x1639 IC; inert elsewhere. */
     if (ctx->ic_version == FENC_IC_PERF_MODE) {
-        ctx->perf_mode = (config->nDstWidth >= FENC_PERF_WIDE_W ||
-                          config->nDstHeight >= FENC_PERF_WIDE_H) ? 1 : 0;
+        ctx->perf_mode = (config->output_width >= FENC_PERF_WIDE_W ||
+                          config->output_height >= FENC_PERF_WIDE_H) ? 1 : 0;
         if (ctx->ve_ops->perf_setup)
             ctx->ve_ops->perf_setup(ctx->ve_self, ctx->perf_mode);
     }
 
     ctx->base             = *config;
-    ctx->base.veOpsS      = ctx->ve_ops;
-    ctx->base.pVeOpsSelf  = ctx->ve_self;
+    ctx->base.engine_ops      = ctx->ve_ops;
+    ctx->base.engine  = ctx->ve_self;
 
     rc = ctx->dev->init(ctx->dev_handle, &ctx->base);
     if (rc != 0) {
@@ -194,7 +194,7 @@ int VideoEncInit(VideoEncoder *encoder, VencBaseConfig *config)
     return 0;
 }
 
-int VideoEncUnInit(VideoEncoder *encoder)
+int VideoEncUnInit(fwm_venc_handle_t *encoder)
 {
     struct fenc_ctx *ctx = (struct fenc_ctx *)encoder;
 
@@ -218,7 +218,7 @@ int VideoEncUnInit(VideoEncoder *encoder)
     return 0;
 }
 
-void VideoEncDestroy(VideoEncoder *encoder)
+void VideoEncDestroy(fwm_venc_handle_t *encoder)
 {
     struct fenc_ctx *ctx = (struct fenc_ctx *)encoder;
 
@@ -242,7 +242,7 @@ void VideoEncDestroy(VideoEncoder *encoder)
 
 /* --------------------------------------------------------------- encode */
 
-int VideoEncodeOneFrame(VideoEncoder *encoder)
+int VideoEncodeOneFrame(fwm_venc_handle_t *encoder)
 {
     struct fenc_ctx *ctx = (struct fenc_ctx *)encoder;
     unsigned int offset;
@@ -255,11 +255,11 @@ int VideoEncodeOneFrame(VideoEncoder *encoder)
 
     /* Peek the oldest queued picture without removing it. */
     if (GetInputBuffer(ctx->fbm, (vb_input_buffer *)&ctx->peek) != 0)
-        return VENC_RESULT_NO_FRAME_BUFFER;
+        return FWM_VENC_RESULT_NO_FRAME_BUFFER;
 
     /* The device sees engine-relative addresses. */
-    ctx->peek.pAddrPhyY -= offset;
-    ctx->peek.pAddrPhyC -= offset;
+    ctx->peek.luma_phys -= offset;
+    ctx->peek.chroma_phys -= offset;
 
     if (ctx->ve_ops->lock)
         ctx->ve_ops->lock(ctx->ve_self);
@@ -268,7 +268,7 @@ int VideoEncodeOneFrame(VideoEncoder *encoder)
         ctx->ve_ops->unlock(ctx->ve_self);
 
     /* Whether or not the encode succeeded, the picture moves to the used queue
-     * so the caller can reclaim it. Matching is on nID; the manager keeps its
+     * so the caller can reclaim it. Matching is on id; the manager keeps its
      * own (unadjusted) copy. */
     (void)AddUsedInputBuffer(ctx->fbm, (vb_input_buffer *)&ctx->peek);
 
@@ -277,27 +277,27 @@ int VideoEncodeOneFrame(VideoEncoder *encoder)
 
 /* ----------------------------------------------------------- parameters */
 
-int VideoEncSetParameter(VideoEncoder *encoder, VENC_INDEXTYPE indexType, void *param)
+int VideoEncSetParameter(fwm_venc_handle_t *encoder, fwm_venc_param_e indexType, void *param)
 {
     struct fenc_ctx *ctx = (struct fenc_ctx *)encoder;
 
     if (!ctx || !ctx->dev)
-        return VENC_RESULT_NULL_PTR;
-    return ctx->dev->SetParameter(ctx->dev_handle, (int)indexType, param);
+        return FWM_VENC_RESULT_NULL_PTR;
+    return ctx->dev->set_parameter(ctx->dev_handle, (int)indexType, param);
 }
 
-int VideoEncGetParameter(VideoEncoder *encoder, VENC_INDEXTYPE indexType, void *param)
+int VideoEncGetParameter(fwm_venc_handle_t *encoder, fwm_venc_param_e indexType, void *param)
 {
     struct fenc_ctx *ctx = (struct fenc_ctx *)encoder;
 
     if (!ctx || !ctx->dev)
-        return VENC_RESULT_NULL_PTR;
-    return ctx->dev->GetParameter(ctx->dev_handle, (int)indexType, param);
+        return FWM_VENC_RESULT_NULL_PTR;
+    return ctx->dev->get_parameter(ctx->dev_handle, (int)indexType, param);
 }
 
 /* --------------------------------------------------- input picture calls */
 
-int AddOneInputBuffer(VideoEncoder *encoder, VencInputBuffer *buffer)
+int AddOneInputBuffer(fwm_venc_handle_t *encoder, fwm_venc_input_picture_t *buffer)
 {
     struct fenc_ctx *ctx = (struct fenc_ctx *)encoder;
 
@@ -306,7 +306,7 @@ int AddOneInputBuffer(VideoEncoder *encoder, VencInputBuffer *buffer)
     return AddInputBuffer(ctx->fbm, (vb_input_buffer *)buffer);
 }
 
-int AlreadyUsedInputBuffer(VideoEncoder *encoder, VencInputBuffer *buffer)
+int AlreadyUsedInputBuffer(fwm_venc_handle_t *encoder, fwm_venc_input_picture_t *buffer)
 {
     struct fenc_ctx *ctx = (struct fenc_ctx *)encoder;
 
@@ -317,7 +317,7 @@ int AlreadyUsedInputBuffer(VideoEncoder *encoder, VencInputBuffer *buffer)
 
 /* ------------------------------------------------------- bitstream calls */
 
-int ValidBitstreamFrameNum(VideoEncoder *encoder)
+int ValidBitstreamFrameNum(fwm_venc_handle_t *encoder)
 {
     struct fenc_ctx *ctx = (struct fenc_ctx *)encoder;
 
@@ -325,34 +325,34 @@ int ValidBitstreamFrameNum(VideoEncoder *encoder)
         FENC_LOG("bitstream query on an invalid context\n");
         return -1;
     }
-    return ctx->dev->ValidBitStreamFrameNum(ctx->dev_handle);
+    return ctx->dev->ready_frame_count(ctx->dev_handle);
 }
 
-int GetOneBitstreamFrame(VideoEncoder *encoder, VencOutputBuffer *buffer)
+int GetOneBitstreamFrame(fwm_venc_handle_t *encoder, fwm_venc_output_frame_t *buffer)
 {
     struct fenc_ctx *ctx = (struct fenc_ctx *)encoder;
     int rc;
 
     if (!ctx)
         return -1;
-    rc = ctx->dev->GetOneBitStreamFrame(ctx->dev_handle, buffer);
-    return rc != 0 ? VENC_RESULT_BITSTREAM_IS_EMPTY : 0;
+    rc = ctx->dev->get_frame(ctx->dev_handle, buffer);
+    return rc != 0 ? FWM_VENC_RESULT_BITSTREAM_IS_EMPTY : 0;
 }
 
-int FreeOneBitStreamFrame(VideoEncoder *encoder, VencOutputBuffer *buffer)
+int FreeOneBitStreamFrame(fwm_venc_handle_t *encoder, fwm_venc_output_frame_t *buffer)
 {
     struct fenc_ctx *ctx = (struct fenc_ctx *)encoder;
     int rc;
 
     if (!ctx)
         return -1;
-    rc = ctx->dev->FreeOneBitStreamFrame(ctx->dev_handle, buffer);
+    rc = ctx->dev->release_frame(ctx->dev_handle, buffer);
     return rc != 0 ? -1 : 0;
 }
 
 /* ---------------------------------------------------------------- reset */
 
-int VideoEncoderReset(VideoEncoder *encoder)
+int VideoEncoderReset(fwm_venc_handle_t *encoder)
 {
     struct fenc_ctx *ctx = (struct fenc_ctx *)encoder;
     int rc;
@@ -361,7 +361,7 @@ int VideoEncoderReset(VideoEncoder *encoder)
         return -1;
     if (ResetFrameBuffer(ctx->fbm) != 0)
         return -1;
-    rc = ctx->dev->ResetBitStreamFrame(ctx->dev_handle);
+    rc = ctx->dev->reset_frames(ctx->dev_handle);
     if (rc != 0)
         return -1;
     return rc;
@@ -369,7 +369,7 @@ int VideoEncoderReset(VideoEncoder *encoder)
 
 /* ------------------------------------------------ pool / companion calls */
 
-unsigned int VideoEncoderGetUnencodedBufferNum(VideoEncoder *encoder)
+unsigned int VideoEncoderGetUnencodedBufferNum(fwm_venc_handle_t *encoder)
 {
     struct fenc_ctx *ctx = (struct fenc_ctx *)encoder;
 
@@ -378,54 +378,54 @@ unsigned int VideoEncoderGetUnencodedBufferNum(VideoEncoder *encoder)
     return GetUnencodedBufferNum(ctx->fbm);
 }
 
-int AllocInputBuffer(VideoEncoder *encoder, VencAllocateBufferParam *param)
+int AllocInputBuffer(fwm_venc_handle_t *encoder, fwm_venc_input_pool_t *param)
 {
     struct fenc_ctx *ctx = (struct fenc_ctx *)encoder;
 
     if (!ctx || !param)
-        return VENC_RESULT_NULL_PTR;
+        return FWM_VENC_RESULT_NULL_PTR;
     if (!ctx->fbm)
-        return VENC_RESULT_NO_RESOURCE;
+        return FWM_VENC_RESULT_NO_RESOURCE;
     if (AllocateInputBuffer(ctx->fbm, (vb_alloc_param *)param) != 0)
-        return VENC_RESULT_NO_MEMORY;
+        return FWM_VENC_RESULT_NO_MEMORY;
     return 0;
 }
 
-int GetOneAllocInputBuffer(VideoEncoder *encoder, VencInputBuffer *buffer)
+int GetOneAllocInputBuffer(fwm_venc_handle_t *encoder, fwm_venc_input_picture_t *buffer)
 {
     struct fenc_ctx *ctx = (struct fenc_ctx *)encoder;
 
     if (!ctx)
-        return VENC_RESULT_NULL_PTR;
+        return FWM_VENC_RESULT_NULL_PTR;
     return GetOneAllocateInputBuffer(ctx->fbm, (vb_input_buffer *)buffer);
 }
 
-int FlushCacheAllocInputBuffer(VideoEncoder *encoder, VencInputBuffer *buffer)
+int FlushCacheAllocInputBuffer(fwm_venc_handle_t *encoder, fwm_venc_input_picture_t *buffer)
 {
     struct fenc_ctx *ctx = (struct fenc_ctx *)encoder;
 
     if (!ctx)
-        return VENC_RESULT_NULL_PTR;
+        return FWM_VENC_RESULT_NULL_PTR;
     (void)FlushCacheAllocateInputBuffer(ctx->fbm, (vb_input_buffer *)buffer);
     return 0;
 }
 
-int ReturnOneAllocInputBuffer(VideoEncoder *encoder, VencInputBuffer *buffer)
+int ReturnOneAllocInputBuffer(fwm_venc_handle_t *encoder, fwm_venc_input_picture_t *buffer)
 {
     struct fenc_ctx *ctx = (struct fenc_ctx *)encoder;
 
     if (!ctx)
-        return VENC_RESULT_NULL_PTR;
+        return FWM_VENC_RESULT_NULL_PTR;
     return ReturnOneAllocateInputBuffer(ctx->fbm, (vb_input_buffer *)buffer);
 }
 
-int ReleaseAllocInputBuffer(VideoEncoder *encoder)
+int ReleaseAllocInputBuffer(fwm_venc_handle_t *encoder)
 {
     /* The pool lives inside the picture manager and is freed with it. */
     return encoder ? 0 : -1;
 }
 
-void VideoEncoderGetVeIommuAddr(VideoEncoder *encoder, struct user_iommu_param *param)
+void VideoEncoderGetVeIommuAddr(fwm_venc_handle_t *encoder, struct user_iommu_param *param)
 {
     struct fenc_ctx *ctx = (struct fenc_ctx *)encoder;
 
@@ -435,7 +435,7 @@ void VideoEncoderGetVeIommuAddr(VideoEncoder *encoder, struct user_iommu_param *
                               (fc_ve_iommu_req *)param);
 }
 
-void VideoEncoderFreeVeIommuAddr(VideoEncoder *encoder, struct user_iommu_param *param)
+void VideoEncoderFreeVeIommuAddr(fwm_venc_handle_t *encoder, struct user_iommu_param *param)
 {
     struct fenc_ctx *ctx = (struct fenc_ctx *)encoder;
 
@@ -445,7 +445,7 @@ void VideoEncoderFreeVeIommuAddr(VideoEncoder *encoder, struct user_iommu_param 
                                (fc_ve_iommu_req *)param);
 }
 
-int VideoEncoderSetFreq(VideoEncoder *encoder, int nFreq)
+int VideoEncoderSetFreq(fwm_venc_handle_t *encoder, int nFreq)
 {
     struct fenc_ctx *ctx = (struct fenc_ctx *)encoder;
 
@@ -454,7 +454,7 @@ int VideoEncoderSetFreq(VideoEncoder *encoder, int nFreq)
     return ctx->ve_ops->set_clock(ctx->ve_self, (unsigned int)nFreq);
 }
 
-void VideoEncoderSetDdrMode(VideoEncoder *encoder, int nDdrMode)
+void VideoEncoderSetDdrMode(fwm_venc_handle_t *encoder, int nDdrMode)
 {
     struct fenc_ctx *ctx = (struct fenc_ctx *)encoder;
 

@@ -10,12 +10,12 @@ in the spec's scope-and-non-goals list.
 
 | Area | Behaviour here |
 | --- | --- |
-| H.265, JPEG and VP8 codecs | `VideoEncCreate` accepts only `VENC_CODEC_H264` and `VENC_CODEC_H264_VER2`; every other codec type is rejected with NULL before anything is allocated. The clean codec's error-returning device stubs (`video_encoder_h265`, `video_encoder_jpeg`, `video_encoder_h264_ver1`) are never opened by this package. |
+| H.265, JPEG and VP8 codecs | `VideoEncCreate` accepts only `FWM_VENC_CODEC_H264` and `FWM_VENC_CODEC_H264_VER2`; every other codec type is rejected with NULL before anything is allocated. The clean codec's error-returning device stubs (`video_encoder_h265`, `video_encoder_jpeg`, `video_encoder_h264_ver1`) are never opened by this package. |
 | Still-JPEG path (`AWJpecEnc`) and its ION import/export helpers | Not provided. Nothing in the media daemon calls it, and no ION symbol is referenced from this package. |
 | Create-time SDK version banner | Not emitted. The clean implementation prints no vendor version text. |
 | Frame-rate / time accounting facility | Not reimplemented. The original's timing log was behind a compile-time switch that is off in this build; this package has no timing code and no `gettimeofday` use. |
 | Codec-internal behaviour (register programming, rate control, GOP, headers, encoder-internal ISP, bit-writer) | Owned by the codec device, not this package. |
-| `VENC_IndexParam*` values the caller never uses | Not interpreted here; every index and pointer is forwarded to the device unchanged, which decides. |
+| `FWM_VENC_PARAM_*` values the caller never uses | Not interpreted here; every index and pointer is forwarded to the device unchanged, which decides. |
 
 The framework performs no waits, sleeps or retries, opens no device node, and
 reads no input file. The only synchronisation it performs is the video-engine

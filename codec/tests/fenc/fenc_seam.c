@@ -50,7 +50,7 @@ static struct seam_dev *dev_of(void *handle)
     return (struct seam_dev *)handle;
 }
 
-static void *dev_open(struct seam_dev *d, VencBaseConfig *cfg, unsigned int ic)
+static void *dev_open(struct seam_dev *d, fwm_venc_base_config_t *cfg, unsigned int ic)
 {
     d->open_n++;
     d->open_ic = ic;
@@ -60,24 +60,24 @@ static void *dev_open(struct seam_dev *d, VencBaseConfig *cfg, unsigned int ic)
     return d->open_ret;
 }
 
-static void *ver2_open(VencBaseConfig *cfg, unsigned int ic)
+static void *ver2_open(fwm_venc_base_config_t *cfg, unsigned int ic)
 {
     return dev_open(&seam_ver2, cfg, ic);
 }
-static void *ver1_open(VencBaseConfig *cfg, unsigned int ic)
+static void *ver1_open(fwm_venc_base_config_t *cfg, unsigned int ic)
 {
     return dev_open(&seam_ver1, cfg, ic);
 }
-static void *h265_open(VencBaseConfig *cfg, unsigned int ic)
+static void *h265_open(fwm_venc_base_config_t *cfg, unsigned int ic)
 {
     return dev_open(&seam_h265, cfg, ic);
 }
-static void *jpeg_open(VencBaseConfig *cfg, unsigned int ic)
+static void *jpeg_open(fwm_venc_base_config_t *cfg, unsigned int ic)
 {
     return dev_open(&seam_jpeg, cfg, ic);
 }
 
-static int dev_init(void *h, VencBaseConfig *cfg)
+static int dev_init(void *h, fwm_venc_base_config_t *cfg)
 {
     struct seam_dev *d = dev_of(h);
 
@@ -105,7 +105,7 @@ static void dev_close(void *h)
     seam_log("close");
 }
 
-static int dev_encode(void *h, VencInputBuffer *in)
+static int dev_encode(void *h, fwm_venc_input_picture_t *in)
 {
     struct seam_dev *d = dev_of(h);
 
@@ -147,7 +147,7 @@ static int dev_valid(void *h)
     return d->valid_ret;
 }
 
-static int dev_getone(void *h, VencOutputBuffer *out)
+static int dev_getone(void *h, fwm_venc_output_frame_t *out)
 {
     struct seam_dev *d = dev_of(h);
 
@@ -155,15 +155,15 @@ static int dev_getone(void *h, VencOutputBuffer *out)
     seam_log("getone");
     if (d->getone_ret == 0 && out) {
         memset(out, 0, sizeof(*out));
-        out->nID    = 0x1234;
-        out->nSize0 = 111;
-        out->nSize1 = 222;
-        out->pData0 = (unsigned char *)(uintptr_t)0x5000u;
+        out->id    = 0x1234;
+        out->size0 = 111;
+        out->size1 = 222;
+        out->data0 = (unsigned char *)(uintptr_t)0x5000u;
     }
     return d->getone_ret;
 }
 
-static int dev_freeone(void *h, VencOutputBuffer *out)
+static int dev_freeone(void *h, fwm_venc_output_frame_t *out)
 {
     struct seam_dev *d = dev_of(h);
 
@@ -184,19 +184,19 @@ static int dev_reset(void *h)
 }
 
 /* Four device tables with distinct identities, so selection is observable. */
-VENC_DEVICE video_encoder_h264_ver2 = {
+fwm_venc_device_t video_encoder_h264_ver2 = {
     "seam ver2", ver2_open, dev_init, dev_uninit, dev_close, dev_encode,
     dev_getparam, dev_setparam, dev_valid, dev_getone, dev_freeone, dev_reset
 };
-VENC_DEVICE video_encoder_h264_ver1 = {
+fwm_venc_device_t video_encoder_h264_ver1 = {
     "seam ver1", ver1_open, dev_init, dev_uninit, dev_close, dev_encode,
     dev_getparam, dev_setparam, dev_valid, dev_getone, dev_freeone, dev_reset
 };
-VENC_DEVICE video_encoder_h265 = {
+fwm_venc_device_t video_encoder_h265 = {
     "seam h265", h265_open, dev_init, dev_uninit, dev_close, dev_encode,
     dev_getparam, dev_setparam, dev_valid, dev_getone, dev_freeone, dev_reset
 };
-VENC_DEVICE video_encoder_jpeg = {
+fwm_venc_device_t video_encoder_jpeg = {
     "seam jpeg", jpeg_open, dev_init, dev_uninit, dev_close, dev_encode,
     dev_getparam, dev_setparam, dev_valid, dev_getone, dev_freeone, dev_reset
 };

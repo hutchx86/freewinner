@@ -27,14 +27,14 @@ struct seam_dev {
     int   valid_ret, getone_ret, freeone_ret, reset_ret;
 
     unsigned int   open_ic;
-    VencBaseConfig open_cfg;       /* copy seen by open */
-    VencBaseConfig init_cfg;       /* copy seen by init */
-    VencInputBuffer encode_buf;    /* copy seen by encode */
+    fwm_venc_base_config_t open_cfg;       /* copy seen by open */
+    fwm_venc_base_config_t init_cfg;       /* copy seen by init */
+    fwm_venc_input_picture_t encode_buf;    /* copy seen by encode */
 
     int   setparam_index; void *setparam_ptr;
     int   getparam_index; void *getparam_ptr;
 
-    VencOutputBuffer free_buf;     /* copy seen by free */
+    fwm_venc_output_frame_t free_buf;     /* copy seen by free */
 };
 
 extern struct seam_dev seam_ver2, seam_ver1, seam_h265, seam_jpeg;

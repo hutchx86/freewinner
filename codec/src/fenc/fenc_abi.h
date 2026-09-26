@@ -4,7 +4,7 @@
 /* Encoder framework interface (spec r2/05 part B records, part B.5 entry
  * points).
  *
- * The daemon owns one `VideoEncoder *` context built by VideoEncCreate and
+ * The daemon owns one `fwm_venc_handle_t *` context built by VideoEncCreate and
  * driven through these entry points; the device tables, records and value sets
  * are the part-B ones shared with vencoder.h (venc_types.h). The support
  * library calls the framework composes sit in venc_base_abi.h.
@@ -26,7 +26,7 @@ extern "C" {
 #endif
 
 /* The framework context is opaque to its caller. */
-typedef void *VideoEncoder;
+typedef void *fwm_venc_handle_t;
 
 /* Engine-relative IOMMU request (8 bytes): a dma-buf in, its engine address
  * out (spec r2/05 A.5, the same record as fc_ve_iommu_req in ve_iface.h). */
@@ -35,39 +35,39 @@ struct user_iommu_param {
     unsigned int engine_addr;
 };
 
-VideoEncoder *VideoEncCreate(VENC_CODEC_TYPE codecType);
-int  VideoEncInit(VideoEncoder *encoder, VencBaseConfig *config);
-int  VideoEncUnInit(VideoEncoder *encoder);
-void VideoEncDestroy(VideoEncoder *encoder);
-int  VideoEncSetParameter(VideoEncoder *encoder, VENC_INDEXTYPE indexType, void *param);
-int  VideoEncGetParameter(VideoEncoder *encoder, VENC_INDEXTYPE indexType, void *param);
-int  VideoEncodeOneFrame(VideoEncoder *encoder);
+fwm_venc_handle_t *VideoEncCreate(fwm_venc_codec_e codec);
+int  VideoEncInit(fwm_venc_handle_t *encoder, fwm_venc_base_config_t *config);
+int  VideoEncUnInit(fwm_venc_handle_t *encoder);
+void VideoEncDestroy(fwm_venc_handle_t *encoder);
+int  VideoEncSetParameter(fwm_venc_handle_t *encoder, fwm_venc_param_e index, void *param);
+int  VideoEncGetParameter(fwm_venc_handle_t *encoder, fwm_venc_param_e index, void *param);
+int  VideoEncodeOneFrame(fwm_venc_handle_t *encoder);
 
-int  AddOneInputBuffer(VideoEncoder *encoder, VencInputBuffer *buffer);
-int  AlreadyUsedInputBuffer(VideoEncoder *encoder, VencInputBuffer *buffer);
+int  AddOneInputBuffer(fwm_venc_handle_t *encoder, fwm_venc_input_picture_t *buffer);
+int  AlreadyUsedInputBuffer(fwm_venc_handle_t *encoder, fwm_venc_input_picture_t *buffer);
 
-int  ValidBitstreamFrameNum(VideoEncoder *encoder);
-int  GetOneBitstreamFrame(VideoEncoder *encoder, VencOutputBuffer *buffer);
-int  FreeOneBitStreamFrame(VideoEncoder *encoder, VencOutputBuffer *buffer);
+int  ValidBitstreamFrameNum(fwm_venc_handle_t *encoder);
+int  GetOneBitstreamFrame(fwm_venc_handle_t *encoder, fwm_venc_output_frame_t *buffer);
+int  FreeOneBitStreamFrame(fwm_venc_handle_t *encoder, fwm_venc_output_frame_t *buffer);
 
-int  VideoEncoderReset(VideoEncoder *encoder);
-unsigned int VideoEncoderGetUnencodedBufferNum(VideoEncoder *encoder);
+int  VideoEncoderReset(fwm_venc_handle_t *encoder);
+unsigned int VideoEncoderGetUnencodedBufferNum(fwm_venc_handle_t *encoder);
 
-int  AllocInputBuffer(VideoEncoder *encoder, VencAllocateBufferParam *param);
-int  GetOneAllocInputBuffer(VideoEncoder *encoder, VencInputBuffer *buffer);
-int  FlushCacheAllocInputBuffer(VideoEncoder *encoder, VencInputBuffer *buffer);
-int  ReturnOneAllocInputBuffer(VideoEncoder *encoder, VencInputBuffer *buffer);
-int  ReleaseAllocInputBuffer(VideoEncoder *encoder);
+int  AllocInputBuffer(fwm_venc_handle_t *encoder, fwm_venc_input_pool_t *param);
+int  GetOneAllocInputBuffer(fwm_venc_handle_t *encoder, fwm_venc_input_picture_t *buffer);
+int  FlushCacheAllocInputBuffer(fwm_venc_handle_t *encoder, fwm_venc_input_picture_t *buffer);
+int  ReturnOneAllocInputBuffer(fwm_venc_handle_t *encoder, fwm_venc_input_picture_t *buffer);
+int  ReleaseAllocInputBuffer(fwm_venc_handle_t *encoder);
 
-void VideoEncoderGetVeIommuAddr(VideoEncoder *encoder, struct user_iommu_param *param);
-void VideoEncoderFreeVeIommuAddr(VideoEncoder *encoder, struct user_iommu_param *param);
-int  VideoEncoderSetFreq(VideoEncoder *encoder, int nFreq);
-void VideoEncoderSetDdrMode(VideoEncoder *encoder, int nDdrMode);
+void VideoEncoderGetVeIommuAddr(fwm_venc_handle_t *encoder, struct user_iommu_param *param);
+void VideoEncoderFreeVeIommuAddr(fwm_venc_handle_t *encoder, struct user_iommu_param *param);
+int  VideoEncoderSetFreq(fwm_venc_handle_t *encoder, int freq);
+void VideoEncoderSetDdrMode(fwm_venc_handle_t *encoder, int ddr_mode);
 
 /* ========================================================= layout checks */
 
 #if defined(__arm__)
-_Static_assert(sizeof(VideoEncoder) == 4, "VideoEncoder handle is 4 bytes");
+_Static_assert(sizeof(fwm_venc_handle_t) == 4, "handle is 4 bytes");
 _Static_assert(sizeof(struct user_iommu_param) == 8, "user_iommu_param is 8 bytes");
 _Static_assert(offsetof(struct user_iommu_param, fd) == 0, "user_iommu_param.fd");
 _Static_assert(offsetof(struct user_iommu_param, engine_addr) == 4, "user_iommu_param.engine_addr");

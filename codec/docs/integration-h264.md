@@ -9,7 +9,7 @@ Status: proposal only — **not applied** (freewinner never edits yi-mediad).
 
 `mediad_rtos_v` links the Allwinner H.264 hardware-encoder blobs
 `libvenc_codec.a` + `libVE.a` (`Makefile:521`, `CEDARC_LIBS := -lvenc_codec -lVE`).
-The codec subproject provides a drop-in replacement: the `VENC_DEVICE` ver2 table
+The codec subproject provides a drop-in replacement: the `fwm_venc_device_t` ver2 table
 (`video_encoder_h264_ver2`), the VE driver (`GetVeOpsS`), the encoder-internal
 ISP, the rate-control unit and the header writer — ten clean objects built from
 `src/h264/`, with `src/base/` supplying the support library. The private

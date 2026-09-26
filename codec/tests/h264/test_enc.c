@@ -3,7 +3,7 @@
 
 /* Host test for the H.264 encoder device (spec/12-encoder-device.md, r4,
  * section 14's acceptance): a fake engine (register window + counters) and a
- * fake memory-operations table drive the VENC_DEVICE table with no kernel or
+ * fake memory-operations table drive the fwm_venc_device_t table with no kernel or
  * real hardware. This file includes the device's own private header so it
  * can inspect per-picture bookkeeping (frame_num/POC/idr_pic_id) directly,
  * the way a white-box unit test for a "kept" device is expected to. */
@@ -224,34 +224,34 @@ static int last_write(unsigned int block, unsigned int off, uint32_t *val)
 
 /* ============================================================== helpers */
 
-static VencBaseConfig make_base_config(unsigned int w, unsigned int h)
+static fwm_venc_base_config_t make_base_config(unsigned int w, unsigned int h)
 {
-    VencBaseConfig cfg;
+    fwm_venc_base_config_t cfg;
 
     memset(&cfg, 0, sizeof(cfg));
-    cfg.bEncH264Nalu = 1;
-    cfg.nInputWidth = w;
-    cfg.nInputHeight = h;
-    cfg.nDstWidth = 0;
-    cfg.nDstHeight = 0;
-    cfg.nStride = 0;
-    cfg.eInputFormat = FWM_VENC_PIXEL_YVU420SP;
+    cfg.nalu_en = 1;
+    cfg.input_width = w;
+    cfg.input_height = h;
+    cfg.output_width = 0;
+    cfg.output_height = 0;
+    cfg.input_stride = 0;
+    cfg.input_format = FWM_VENC_PIXEL_YVU420SP;
     cfg.memops = &g_memops;
-    cfg.veOpsS = &g_ve_ops;
-    cfg.pVeOpsSelf = &g_ve;
+    cfg.engine_ops = &g_ve_ops;
+    cfg.engine = &g_ve;
     return cfg;
 }
 
-static VencInputBuffer make_input(void)
+static fwm_venc_input_picture_t make_input(void)
 {
-    VencInputBuffer in;
+    fwm_venc_input_picture_t in;
     static unsigned char y[4], c[4];
 
     memset(&in, 0, sizeof(in));
-    in.pAddrPhyY = y;
-    in.pAddrPhyC = c;
-    in.pAddrVirY = y;
-    in.pAddrVirC = c;
+    in.luma_phys = y;
+    in.chroma_phys = c;
+    in.luma_virt = y;
+    in.chroma_virt = c;
     return in;
 }
 
@@ -259,12 +259,12 @@ static VencInputBuffer make_input(void)
 
 static void test_lifecycle_and_sequence(void)
 {
-    VENC_DEVICE *dev = &video_encoder_h264_ver2;
-    VencBaseConfig cfg = make_base_config(176, 144);
+    fwm_venc_device_t *dev = &video_encoder_h264_ver2;
+    fwm_venc_base_config_t cfg = make_base_config(176, 144);
     void *h;
     fc_enc_instance *e;
     int rc, i;
-    VencHeaderData hdr;
+    fwm_venc_header_blob_t hdr;
 
     install_fake_ve();
     install_fake_memops();
@@ -278,7 +278,7 @@ static void test_lifecycle_and_sequence(void)
     fc_enc_set_trace(h, trace_cb, NULL);
 
     rc = dev->init(h, &cfg);
-    checkf(rc == VENC_RESULT_OK, "init() returns OK, got %d", rc);
+    checkf(rc == FWM_VENC_RESULT_OK, "init() returns OK, got %d", rc);
     checkf(e->bufs.has_aux, "aux planes allocated above IC 0x1667");
     checkf(e->bufs.full[0].vir != NULL && e->bufs.full[1].vir != NULL,
           "both ping-pong full pictures allocated");
@@ -296,18 +296,18 @@ static void test_lifecycle_and_sequence(void)
             i2 = find_write(0, 0x18, i2 + 1);
         checkf(i2 > i0, "init closes the header (0x18=2) after opening it");
     }
-    rc = dev->GetParameter(h, VENC_IndexParamH264SPSPPS, &hdr);
-    checkf(rc == VENC_RESULT_OK && hdr.nLength > 0 && hdr.pBuffer != NULL,
+    rc = dev->get_parameter(h, FWM_VENC_PARAM_H264_SPS_PPS, &hdr);
+    checkf(rc == FWM_VENC_RESULT_OK && hdr.length > 0 && hdr.data != NULL,
           "SPS/PPS get-parameter returns a non-empty blob");
-    checkf(hdr.pBuffer[0] == 0 && hdr.pBuffer[1] == 0 &&
-          hdr.pBuffer[2] == 0 && hdr.pBuffer[3] == 1,
+    checkf(hdr.data[0] == 0 && hdr.data[1] == 0 &&
+          hdr.data[2] == 0 && hdr.data[3] == 1,
           "SPS/PPS blob starts with an Annex-B start code");
 
     /* First picture after init is an IDR (spec section 5.1). */
     checkf(e->pic.first_picture == 1, "first_picture flag set after init");
 
     for (i = 0; i < 5; i++) {
-        VencInputBuffer in = make_input();
+        fwm_venc_input_picture_t in = make_input();
         unsigned int want_frame_num;
         int is_idr_expected = (i == 0);
 
@@ -316,7 +316,7 @@ static void test_lifecycle_and_sequence(void)
         g_nlog = 0;
 
         rc = dev->encode(h, &in);
-        checkf(rc == VENC_RESULT_OK, "encode() picture %d returns OK, got %d", i, rc);
+        checkf(rc == FWM_VENC_RESULT_OK, "encode() picture %d returns OK, got %d", i, rc);
 
         checkf(g_ve.lock_depth == 0, "picture %d: lock/unlock balanced", i);
 
@@ -395,10 +395,10 @@ static void test_lifecycle_and_sequence(void)
  * fixed bits), not a compile-time constant. */
 static void test_bug1_1c_seed(void)
 {
-    VENC_DEVICE *dev = &video_encoder_h264_ver2;
-    VencBaseConfig cfg = make_base_config(64, 64);
+    fwm_venc_device_t *dev = &video_encoder_h264_ver2;
+    fwm_venc_base_config_t cfg = make_base_config(64, 64);
     void *h;
-    VencInputBuffer in = make_input();
+    fwm_venc_input_picture_t in = make_input();
     int rc;
     uint32_t seen_1c_after_script;
 
@@ -410,7 +410,7 @@ static void test_bug1_1c_seed(void)
     if (!h) return;
     fc_enc_set_trace(h, trace_cb, NULL);
     rc = dev->init(h, &cfg);
-    checkf(rc == VENC_RESULT_OK, "bug1: init() OK");
+    checkf(rc == FWM_VENC_RESULT_OK, "bug1: init() OK");
 
     /* Force the post-reset live value of 0x1c to a non-zero, distinctive
      * pattern that a hardcoded 0x200 seed (r3's Fix-1 bug) would not
@@ -427,7 +427,7 @@ static void test_bug1_1c_seed(void)
      * equal (live | 7) per the kept register unit's OR-in-3-bits behaviour,
      * where "live" is whatever fake_ve_reset() left (bit 9 set). */
     rc = dev->encode(h, &in);
-    checkf(rc == VENC_RESULT_OK, "bug1: encode() OK");
+    checkf(rc == FWM_VENC_RESULT_OK, "bug1: encode() OK");
 
     {
         int i = find_write(0, 0x1c, 0);
@@ -458,8 +458,8 @@ static void test_bug1_1c_seed(void)
  * = 2) picture on the software-slice-header path. */
 static void test_bug2_0x0c_formula(void)
 {
-    VENC_DEVICE *dev = &video_encoder_h264_ver2;
-    VencBaseConfig cfg = make_base_config(64, 64);
+    fwm_venc_device_t *dev = &video_encoder_h264_ver2;
+    fwm_venc_base_config_t cfg = make_base_config(64, 64);
     void *h;
     int rc, i;
 
@@ -472,7 +472,7 @@ static void test_bug2_0x0c_formula(void)
     dev->init(h, &cfg);
 
     for (i = 0; i < 2; i++) {
-        VencInputBuffer in = make_input();
+        fwm_venc_input_picture_t in = make_input();
         uint32_t r0c = 0;
         int is_idr = (i == 0);
         unsigned int expect_nal = is_idr ? 3u : 2u;
@@ -482,7 +482,7 @@ static void test_bug2_0x0c_formula(void)
         g_ve.sim_activity = 10;
         g_nlog = 0;
         rc = dev->encode(h, &in);
-        checkf(rc == VENC_RESULT_OK, "bug2: encode() picture %d OK", i);
+        checkf(rc == FWM_VENC_RESULT_OK, "bug2: encode() picture %d OK", i);
 
         last_write(0, 0x0c, &r0c);
         checkf(((r0c >> 24) & 0xffu) == expect_byte3,
@@ -498,10 +498,10 @@ static void test_bug2_0x0c_formula(void)
  * length, both disable the engine, release the lock and return an error. */
 static void test_error_paths(void)
 {
-    VENC_DEVICE *dev = &video_encoder_h264_ver2;
-    VencBaseConfig cfg = make_base_config(64, 64);
+    fwm_venc_device_t *dev = &video_encoder_h264_ver2;
+    fwm_venc_base_config_t cfg = make_base_config(64, 64);
     void *h;
-    VencInputBuffer in = make_input();
+    fwm_venc_input_picture_t in = make_input();
     int rc;
 
     install_fake_ve();
@@ -512,14 +512,14 @@ static void test_error_paths(void)
 
     g_ve.wait_fail = 1;
     rc = dev->encode(h, &in);
-    checkf(rc == VENC_RESULT_ERROR, "errpath: wait failure returns an error, got %d", rc);
+    checkf(rc == FWM_VENC_RESULT_ERROR, "errpath: wait failure returns an error, got %d", rc);
     checkf(g_ve.enabled == 0, "errpath: engine disabled after a wait failure");
     checkf(g_ve.lock_depth == 0, "errpath: lock released after a wait failure");
 
     g_ve.sim_bits = 0;   /* zero length */
     g_ve.sim_activity = 1;
     rc = dev->encode(h, &in);
-    checkf(rc == VENC_RESULT_ERROR, "errpath: zero length returns an error, got %d", rc);
+    checkf(rc == FWM_VENC_RESULT_ERROR, "errpath: zero length returns an error, got %d", rc);
     checkf(g_ve.enabled == 0, "errpath: engine disabled after a zero-length picture");
     checkf(g_ve.lock_depth == 0, "errpath: lock released after a zero-length picture");
 
@@ -532,10 +532,10 @@ static void test_error_paths(void)
  * failing the picture. */
 static void test_bitwriter_timeout_skip(void)
 {
-    VENC_DEVICE *dev = &video_encoder_h264_ver2;
-    VencBaseConfig cfg = make_base_config(64, 64);
+    fwm_venc_device_t *dev = &video_encoder_h264_ver2;
+    fwm_venc_base_config_t cfg = make_base_config(64, 64);
     void *h;
-    VencInputBuffer in = make_input();
+    fwm_venc_input_picture_t in = make_input();
     int rc, i, feed_writes;
 
     install_fake_ve();
@@ -572,7 +572,7 @@ static void test_bitwriter_timeout_skip(void)
     for (i = 0; i < g_nlog; i++)
         if (g_log[i].block == 0 && g_log[i].off == 0x20)
             feed_writes++;
-    checkf(rc == VENC_RESULT_OK, "bwtimeout: encode() still completes, got %d", rc);
+    checkf(rc == FWM_VENC_RESULT_OK, "bwtimeout: encode() still completes, got %d", rc);
     checkf(feed_writes >= 0, "bwtimeout: no crash/hang from the bounded poll");
 
     dev->uninit(h);
@@ -585,8 +585,8 @@ static void test_bitwriter_timeout_skip(void)
  * buffer addresses, under the vector's configuration. */
 static void test_register_parity(void)
 {
-    VENC_DEVICE *dev = &video_encoder_h264_ver2;
-    VencBaseConfig cfg;
+    fwm_venc_device_t *dev = &video_encoder_h264_ver2;
+    fwm_venc_base_config_t cfg;
     void *h;
     int rc, i;
     uint32_t v;
@@ -595,31 +595,31 @@ static void test_register_parity(void)
     install_fake_memops();
 
     memset(&cfg, 0, sizeof(cfg));
-    cfg.nInputWidth = 2304; cfg.nInputHeight = 1296;
-    cfg.eInputFormat = FWM_VENC_PIXEL_YVU420SP;
-    cfg.memops = &g_memops; cfg.veOpsS = &g_ve_ops; cfg.pVeOpsSelf = &g_ve;
+    cfg.input_width = 2304; cfg.input_height = 1296;
+    cfg.input_format = FWM_VENC_PIXEL_YVU420SP;
+    cfg.memops = &g_memops; cfg.engine_ops = &g_ve_ops; cfg.engine = &g_ve;
 
     h = dev->open(&cfg, 0x21210u);
     if (!h) { fail("parity: open() returned NULL"); return; }
     fc_enc_set_trace(h, trace_cb, NULL);
 
     {
-        VencH264ProfileLevel pl;
+        fwm_venc_h264_profile_level_t pl;
         int cabac = 1;
-        VencQPRange qr;
+        fwm_venc_qp_range_t qr;
 
-        pl.nProfile = FWM_VENC_H264_PROFILE_MAIN;
-        pl.nLevel = FWM_VENC_H264_LEVEL51;
-        dev->SetParameter(h, VENC_IndexParamH264ProfileLevel, &pl);
-        dev->SetParameter(h, VENC_IndexParamH264EntropyCodingCABAC, &cabac);
-        qr.nMaxqp = 51; qr.nMinqp = 10;
-        dev->SetParameter(h, VENC_IndexParamH264QPRange, &qr);
+        pl.profile = FWM_VENC_H264_PROFILE_MAIN;
+        pl.level = FWM_VENC_H264_LEVEL51;
+        dev->set_parameter(h, FWM_VENC_PARAM_H264_PROFILE_LEVEL, &pl);
+        dev->set_parameter(h, FWM_VENC_PARAM_H264_CABAC, &cabac);
+        qr.qp_max = 51; qr.qp_min = 10;
+        dev->set_parameter(h, FWM_VENC_PARAM_H264_QP_RANGE, &qr);
     }
     rc = dev->init(h, &cfg);
-    checkf(rc == VENC_RESULT_OK, "parity: init() OK");
+    checkf(rc == FWM_VENC_RESULT_OK, "parity: init() OK");
 
     for (i = 0; i < 2; i++) {
-        VencInputBuffer in = make_input();
+        fwm_venc_input_picture_t in = make_input();
 
         g_ve.sim_bits = (i == 0) ? 132000 : 44000;
         g_ve.sim_activity = 500000;
@@ -652,10 +652,10 @@ static void test_register_parity(void)
 /* Two instances interleaved under the shared lock (spec section 7). */
 static void test_two_instances(void)
 {
-    VENC_DEVICE *dev = &video_encoder_h264_ver2;
-    VencBaseConfig cfg_a, cfg_b;
+    fwm_venc_device_t *dev = &video_encoder_h264_ver2;
+    fwm_venc_base_config_t cfg_a, cfg_b;
     void *ha, *hb;
-    VencInputBuffer in = make_input();
+    fwm_venc_input_picture_t in = make_input();
     int rc;
 
     install_fake_ve();
@@ -675,12 +675,12 @@ static void test_two_instances(void)
 
     g_ve.sim_bits = 1000; g_ve.sim_activity = 1;
     rc = dev->encode(ha, &in);
-    checkf(rc == VENC_RESULT_OK, "instance A encodes OK");
+    checkf(rc == FWM_VENC_RESULT_OK, "instance A encodes OK");
     checkf(g_ve.lock_depth == 0, "lock balanced after A");
 
     g_ve.sim_bits = 2000; g_ve.sim_activity = 2;
     rc = dev->encode(hb, &in);
-    checkf(rc == VENC_RESULT_OK, "instance B encodes OK");
+    checkf(rc == FWM_VENC_RESULT_OK, "instance B encodes OK");
     checkf(g_ve.lock_depth == 0, "lock balanced after B");
 
     /* The per-picture reset (spec section 5.5 step 2) is what keeps the two
@@ -696,11 +696,11 @@ static void test_two_instances(void)
 /* take/return frame, including the part-0/part-1 wrap. */
 static void test_take_return_frame(void)
 {
-    VENC_DEVICE *dev = &video_encoder_h264_ver2;
-    VencBaseConfig cfg = make_base_config(64, 64);
+    fwm_venc_device_t *dev = &video_encoder_h264_ver2;
+    fwm_venc_base_config_t cfg = make_base_config(64, 64);
     void *h;
-    VencInputBuffer in = make_input();
-    VencOutputBuffer out;
+    fwm_venc_input_picture_t in = make_input();
+    fwm_venc_output_frame_t out;
     int rc, i;
 
     install_fake_ve();
@@ -713,20 +713,20 @@ static void test_take_return_frame(void)
         g_ve.sim_bits = 8000 + i * 100;
         g_ve.sim_activity = 1;
         rc = dev->encode(h, &in);
-        checkf(rc == VENC_RESULT_OK, "takeret: encode() %d OK", i);
+        checkf(rc == FWM_VENC_RESULT_OK, "takeret: encode() %d OK", i);
 
-        checkf(dev->ValidBitStreamFrameNum(h) >= 1, "takeret: a frame is waiting");
+        checkf(dev->ready_frame_count(h) >= 1, "takeret: a frame is waiting");
         memset(&out, 0, sizeof(out));
-        rc = dev->GetOneBitStreamFrame(h, &out);
-        checkf(rc == VENC_RESULT_OK, "takeret: GetOneBitStreamFrame OK");
-        checkf(out.nSize0 > 0, "takeret: frame has a non-zero size");
-        rc = dev->FreeOneBitStreamFrame(h, &out);
-        checkf(rc == VENC_RESULT_OK, "takeret: FreeOneBitStreamFrame OK");
+        rc = dev->get_frame(h, &out);
+        checkf(rc == FWM_VENC_RESULT_OK, "takeret: GetOneBitStreamFrame OK");
+        checkf(out.size0 > 0, "takeret: frame has a non-zero size");
+        rc = dev->release_frame(h, &out);
+        checkf(rc == FWM_VENC_RESULT_OK, "takeret: FreeOneBitStreamFrame OK");
     }
 
-    rc = dev->ResetBitStreamFrame(h);
-    checkf(rc == VENC_RESULT_OK, "takeret: ResetBitStreamFrame OK");
-    checkf(dev->ValidBitStreamFrameNum(h) == 0, "takeret: ring empty after reset");
+    rc = dev->reset_frames(h);
+    checkf(rc == FWM_VENC_RESULT_OK, "takeret: ResetBitStreamFrame OK");
+    checkf(dev->ready_frame_count(h) == 0, "takeret: ring empty after reset");
 
     dev->uninit(h);
     dev->close(h);
@@ -760,9 +760,9 @@ static uint32_t win_word(unsigned int off)
  * non-recursive mutex would deadlock on the first picture). */
 static void test_lock_held_by_caller(void)
 {
-    VENC_DEVICE *dev = &video_encoder_h264_ver2;
-    VencBaseConfig cfg = make_base_config(64, 64);
-    VencInputBuffer in = make_input();
+    fwm_venc_device_t *dev = &video_encoder_h264_ver2;
+    fwm_venc_base_config_t cfg = make_base_config(64, 64);
+    fwm_venc_input_picture_t in = make_input();
     void *h;
     int rc;
 
@@ -776,7 +776,7 @@ static void test_lock_held_by_caller(void)
     fake_ve_lock(&g_ve);            /* the caller's lock, as fenc.c takes it */
     g_ve.lock_calls = 0;
     rc = dev->encode(h, &in);
-    checkf(rc == VENC_RESULT_OK, "lock: encode() OK under the caller's lock");
+    checkf(rc == FWM_VENC_RESULT_OK, "lock: encode() OK under the caller's lock");
     checkf(g_ve.lock_calls == 0, "lock: encode() takes no lock itself (%d calls)",
            g_ve.lock_calls);
     checkf(g_ve.lock_depth == 1, "lock: encode() leaves the caller's lock held");
@@ -791,9 +791,9 @@ static void test_lock_held_by_caller(void)
  * the ISP as the LBC pattern with the lossy-decode enable (spec 13). */
 static void test_input_config_at_init(void)
 {
-    VENC_DEVICE *dev = &video_encoder_h264_ver2;
-    VencBaseConfig open_cfg, cfg = make_base_config(640, 360);
-    VencInputBuffer in = make_input();
+    fwm_venc_device_t *dev = &video_encoder_h264_ver2;
+    fwm_venc_base_config_t open_cfg, cfg = make_base_config(640, 360);
+    fwm_venc_input_picture_t in = make_input();
     void *h;
     uint32_t ctrl;
 
@@ -801,16 +801,16 @@ static void test_input_config_at_init(void)
     install_fake_memops();
     memset(&open_cfg, 0, sizeof(open_cfg));
     open_cfg.memops = &g_memops;
-    open_cfg.veOpsS = &g_ve_ops;
-    open_cfg.pVeOpsSelf = &g_ve;
+    open_cfg.engine_ops = &g_ve_ops;
+    open_cfg.engine = &g_ve;
     h = dev->open(&open_cfg, 0x21210u);
     if (!h) { fail("initcfg: open() returned NULL"); return; }
 
-    cfg.eInputFormat = FWM_VENC_PIXEL_LBC_AW;
-    cfg.bLbcLossyComEnFlag2_5x = 1;
-    checkf(dev->init(h, &cfg) == VENC_RESULT_OK, "initcfg: init() OK");
+    cfg.input_format = FWM_VENC_PIXEL_LBC;
+    cfg.lbc_lossy_2_5x_en = 1;
+    checkf(dev->init(h, &cfg) == FWM_VENC_RESULT_OK, "initcfg: init() OK");
     g_ve.sim_bits = 8000;
-    checkf(dev->encode(h, &in) == VENC_RESULT_OK, "initcfg: encode() OK");
+    checkf(dev->encode(h, &in) == FWM_VENC_RESULT_OK, "initcfg: encode() OK");
 
     ctrl = win_word(0xa08);
     checkf(((ctrl >> 27) & 0x1fu) == 0x15u,
@@ -858,9 +858,9 @@ static unsigned int rd_ue(struct bitrd *b)
  * even without an explicit display size. */
 static void test_sps_crop(void)
 {
-    VENC_DEVICE *dev = &video_encoder_h264_ver2;
-    VencBaseConfig cfg = make_base_config(640, 360);
-    VencHeaderData hdr;
+    fwm_venc_device_t *dev = &video_encoder_h264_ver2;
+    fwm_venc_base_config_t cfg = make_base_config(640, 360);
+    fwm_venc_header_blob_t hdr;
     unsigned char rbsp[128];
     unsigned int i, n = 0, zeros = 0;
     struct bitrd b;
@@ -871,8 +871,8 @@ static void test_sps_crop(void)
     h = dev->open(&cfg, 0x21210u);
     if (!h) { fail("crop: open() returned NULL"); return; }
     dev->init(h, &cfg);
-    if (dev->GetParameter(h, VENC_IndexParamH264SPSPPS, &hdr) != VENC_RESULT_OK ||
-        hdr.nLength < 6u || hdr.pBuffer[4] != 0x67u) {
+    if (dev->get_parameter(h, FWM_VENC_PARAM_H264_SPS_PPS, &hdr) != FWM_VENC_RESULT_OK ||
+        hdr.length < 6u || hdr.data[4] != 0x67u) {
         fail("crop: SPS not available");
         dev->uninit(h);
         dev->close(h);
@@ -880,16 +880,16 @@ static void test_sps_crop(void)
     }
     /* SPS payload after the start code and NAL header, emulation bytes
      * removed, up to the next start code. */
-    for (i = 5; i < hdr.nLength && n < sizeof(rbsp); i++) {
-        if (i + 3u < hdr.nLength && hdr.pBuffer[i] == 0 && hdr.pBuffer[i + 1] == 0 &&
-            hdr.pBuffer[i + 2] == 0 && hdr.pBuffer[i + 3] == 1)
+    for (i = 5; i < hdr.length && n < sizeof(rbsp); i++) {
+        if (i + 3u < hdr.length && hdr.data[i] == 0 && hdr.data[i + 1] == 0 &&
+            hdr.data[i + 2] == 0 && hdr.data[i + 3] == 1)
             break;
-        if (zeros >= 2u && hdr.pBuffer[i] == 3u) {
+        if (zeros >= 2u && hdr.data[i] == 3u) {
             zeros = 0;
             continue;
         }
-        zeros = (hdr.pBuffer[i] == 0) ? zeros + 1u : 0u;
-        rbsp[n++] = hdr.pBuffer[i];
+        zeros = (hdr.data[i] == 0) ? zeros + 1u : 0u;
+        rbsp[n++] = hdr.data[i];
     }
     b.p = rbsp; b.n = n; b.pos = 0;
     rd_bits(&b, 24);                        /* profile, constraints, level */
@@ -918,10 +918,10 @@ static void test_sps_crop(void)
  * whole buffer open (h264-two-channel.md section 3). */
 static void test_publish_at_offset_0(void)
 {
-    VENC_DEVICE *dev = &video_encoder_h264_ver2;
-    VencBaseConfig cfg = make_base_config(64, 64);
-    VencInputBuffer in = make_input();
-    VencOutputBuffer out;
+    fwm_venc_device_t *dev = &video_encoder_h264_ver2;
+    fwm_venc_base_config_t cfg = make_base_config(64, 64);
+    fwm_venc_input_picture_t in = make_input();
+    fwm_venc_output_frame_t out;
     fc_enc_instance *e;
     void *h;
     int i;
@@ -939,7 +939,7 @@ static void test_publish_at_offset_0(void)
 
         g_nlog = 0;
         g_ve.sim_bits = 8000 + i * 800;
-        checkf(dev->encode(h, &in) == VENC_RESULT_OK, "off0: encode() %d OK", i);
+        checkf(dev->encode(h, &in) == FWM_VENC_RESULT_OK, "off0: encode() %d OK", i);
         last_write(0, 0x88, &v88);
         last_write(0, 0x8c, &v8c);
         checkf(v88 == 0u, "off0: picture %d 0x88 write offset 0 (got %08x)", i, v88);
@@ -948,13 +948,13 @@ static void test_publish_at_offset_0(void)
     }
     for (i = 0; i < 3; i++) {
         memset(&out, 0, sizeof(out));
-        if (dev->GetOneBitStreamFrame(h, &out) != VENC_RESULT_OK) {
+        if (dev->get_frame(h, &out) != FWM_VENC_RESULT_OK) {
             fail("off0: frame missing");
             break;
         }
-        checkf(out.pData0 == (unsigned char *)BitStreamBaseAddress(e->bufs.bs),
+        checkf(out.data0 == (unsigned char *)BitStreamBaseAddress(e->bufs.bs),
                "off0: frame %d published at buffer offset 0", i);
-        dev->FreeOneBitStreamFrame(h, &out);
+        dev->release_frame(h, &out);
     }
 
     dev->uninit(h);
@@ -966,10 +966,10 @@ static void test_publish_at_offset_0(void)
  * addresses into every picture, and blk_num 0 disables it again. */
 static void test_overlay_set_parameter(void)
 {
-    VENC_DEVICE *dev = &video_encoder_h264_ver2;
-    VencBaseConfig cfg = make_base_config(640, 368);
-    VencInputBuffer in = make_input();
-    VencOverlayInfoS oi;
+    fwm_venc_device_t *dev = &video_encoder_h264_ver2;
+    fwm_venc_base_config_t cfg = make_base_config(640, 368);
+    fwm_venc_input_picture_t in = make_input();
+    fwm_venc_overlay_t oi;
     static unsigned char bmp0[26 * 512], bmp1[6 * 512];
     fc_enc_instance *e;
     unsigned char *hdr;
@@ -987,27 +987,27 @@ static void test_overlay_set_parameter(void)
     memset(bmp0, 0x5a, sizeof(bmp0));
     memset(bmp1, 0xa5, sizeof(bmp1));
     memset(&oi, 0, sizeof(oi));
-    oi.blk_num = 2;
+    oi.region_count = 2;
     oi.argb_type = FWM_VENC_OVERLAY_ARGB1555;
-    oi.overlayHeaderList[0].start_mb_x = 1;
-    oi.overlayHeaderList[0].end_mb_x = 26;
-    oi.overlayHeaderList[0].start_mb_y = 2;
-    oi.overlayHeaderList[0].end_mb_y = 2;
-    oi.overlayHeaderList[0].overlay_blk_addr = bmp0;
-    oi.overlayHeaderList[0].bitmap_size = sizeof(bmp0);
-    oi.overlayHeaderList[1].start_mb_x = 36;
-    oi.overlayHeaderList[1].end_mb_x = 38;
-    oi.overlayHeaderList[1].start_mb_y = 19;
-    oi.overlayHeaderList[1].end_mb_y = 20;
-    oi.overlayHeaderList[1].overlay_blk_addr = bmp1;
-    oi.overlayHeaderList[1].overlay_type = FWM_LUMA_REVERSE_OVERLAY;
-    oi.overlayHeaderList[1].reverse_unit_mb_w_minus1 = 0;   /* 1 x 2 MB invert unit */
-    oi.overlayHeaderList[1].reverse_unit_mb_h_minus1 = 1;
-    oi.overlayHeaderList[1].bitmap_size = sizeof(bmp1);
+    oi.regions[0].start_mb_x = 1;
+    oi.regions[0].end_mb_x = 26;
+    oi.regions[0].start_mb_y = 2;
+    oi.regions[0].end_mb_y = 2;
+    oi.regions[0].bitmap = bmp0;
+    oi.regions[0].bitmap_size = sizeof(bmp0);
+    oi.regions[1].start_mb_x = 36;
+    oi.regions[1].end_mb_x = 38;
+    oi.regions[1].start_mb_y = 19;
+    oi.regions[1].end_mb_y = 20;
+    oi.regions[1].bitmap = bmp1;
+    oi.regions[1].overlay_type = FWM_VENC_OVERLAY_LUMA_REVERSE;
+    oi.regions[1].reverse_unit_mb_w_minus1 = 0;   /* 1 x 2 MB invert unit */
+    oi.regions[1].reverse_unit_mb_h_minus1 = 1;
+    oi.regions[1].bitmap_size = sizeof(bmp1);
 
     g_ve.lock_calls = 0;
-    rc = dev->SetParameter(h, VENC_IndexParamSetOverlay, &oi);
-    checkf(rc == VENC_RESULT_OK, "ovl: SetOverlay OK, got %d", rc);
+    rc = dev->set_parameter(h, FWM_VENC_PARAM_OVERLAY, &oi);
+    checkf(rc == FWM_VENC_RESULT_OK, "ovl: SetOverlay OK, got %d", rc);
     checkf(g_ve.lock_calls == 1 && g_ve.lock_depth == 0,
            "ovl: SetOverlay packs under the VE lock, balanced");
 
@@ -1034,7 +1034,7 @@ static void test_overlay_set_parameter(void)
            "ovl: block 1 bitmap copied at its offset");
 
     g_ve.sim_bits = 8000;
-    checkf(dev->encode(h, &in) == VENC_RESULT_OK, "ovl: encode() OK");
+    checkf(dev->encode(h, &in) == FWM_VENC_RESULT_OK, "ovl: encode() OK");
     checkf((win_word(0xa08) & (1u << 18)) != 0u, "ovl: ISP 0x08 overlay enable set");
     checkf(((win_word(0xa14) >> 16) & 0x3fu) == 1u, "ovl: ISP 0x14 block count - 1");
     checkf(win_word(0xa44) == (uint32_t)((uintptr_t)e->ovl_hdr.phy >> 8),
@@ -1042,10 +1042,10 @@ static void test_overlay_set_parameter(void)
     checkf(win_word(0xa48) == (uint32_t)((uintptr_t)e->ovl_data.phy >> 8),
            "ovl: ISP 0x48 data address >> 8");
 
-    oi.blk_num = 0;
-    checkf(dev->SetParameter(h, VENC_IndexParamSetOverlay, &oi) == VENC_RESULT_OK,
+    oi.region_count = 0;
+    checkf(dev->set_parameter(h, FWM_VENC_PARAM_OVERLAY, &oi) == FWM_VENC_RESULT_OK,
            "ovl: blk_num 0 accepted");
-    checkf(dev->encode(h, &in) == VENC_RESULT_OK, "ovl: encode() after disable OK");
+    checkf(dev->encode(h, &in) == FWM_VENC_RESULT_OK, "ovl: encode() after disable OK");
     checkf((win_word(0xa08) & (1u << 18)) == 0u, "ovl: blk_num 0 disables the overlay");
 
     dev->uninit(h);
@@ -1056,9 +1056,9 @@ static void test_overlay_set_parameter(void)
  * rate control at once, under the VE lock; FastEnc reaches 0x10 at init. */
 static void test_live_rc_and_fastenc(void)
 {
-    VENC_DEVICE *dev = &video_encoder_h264_ver2;
-    VencBaseConfig cfg = make_base_config(64, 64);
-    VencInputBuffer in = make_input();
+    fwm_venc_device_t *dev = &video_encoder_h264_ver2;
+    fwm_venc_base_config_t cfg = make_base_config(64, 64);
+    fwm_venc_input_picture_t in = make_input();
     fc_enc_instance *e;
     int v, fast = 1;
     void *h;
@@ -1068,7 +1068,7 @@ static void test_live_rc_and_fastenc(void)
     h = dev->open(&cfg, 0x21210u);
     if (!h) { fail("livrc: open() returned NULL"); return; }
     e = (fc_enc_instance *)h;
-    checkf(dev->SetParameter(h, VENC_IndexParamFastEnc, &fast) == VENC_RESULT_OK,
+    checkf(dev->set_parameter(h, FWM_VENC_PARAM_FAST_ENCODE, &fast) == FWM_VENC_RESULT_OK,
            "livrc: FastEnc accepted");
     dev->init(h, &cfg);
     checkf((e->reg_info.shadow.me_control & ((1u << 4) | (1u << 20))) ==
@@ -1078,15 +1078,15 @@ static void test_live_rc_and_fastenc(void)
 
     v = 700000;
     g_ve.lock_calls = 0;
-    checkf(dev->SetParameter(h, VENC_IndexParamBitrate, &v) == VENC_RESULT_OK,
+    checkf(dev->set_parameter(h, FWM_VENC_PARAM_BITRATE, &v) == FWM_VENC_RESULT_OK,
            "livrc: bitrate accepted");
     checkf(e->rc.bit_rate == 700000.0, "livrc: RC bit rate follows live change");
     checkf(g_ve.lock_calls == 1 && g_ve.lock_depth == 0,
            "livrc: RC rebuilt under the VE lock, balanced");
     v = 10;
-    dev->SetParameter(h, VENC_IndexParamFramerate, &v);
+    dev->set_parameter(h, FWM_VENC_PARAM_FRAME_RATE, &v);
     checkf(e->rc.frame_rate == 10.0, "livrc: RC frame rate follows live change");
-    checkf(dev->encode(h, &in) == VENC_RESULT_OK, "livrc: encode after live change OK");
+    checkf(dev->encode(h, &in) == FWM_VENC_RESULT_OK, "livrc: encode after live change OK");
 
     dev->uninit(h);
     dev->close(h);
@@ -1097,16 +1097,16 @@ static void test_live_rc_and_fastenc(void)
  * picture lands at offset 0, so stale lines from the last one can remain). */
 static void test_vbv_cache(void)
 {
-    VENC_DEVICE *dev = &video_encoder_h264_ver2;
-    VencBaseConfig cfg = make_base_config(64, 64);
-    VencInputBuffer in = make_input();
+    fwm_venc_device_t *dev = &video_encoder_h264_ver2;
+    fwm_venc_base_config_t cfg = make_base_config(64, 64);
+    fwm_venc_input_picture_t in = make_input();
     fc_enc_instance *e;
     void *h, *base;
     int k, hit;
 
     install_fake_ve();
     install_fake_memops();
-    cfg.bIsVbvNoCache = 1;
+    cfg.bitstream_uncached_en = 1;
     g_nocache_allocs = 0;
     h = dev->open(&cfg, 0x21210u);
     if (!h) { fail("vbv: open() returned NULL"); return; }
@@ -1118,7 +1118,7 @@ static void test_vbv_cache(void)
 
     install_fake_ve();
     install_fake_memops();
-    cfg.bIsVbvNoCache = 0;
+    cfg.bitstream_uncached_en = 0;
     h = dev->open(&cfg, 0x21210u);
     if (!h) { fail("vbv: open() returned NULL"); return; }
     e = (fc_enc_instance *)h;
@@ -1126,7 +1126,7 @@ static void test_vbv_cache(void)
     base = BitStreamBaseAddress(e->bufs.bs);
     g_ve.sim_bits = 8000;
     g_nflush = 0;
-    checkf(dev->encode(h, &in) == VENC_RESULT_OK, "vbv: encode() OK");
+    checkf(dev->encode(h, &in) == FWM_VENC_RESULT_OK, "vbv: encode() OK");
     for (hit = 0, k = 0; k < g_nflush && k < 64; k++)
         if (g_flush_at[k] == base && g_flush_len[k] == 1000)
             hit = 1;

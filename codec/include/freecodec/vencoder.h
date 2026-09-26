@@ -3,7 +3,7 @@
 
 /* Encoder device interface (spec r2/05 part B).
  *
- * A codec device is one `VENC_DEVICE` table reached through an opaque handle;
+ * A codec device is one `fwm_venc_device_t` table reached through an opaque handle;
  * the four exported tables are declared in venc_types.h. The records and value
  * sets of part B live there too, because the encoder framework declares the
  * same ones, and this header is the single include root a device implementation

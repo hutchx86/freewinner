@@ -84,7 +84,7 @@ typedef struct fc_enc_params {
     int          lbc_lossy_2_5x;     /* from the base config, fed to the ISP */
     unsigned int vbv_size;
     unsigned int p_skip_factor;      /* accepted, unused */
-    VencH264ProfileLevel profile_level;
+    fwm_venc_h264_profile_level_t profile_level;
     int          cabac_enable;
     int          fixed_qp_enable;
     int          fast_enc;           /* 0x10 fast-mode bits (spec 11) */
@@ -96,8 +96,8 @@ typedef struct fc_enc_params {
     int          i_qp_offset;
     int          cbr_filling;
     int          roi_enable;
-    VencROIConfig roi[8];
-    FreecodecDisplaySize display_size;
+    fwm_venc_roi_t roi[8];
+    fwm_venc_display_size_t display_size;
 } fc_enc_params;
 
 /* --------------------------------------------------------- per-picture NAL -- */

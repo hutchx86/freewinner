@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 # Copyright (C) 2026 freewinner contributors
 #
-# H.264 unit sources bound by the encoder device (the `VENC_DEVICE` ver2
+# H.264 unit sources bound by the encoder device (the `fwm_venc_device_t` ver2
 # table). They resolve with the clean `-Iinclude` root alone
 # (freecodec/vencoder.h + freecodec/ve_iface.h + freecodec/venc_base_abi.h);
 # no vendor libcedarc include root is needed.

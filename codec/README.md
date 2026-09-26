@@ -28,7 +28,7 @@ as a separate library; see `CREDITS.md`.
 | H.264 header generation (SPS/PPS/IDR/P) | implemented; golden-verified against goldens withheld from this repository (see Build and test) |
 | H.264 rate control (CBR) | implemented; golden-verified against goldens withheld from this repository (see Build and test) |
 | H.264 register layer (shadow, slice regs, `freecodec_h264_config_registers`) | implemented; golden-verified against goldens withheld from this repository (see Build and test) |
-| H.264 `VENC_DEVICE` assembly (`enc`) | implemented over the units; encoder-internal ISP implemented, only advanced ISP features + advanced GOP stubbed (`src/h264/enc/README.md`) |
+| H.264 `fwm_venc_device_t` assembly (`enc`) | implemented over the units; encoder-internal ISP implemented, only advanced ISP features + advanced GOP stubbed (`src/h264/enc/README.md`) |
 | Link substitution (no vendor codec blobs) | **passes** — link acceptance in the private analysis workspace |
 | On-device validation | H.264 **validated on the y623**: the clean encoder emits a single contiguous SPS/PPS/IDR/P stream for both channels and ffmpeg decodes both extracted streams with zero macroblock errors (2304x1296 high + 640x360 low, Main L5.1). The 2-channel encoder-interrupt wait stall is root-caused and **fixed** (per-frame VE reset pulse + frame offset 0, the vendor's own envelope — see `spec/h264-two-channel.md`). AAC host-decode + link verified; device pending. Remaining: a non-CBR rate control that produces very large P frames, the `0x1c` status write-back / `0x1c & 2` re-encode path, and the resulting fshare-ring churn. See `src/h264/enc/README.md`. |
 

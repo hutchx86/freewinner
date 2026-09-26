@@ -2,21 +2,21 @@
 /* Copyright (C) 2026 freewinner contributors */
 
 /* freecodec extensions to the VideoEncSetParameter index set. Values sit far
- * outside the vendor VENC_INDEXTYPE range; an encoder that does not know one
+ * outside the fwm_venc_param_e range; an encoder that does not know one
  * returns "not supported". */
 #ifndef FREECODEC_VENC_EXT_H
 #define FREECODEC_VENC_EXT_H
 
-/* FreecodecDisplaySize *: the displayed window, centred inside the encoded
+/* fwm_venc_display_size_t *: the displayed window, centred inside the encoded
  * picture (sensor modes carry margin columns/rows on every edge). Signalled
  * through the SPS frame-cropping fields (H.264 7.4.2.1.1), so the encoder
  * still codes the full picture. Must be <= the encoded size with even width
  * and height; 0x0 (default) shows the whole picture. */
-#define FREECODEC_IndexParamDisplaySize 0x7f000001
+#define FWM_VENC_PARAM_DISPLAY_SIZE 0x7f000001
 
-typedef struct FreecodecDisplaySize {
-    int nWidth;
-    int nHeight;
-} FreecodecDisplaySize;
+typedef struct fwm_venc_display_size {
+    int width;
+    int height;
+} fwm_venc_display_size_t;
 
 #endif

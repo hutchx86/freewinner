@@ -354,7 +354,7 @@ int freecodec_h264_isp_update_overlay(freecodec_h264_isp_info *info,
          *       [28] extra_alpha_flag, [29] reverse_luma, [30] cover,
          *       [31] last_blk_flag (set on the final block)
          *   +12 fill_y, fill_u, fill_v, reverse-unit nibbles (0 for NORMAL)
-         * A FWM_NORMAL_OVERLAY block copies its bitmap and advances the data offset
+         * A FWM_VENC_OVERLAY_NORMAL block copies its bitmap and advances the data offset
          * by its 256-byte-aligned size. */
         hdr[0] = (unsigned char)(b->start_mb_x & 0xffu);
         hdr[1] = (unsigned char)(b->end_mb_x & 0xffu);

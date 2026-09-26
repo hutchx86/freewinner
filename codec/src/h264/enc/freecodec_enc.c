@@ -2,7 +2,7 @@
 /* Copyright (C) 2026 freewinner contributors */
 
 /* H.264 encoder device (spec/12-encoder-device.md, r4): the video_encoder_h264
- * VENC_DEVICE table. Lifecycle, memory and the per-picture engine envelope of
+ * fwm_venc_device_t table. Lifecycle, memory and the per-picture engine envelope of
  * section 5.5, built against the kept register-shadow (h264_regs), header
  * (h264_headers), ISP (h264_isp) and rate-control (h264_rc, this pass's
  * companion unit) sources, and the kept support library (venc_base_abi) and
@@ -183,15 +183,15 @@ fail:
 
 /* --------------------------------------------------------------- geometry */
 
-static void compute_geometry(fc_enc_instance *e, VencBaseConfig *cfg)
+static void compute_geometry(fc_enc_instance *e, fwm_venc_base_config_t *cfg)
 {
     fc_enc_geom *g = &e->geom;
 
-    g->in_w = cfg->nInputWidth;
-    g->in_h = cfg->nInputHeight;
-    g->dst_w = cfg->nDstWidth ? cfg->nDstWidth : cfg->nInputWidth;
-    g->dst_h = cfg->nDstHeight ? cfg->nDstHeight : cfg->nInputHeight;
-    g->in_stride = cfg->nStride ? cfg->nStride : g->dst_w;
+    g->in_w = cfg->input_width;
+    g->in_h = cfg->input_height;
+    g->dst_w = cfg->output_width ? cfg->output_width : cfg->input_width;
+    g->dst_h = cfg->output_height ? cfg->output_height : cfg->input_height;
+    g->in_stride = cfg->input_stride ? cfg->input_stride : g->dst_w;
 
     g->w16 = fc_enc_align_up(g->dst_w, 16u);
     g->h16 = fc_enc_align_up(g->dst_h, 16u);
@@ -216,7 +216,7 @@ static void compute_persistent_regs(fc_enc_instance *e)
     freecodec_h264_reg_info_cfg cfg;
 
     memset(&cfg, 0, sizeof(cfg));
-    cfg.profile_idc = (unsigned int)e->params.profile_level.nProfile;
+    cfg.profile_idc = (unsigned int)e->params.profile_level.profile;
     cfg.ic_version = e->ic_version;
     cfg.entropy_coding_mode_flag = (unsigned int)e->params.cabac_enable;
     cfg.cabac_context_index = 1u;   /* r2/02 section 2.1: fixed, always 1 */
@@ -267,8 +267,8 @@ static void build_sps_pps(fc_enc_instance *e)
     int n;
 
     memset(&sps, 0, sizeof(sps));
-    sps.profile_idc = (unsigned int)e->params.profile_level.nProfile;
-    sps.level_idc = (unsigned int)e->params.profile_level.nLevel;
+    sps.profile_idc = (unsigned int)e->params.profile_level.profile;
+    sps.level_idc = (unsigned int)e->params.profile_level.level;
     sps.log2_max_frame_num = 8u;
     sps.pic_order_cnt_type = 0u;
     sps.log2_max_pic_order_cnt_lsb = 8u;
@@ -288,11 +288,11 @@ static void build_sps_pps(fc_enc_instance *e)
         unsigned int show_w = e->geom.dst_w, show_h = e->geom.dst_h;
         unsigned int left, top, right, bottom;
 
-        if (e->params.display_size.nWidth > 0 && e->params.display_size.nHeight > 0 &&
-            (unsigned int)e->params.display_size.nWidth <= e->geom.dst_w &&
-            (unsigned int)e->params.display_size.nHeight <= e->geom.dst_h) {
-            show_w = (unsigned int)e->params.display_size.nWidth;
-            show_h = (unsigned int)e->params.display_size.nHeight;
+        if (e->params.display_size.width > 0 && e->params.display_size.height > 0 &&
+            (unsigned int)e->params.display_size.width <= e->geom.dst_w &&
+            (unsigned int)e->params.display_size.height <= e->geom.dst_h) {
+            show_w = (unsigned int)e->params.display_size.width;
+            show_h = (unsigned int)e->params.display_size.height;
         }
         left = ((e->geom.dst_w - show_w) / 2u) & ~1u;
         top = ((e->geom.dst_h - show_h) / 2u) & ~1u;
@@ -403,14 +403,14 @@ static uint32_t compute_roi_reg(const fc_enc_params *p)
     if (!p->roi_enable)
         return v;
     for (i = 0; i < 8; i++)
-        if (p->roi[i].bEnable)
+        if (p->roi[i].enable)
             v &= ~(1u << (24 + i));
     return v;
 }
 
 /* ----------------------------------------------------------- ISP program */
 
-static void program_isp(fc_enc_instance *e, VencInputBuffer *in)
+static void program_isp(fc_enc_instance *e, fwm_venc_input_picture_t *in)
 {
     freecodec_h264_isp_info info;
 
@@ -422,8 +422,8 @@ static void program_isp(fc_enc_instance *e, VencInputBuffer *in)
     info.output_height_mb = (int)fc_enc_align_up(e->geom.dst_h, 8u) / 8;
     info.input_stride_mb = (int)(e->geom.in_stride / 16u);
     info.color_format = (int)e->params.color_fmt;
-    if (in != NULL && in->bUseCsiColorFormat)
-        info.color_format = in->eCsiColorFormat;
+    if (in != NULL && in->csi_colour_format_en)
+        info.color_format = in->csi_colour_format;
     /* LBC input: the lossy-ratio flags select the compressed line strides
      * and the ISP's lossy-decode enable (spec 13). */
     info.b_lbc_lossy_com_en_2x = (unsigned char)e->params.lbc_lossy_2x;
@@ -431,8 +431,8 @@ static void program_isp(fc_enc_instance *e, VencInputBuffer *in)
     if (in != NULL) {
         /* Second chroma-plane address: one quarter-frame past the first
          * (spec 13); the high-8 fields carry address bits 32-39. */
-        uint64_t addr_y = (uint64_t)(uintptr_t)in->pAddrPhyY;
-        uint64_t addr_c0 = (uint64_t)(uintptr_t)in->pAddrPhyC;
+        uint64_t addr_y = (uint64_t)(uintptr_t)in->luma_phys;
+        uint64_t addr_c0 = (uint64_t)(uintptr_t)in->chroma_phys;
         uint64_t addr_c1 = addr_c0 +
             (((uint64_t)e->geom.in_h * (uint64_t)e->geom.in_stride) >> 2);
 
@@ -475,7 +475,7 @@ static void configure_rc(fc_enc_instance *e)
 
 /* ================================================================ encode */
 
-static int enc_encode(void *h, VencInputBuffer *in)
+static int enc_encode(void *h, fwm_venc_input_picture_t *in)
 {
     fc_enc_instance *e = (fc_enc_instance *)h;
     unsigned int n = e->pic.picture_count;
@@ -495,7 +495,7 @@ static int enc_encode(void *h, VencInputBuffer *in)
     vb_stream_info sinfo;
 
     if (!e->initialised)
-        return VENC_RESULT_ERROR;
+        return FWM_VENC_RESULT_ERROR;
 
 
     is_idr = e->pic.first_picture || e->params.force_key ||
@@ -560,8 +560,8 @@ static int enc_encode(void *h, VencInputBuffer *in)
     rcfg.out_buffer_offset = 0u;
     rcfg.valid_buffer_size = (unsigned int)BitStreamBufferSize(e->bufs.bs);
     rcfg.ic_version = e->ic_version;
-    rcfg.profile_idc = (unsigned int)e->params.profile_level.nProfile;
-    rcfg.level_idc = (unsigned int)e->params.profile_level.nLevel;
+    rcfg.profile_idc = (unsigned int)e->params.profile_level.profile;
+    rcfg.level_idc = (unsigned int)e->params.profile_level.level;
     rcfg.dst_width_mb = e->geom.w_mb;
     rcfg.dst_height_mb = e->geom.h_mb;
     rcfg.display_width_16align = e->geom.w16;
@@ -718,14 +718,14 @@ static int enc_encode(void *h, VencInputBuffer *in)
     /* step 12: wait. */
     if (e->ve_ops->wait_irq(e->ve_self) != 0) {
         fc_ve_enc_off(e->ve_ops, e->ve_self);
-        return VENC_RESULT_ERROR;
+        return FWM_VENC_RESULT_ERROR;
     }
 
     /* step 13: length. */
     length = ((long long)enc_read(e, 0x90) - (long long)baseline) / 8;
     if (length <= 0 || (unsigned long long)length > (unsigned long long)rcfg.valid_buffer_size) {
         fc_ve_enc_off(e->ve_ops, e->ve_self);
-        return VENC_RESULT_ERROR;
+        return FWM_VENC_RESULT_ERROR;
     }
 
     /* A cached ring: every picture lands at offset 0, so lines the CPU read
@@ -765,8 +765,8 @@ static int enc_encode(void *h, VencInputBuffer *in)
         memset(&sinfo, 0, sizeof(sinfo));
         sinfo.nStreamOffset = (int)rcfg.out_buffer_offset;
         sinfo.nStreamLength = (int)length;
-        sinfo.nPts = (in != NULL) ? in->nPts : 0;
-        sinfo.nFlags = is_idr ? VENC_BUFFERFLAG_KEYFRAME : 0;
+        sinfo.nPts = (in != NULL) ? in->pts : 0;
+        sinfo.nFlags = is_idr ? FWM_VENC_FRAME_KEYFRAME : 0;
         sinfo.CurrQp = qp;
         sinfo.avQp = qp;
         sinfo.nGopIndex = 0;
@@ -796,12 +796,12 @@ static int enc_encode(void *h, VencInputBuffer *in)
     e->pic.picture_count = n + 1u;
 
 
-    return VENC_RESULT_OK;
+    return FWM_VENC_RESULT_OK;
 }
 
 /* ============================================================== lifecycle */
 
-static void *enc_open(VencBaseConfig *cfg, unsigned int ic_version)
+static void *enc_open(fwm_venc_base_config_t *cfg, unsigned int ic_version)
 {
     fc_enc_instance *e;
     fc_ve_ops *ve_ops;
@@ -813,9 +813,9 @@ static void *enc_open(VencBaseConfig *cfg, unsigned int ic_version)
     if (e == NULL)
         return NULL;
 
-    ve_ops = (fc_ve_ops *)cfg->veOpsS;
+    ve_ops = (fc_ve_ops *)cfg->engine_ops;
     e->ve_ops = ve_ops;
-    e->ve_self = cfg->pVeOpsSelf;
+    e->ve_self = cfg->engine;
     e->memops = (struct vb_mem_ops *)cfg->memops;
     e->ic_version = ic_version;
 
@@ -834,40 +834,40 @@ static void *enc_open(VencBaseConfig *cfg, unsigned int ic_version)
     e->params.framerate = 25u;
     e->params.bitrate = 2000000u;
     e->params.max_key_interval = 25u;
-    e->params.profile_level.nProfile = FWM_VENC_H264_PROFILE_BASELINE;
-    e->params.profile_level.nLevel = FWM_VENC_H264_LEVEL51;
+    e->params.profile_level.profile = FWM_VENC_H264_PROFILE_BASELINE;
+    e->params.profile_level.level = FWM_VENC_H264_LEVEL51;
     e->params.cabac_enable = 0;
     e->params.qp_min = 10;
     e->params.qp_max = 50;
     e->params.max_qp_step = 2;      /* r2/02 section 2.4 */
     e->params.vbv_size = 8u * 1024u * 1024u;
-    e->params.color_fmt = cfg->eInputFormat;
-    e->params.stride = cfg->nStride;
+    e->params.color_fmt = cfg->input_format;
+    e->params.stride = cfg->input_stride;
 
     return e;
 }
 
-static int enc_init(void *h, VencBaseConfig *cfg)
+static int enc_init(void *h, fwm_venc_base_config_t *cfg)
 {
     fc_enc_instance *e = (fc_enc_instance *)h;
     int first_time = !e->initialised;
 
     if (e->enc_base == NULL || e->isp_base == NULL)
-        return VENC_RESULT_NO_RESOURCE;
+        return FWM_VENC_RESULT_NO_RESOURCE;
 
     /* The input description (pixel format, stride, LBC ratio) arrives here:
      * the framework's open() config carries only the ops pointers. */
-    e->params.color_fmt = cfg->eInputFormat;
-    e->params.stride = cfg->nStride;
-    e->params.lbc_lossy_2x = cfg->bLbcLossyComEnFlag2x ? 1 : 0;
-    e->params.lbc_lossy_2_5x = cfg->bLbcLossyComEnFlag2_5x ? 1 : 0;
-    e->params.vbv_no_cache = cfg->bIsVbvNoCache ? 1 : 0;
+    e->params.color_fmt = cfg->input_format;
+    e->params.stride = cfg->input_stride;
+    e->params.lbc_lossy_2x = cfg->lbc_lossy_2x_en ? 1 : 0;
+    e->params.lbc_lossy_2_5x = cfg->lbc_lossy_2_5x_en ? 1 : 0;
+    e->params.vbv_no_cache = cfg->bitstream_uncached_en ? 1 : 0;
 
     compute_geometry(e, cfg);
 
     if (first_time) {
         if (alloc_buffers(e) != 0)
-            return VENC_RESULT_NO_MEMORY;
+            return FWM_VENC_RESULT_NO_MEMORY;
     }
 
     if (!e->params.fixed_qp_enable)
@@ -880,7 +880,7 @@ static int enc_init(void *h, VencBaseConfig *cfg)
     e->pic.first_picture = 1;
     e->initialised = 1;
 
-    return VENC_RESULT_OK;
+    return FWM_VENC_RESULT_OK;
 }
 
 static int enc_uninit(void *h)
@@ -888,10 +888,10 @@ static int enc_uninit(void *h)
     fc_enc_instance *e = (fc_enc_instance *)h;
 
     if (!e->initialised)
-        return VENC_RESULT_OK;
+        return FWM_VENC_RESULT_OK;
     free_buffers(e);
     e->initialised = 0;
-    return VENC_RESULT_OK;
+    return FWM_VENC_RESULT_OK;
 }
 
 static void enc_close(void *h)
@@ -914,56 +914,56 @@ static int enc_get_parameter(void *h, int index, void *param)
     fc_enc_instance *e = (fc_enc_instance *)h;
 
     switch (index) {
-    case VENC_IndexParamBitrate:
+    case FWM_VENC_PARAM_BITRATE:
         *(int *)param = (int)e->params.bitrate;
-        return VENC_RESULT_OK;
-    case VENC_IndexParamFramerate:
+        return FWM_VENC_RESULT_OK;
+    case FWM_VENC_PARAM_FRAME_RATE:
         *(int *)param = (int)e->params.framerate;
-        return VENC_RESULT_OK;
-    case VENC_IndexParamMaxKeyInterval:
+        return FWM_VENC_RESULT_OK;
+    case FWM_VENC_PARAM_MAX_KEY_INTERVAL:
         *(int *)param = (int)e->params.max_key_interval;
-        return VENC_RESULT_OK;
-    case VENC_IndexParamSize: {
-        VencSize *s = (VencSize *)param;
-        s->nWidth = (int)e->geom.dst_w;
-        s->nHeight = (int)e->geom.dst_h;
-        return VENC_RESULT_OK;
+        return FWM_VENC_RESULT_OK;
+    case FWM_VENC_PARAM_SIZE: {
+        fwm_venc_size_t *s = (fwm_venc_size_t *)param;
+        s->width = (int)e->geom.dst_w;
+        s->height = (int)e->geom.dst_h;
+        return FWM_VENC_RESULT_OK;
     }
-    case VENC_IndexParamH264SPSPPS: {
-        VencHeaderData *hd = (VencHeaderData *)param;
-        hd->pBuffer = e->spspps;
-        hd->nLength = e->spspps_len;
-        return VENC_RESULT_OK;
+    case FWM_VENC_PARAM_H264_SPS_PPS: {
+        fwm_venc_header_blob_t *hd = (fwm_venc_header_blob_t *)param;
+        hd->data = e->spspps;
+        hd->length = e->spspps_len;
+        return FWM_VENC_RESULT_OK;
     }
-    case VENC_IndexParamH264QPRange: {
-        VencQPRange *r = (VencQPRange *)param;
-        r->nMaxqp = e->params.qp_max;
-        r->nMinqp = e->params.qp_min;
-        return VENC_RESULT_OK;
+    case FWM_VENC_PARAM_H264_QP_RANGE: {
+        fwm_venc_qp_range_t *r = (fwm_venc_qp_range_t *)param;
+        r->qp_max = e->params.qp_max;
+        r->qp_min = e->params.qp_min;
+        return FWM_VENC_RESULT_OK;
     }
-    case VENC_IndexParamH264ProfileLevel:
-        *(VencH264ProfileLevel *)param = e->params.profile_level;
-        return VENC_RESULT_OK;
-    case VENC_IndexParamH264EntropyCodingCABAC:
+    case FWM_VENC_PARAM_H264_PROFILE_LEVEL:
+        *(fwm_venc_h264_profile_level_t *)param = e->params.profile_level;
+        return FWM_VENC_RESULT_OK;
+    case FWM_VENC_PARAM_H264_CABAC:
         *(int *)param = e->params.cabac_enable;
-        return VENC_RESULT_OK;
-    case VENC_IndexParamH264FixQP: {
-        VencFixQP *f = (VencFixQP *)param;
-        f->bEnable = e->params.fixed_qp_enable;
-        f->nIQp = e->params.fixed_i_qp;
-        f->nPQp = e->params.fixed_p_qp;
-        return VENC_RESULT_OK;
+        return FWM_VENC_RESULT_OK;
+    case FWM_VENC_PARAM_H264_FIXED_QP: {
+        fwm_venc_fixed_qp_t *f = (fwm_venc_fixed_qp_t *)param;
+        f->enable = e->params.fixed_qp_enable;
+        f->i_qp = e->params.fixed_i_qp;
+        f->p_qp = e->params.fixed_p_qp;
+        return FWM_VENC_RESULT_OK;
     }
-    case VENC_IndexParamVbvInfo: {
-        VbvInfo *v = (VbvInfo *)param;
+    case FWM_VENC_PARAM_BITSTREAM_STATUS: {
+        fwm_venc_bitstream_status_t *v = (fwm_venc_bitstream_status_t *)param;
         v->vbv_size = e->params.vbv_size;
         v->coded_frame_num = (unsigned int)(e->bufs.bs ? BitStreamFrameNum(e->bufs.bs) : 0);
         v->coded_size = e->bufs.bs ? (unsigned int)BitStreamBufferSize(e->bufs.bs) : 0u;
-        v->maxFrameLen = e->params.vbv_size;
-        return VENC_RESULT_OK;
+        v->max_frame_length = e->params.vbv_size;
+        return FWM_VENC_RESULT_OK;
     }
     default:
-        return VENC_RESULT_NOT_SUPPORT;
+        return FWM_VENC_RESULT_NOT_SUPPORT;
     }
 }
 
@@ -1019,27 +1019,27 @@ static void ovl_invert_setup(fc_enc_instance *e,
     }
 }
 
-static int set_overlay(fc_enc_instance *e, const VencOverlayInfoS *oi)
+static int set_overlay(fc_enc_instance *e, const fwm_venc_overlay_t *oi)
 {
     freecodec_h264_overlay_block blocks[FREECODEC_H264_OVERLAY_MAX_BLOCKS];
-    unsigned int n = oi->blk_num, i, need;
-    int rc = VENC_RESULT_OK;
+    unsigned int n = oi->region_count, i, need;
+    int rc = FWM_VENC_RESULT_OK;
 
     if (n > FREECODEC_H264_OVERLAY_MAX_BLOCKS)
-        return VENC_RESULT_ILLEGAL_PARAM;
+        return FWM_VENC_RESULT_ILLEGAL_PARAM;
     for (i = 0; i < n; i++) {
-        const VencOverlayHeaderS *s = &oi->overlayHeaderList[i];
+        const fwm_venc_overlay_region_t *s = &oi->regions[i];
 
-        if (s->overlay_type != FWM_NORMAL_OVERLAY &&
-            s->overlay_type != FWM_LUMA_REVERSE_OVERLAY)
-            return VENC_RESULT_NOT_SUPPORT;
+        if (s->overlay_type != FWM_VENC_OVERLAY_NORMAL &&
+            s->overlay_type != FWM_VENC_OVERLAY_LUMA_REVERSE)
+            return FWM_VENC_RESULT_NOT_SUPPORT;
         blocks[i].start_mb_x = s->start_mb_x;
         blocks[i].end_mb_x = s->end_mb_x;
         blocks[i].start_mb_y = s->start_mb_y;
         blocks[i].end_mb_y = s->end_mb_y;
-        blocks[i].bitmap_vir = s->overlay_blk_addr;
+        blocks[i].bitmap_vir = s->bitmap;
         blocks[i].bitmap_size = s->bitmap_size;
-        blocks[i].reverse_luma = (s->overlay_type == FWM_LUMA_REVERSE_OVERLAY) ? 1u : 0u;
+        blocks[i].reverse_luma = (s->overlay_type == FWM_VENC_OVERLAY_LUMA_REVERSE) ? 1u : 0u;
         blocks[i].reverse_unit_w_minus1 =
             (unsigned char)(s->reverse_unit_mb_w_minus1 > 3u ? 3u : s->reverse_unit_mb_w_minus1);
         blocks[i].reverse_unit_h_minus1 =
@@ -1058,7 +1058,7 @@ static int set_overlay(fc_enc_instance *e, const VencOverlayInfoS *oi)
     need = freecodec_h264_overlay_data_size(blocks, n);
     if (e->ovl_hdr.vir == NULL &&
         alloc_one(e, &e->ovl_hdr, FREECODEC_H264_OVERLAY_HEADER_SIZE) != 0) {
-        rc = VENC_RESULT_NO_MEMORY;
+        rc = FWM_VENC_RESULT_NO_MEMORY;
         goto out;
     }
     if (e->ovl_data.size < need) {
@@ -1067,7 +1067,7 @@ static int set_overlay(fc_enc_instance *e, const VencOverlayInfoS *oi)
         e->ovl.b_overlay = 0;
         free_one(e, &e->ovl_data);
         if (alloc_one(e, &e->ovl_data, need) != 0) {
-            rc = VENC_RESULT_NO_MEMORY;
+            rc = FWM_VENC_RESULT_NO_MEMORY;
             goto out;
         }
     }
@@ -1076,7 +1076,7 @@ static int set_overlay(fc_enc_instance *e, const VencOverlayInfoS *oi)
                                           (unsigned char *)e->ovl_data.vir,
                                           e->ovl_data.size) != 0) {
         e->ovl.b_overlay = 0;
-        rc = VENC_RESULT_ILLEGAL_PARAM;
+        rc = FWM_VENC_RESULT_ILLEGAL_PARAM;
         goto out;
     }
     ovl_invert_setup(e, blocks, n);
@@ -1111,104 +1111,104 @@ static int enc_set_parameter(void *h, int index, void *param)
     fc_enc_instance *e = (fc_enc_instance *)h;
 
     switch (index) {
-    case VENC_IndexParamBitrate:
+    case FWM_VENC_PARAM_BITRATE:
         e->params.bitrate = (unsigned int)*(int *)param;
         reconfigure_rc_live(e);
-        return VENC_RESULT_OK;
-    case VENC_IndexParamFramerate:
+        return FWM_VENC_RESULT_OK;
+    case FWM_VENC_PARAM_FRAME_RATE:
         e->params.framerate = (unsigned int)*(int *)param;
         reconfigure_rc_live(e);
-        return VENC_RESULT_OK;
-    case VENC_IndexParamFastEnc:
+        return FWM_VENC_RESULT_OK;
+    case FWM_VENC_PARAM_FAST_ENCODE:
         e->params.fast_enc = *(int *)param;
-        return VENC_RESULT_OK;
-    case VENC_IndexParamMaxKeyInterval:
+        return FWM_VENC_RESULT_OK;
+    case FWM_VENC_PARAM_MAX_KEY_INTERVAL:
         e->params.max_key_interval = (unsigned int)*(int *)param;
-        return VENC_RESULT_OK;
-    case VENC_IndexParamForceKeyFrame:
+        return FWM_VENC_RESULT_OK;
+    case FWM_VENC_PARAM_FORCE_KEY_FRAME:
         e->params.force_key = 1;
-        return VENC_RESULT_OK;
-    case VENC_IndexParamRotation:
+        return FWM_VENC_RESULT_OK;
+    case FWM_VENC_PARAM_ROTATION:
         e->params.rotation = *(int *)param;
-        return VENC_RESULT_OK;
-    case VENC_IndexParamHorizonFlip:
+        return FWM_VENC_RESULT_OK;
+    case FWM_VENC_PARAM_HORIZONTAL_FLIP:
         e->params.hflip = *(int *)param;
-        return VENC_RESULT_OK;
-    case VENC_IndexParamSliceHeight:
+        return FWM_VENC_RESULT_OK;
+    case FWM_VENC_PARAM_SLICE_HEIGHT:
         e->params.slice_height = (unsigned int)*(int *)param;
-        return VENC_RESULT_OK;
-    case VENC_IndexParamStride:
+        return FWM_VENC_RESULT_OK;
+    case FWM_VENC_PARAM_STRIDE:
         e->params.stride = (unsigned int)*(int *)param;
-        return VENC_RESULT_OK;
-    case VENC_IndexParamColorFormat:
+        return FWM_VENC_RESULT_OK;
+    case FWM_VENC_PARAM_COLOUR_FORMAT:
         e->params.color_fmt = *(fwm_venc_pixel_format_e *)param;
-        return VENC_RESULT_OK;
-    case VENC_IndexParamSetVbvSize:
+        return FWM_VENC_RESULT_OK;
+    case FWM_VENC_PARAM_BITSTREAM_SIZE:
         e->params.vbv_size = (unsigned int)*(int *)param;
-        return VENC_RESULT_OK;
-    case VENC_IndexParamSetPSkip:
+        return FWM_VENC_RESULT_OK;
+    case FWM_VENC_PARAM_P_SKIP:
         e->params.p_skip_factor = (unsigned int)*(int *)param;   /* accepted, unused */
-        return VENC_RESULT_OK;
-    case VENC_IndexParamH264QPRange: {
-        VencQPRange *r = (VencQPRange *)param;
-        e->params.qp_max = r->nMaxqp;
-        e->params.qp_min = r->nMinqp;
-        return VENC_RESULT_OK;
+        return FWM_VENC_RESULT_OK;
+    case FWM_VENC_PARAM_H264_QP_RANGE: {
+        fwm_venc_qp_range_t *r = (fwm_venc_qp_range_t *)param;
+        e->params.qp_max = r->qp_max;
+        e->params.qp_min = r->qp_min;
+        return FWM_VENC_RESULT_OK;
     }
-    case VENC_IndexParamH264ProfileLevel:
-        e->params.profile_level = *(VencH264ProfileLevel *)param;
-        return VENC_RESULT_OK;
-    case VENC_IndexParamH264EntropyCodingCABAC:
+    case FWM_VENC_PARAM_H264_PROFILE_LEVEL:
+        e->params.profile_level = *(fwm_venc_h264_profile_level_t *)param;
+        return FWM_VENC_RESULT_OK;
+    case FWM_VENC_PARAM_H264_CABAC:
         e->params.cabac_enable = *(int *)param;
-        return VENC_RESULT_OK;
-    case VENC_IndexParamH264FixQP: {
-        VencFixQP *f = (VencFixQP *)param;
-        e->params.fixed_qp_enable = f->bEnable;
-        e->params.fixed_i_qp = f->nIQp;
-        e->params.fixed_p_qp = f->nPQp;
-        return VENC_RESULT_OK;
+        return FWM_VENC_RESULT_OK;
+    case FWM_VENC_PARAM_H264_FIXED_QP: {
+        fwm_venc_fixed_qp_t *f = (fwm_venc_fixed_qp_t *)param;
+        e->params.fixed_qp_enable = f->enable;
+        e->params.fixed_i_qp = f->i_qp;
+        e->params.fixed_p_qp = f->p_qp;
+        return FWM_VENC_RESULT_OK;
     }
-    case VENC_IndexParamChmoraGray:
+    case FWM_VENC_PARAM_CHROMA_GRAY:
         e->params.chroma_gray = *(int *)param;
-        return VENC_RESULT_OK;
-    case VENC_IndexParamIQpOffset:
+        return FWM_VENC_RESULT_OK;
+    case FWM_VENC_PARAM_I_QP_OFFSET:
         e->params.i_qp_offset = *(int *)param;   /* stored; see spec 12 sec 16 item 7 */
-        return VENC_RESULT_OK;
-    case VENC_IndexParamFillingCbr:
+        return FWM_VENC_RESULT_OK;
+    case FWM_VENC_PARAM_CBR_FILLING:
         e->params.cbr_filling = *(int *)param;
-        return VENC_RESULT_OK;
-    case VENC_IndexParamROIConfig: {
-        VencROIConfig *r = (VencROIConfig *)param;
+        return FWM_VENC_RESULT_OK;
+    case FWM_VENC_PARAM_ROI_CONFIG: {
+        fwm_venc_roi_t *r = (fwm_venc_roi_t *)param;
         if (r->index < 0 || r->index >= 8)
-            return VENC_RESULT_ILLEGAL_PARAM;
+            return FWM_VENC_RESULT_ILLEGAL_PARAM;
         e->params.roi[r->index] = *r;
-        return VENC_RESULT_OK;
+        return FWM_VENC_RESULT_OK;
     }
-    case VENC_IndexParamRoi:
+    case FWM_VENC_PARAM_ROI:
         e->params.roi_enable = *(int *)param;
-        return VENC_RESULT_OK;
-    case VENC_IndexParamSetOverlay:
-        return set_overlay(e, (const VencOverlayInfoS *)param);
-    case 0x7f000001: /* FREECODEC_IndexParamDisplaySize */
-        e->params.display_size = *(FreecodecDisplaySize *)param;
-        return VENC_RESULT_OK;
-    case VENC_IndexParamH264Param: {
-        VencH264Param *p = (VencH264Param *)param;
+        return FWM_VENC_RESULT_OK;
+    case FWM_VENC_PARAM_OVERLAY:
+        return set_overlay(e, (const fwm_venc_overlay_t *)param);
+    case 0x7f000001: /* FWM_VENC_PARAM_DISPLAY_SIZE */
+        e->params.display_size = *(fwm_venc_display_size_t *)param;
+        return FWM_VENC_RESULT_OK;
+    case FWM_VENC_PARAM_H264_CONFIG: {
+        fwm_venc_h264_config_t *p = (fwm_venc_h264_config_t *)param;
 
-        e->params.profile_level = p->sProfileLevel;
-        e->params.cabac_enable = p->bEntropyCodingCABAC;
-        e->params.qp_max = p->sQPRange.nMaxqp;
-        e->params.qp_min = p->sQPRange.nMinqp;
-        e->params.framerate = (unsigned int)p->nFramerate;
-        e->params.bitrate = (unsigned int)p->nBitrate;
-        e->params.max_key_interval = (unsigned int)p->nMaxKeyInterval;
-        e->params.fixed_qp_enable = p->sRcParam.sFixQp.bEnable;
-        e->params.fixed_i_qp = p->sRcParam.sFixQp.nIQp;
-        e->params.fixed_p_qp = p->sRcParam.sFixQp.nPQp;
-        return VENC_RESULT_OK;
+        e->params.profile_level = p->profile_level;
+        e->params.cabac_enable = p->cabac_en;
+        e->params.qp_max = p->qp_range.qp_max;
+        e->params.qp_min = p->qp_range.qp_min;
+        e->params.framerate = (unsigned int)p->frame_rate;
+        e->params.bitrate = (unsigned int)p->bitrate;
+        e->params.max_key_interval = (unsigned int)p->key_interval_max;
+        e->params.fixed_qp_enable = p->rate_control.fixed_qp.enable;
+        e->params.fixed_i_qp = p->rate_control.fixed_qp.i_qp;
+        e->params.fixed_p_qp = p->rate_control.fixed_qp.p_qp;
+        return FWM_VENC_RESULT_OK;
     }
     default:
-        return VENC_RESULT_NOT_SUPPORT;
+        return FWM_VENC_RESULT_NOT_SUPPORT;
     }
 }
 
@@ -1221,28 +1221,28 @@ static int enc_valid_count(void *h)
     return e->bufs.bs ? BitStreamFrameNum(e->bufs.bs) : 0;
 }
 
-static int enc_get_frame(void *h, VencOutputBuffer *out)
+static int enc_get_frame(void *h, fwm_venc_output_frame_t *out)
 {
     fc_enc_instance *e = (fc_enc_instance *)h;
     vb_stream_info *info;
     unsigned char *base;
 
     if (e->bufs.bs == NULL)
-        return VENC_RESULT_BITSTREAM_IS_EMPTY;
+        return FWM_VENC_RESULT_BITSTREAM_IS_EMPTY;
     info = BitStreamGetOneBitstream(e->bufs.bs);
     if (info == NULL)
-        return VENC_RESULT_BITSTREAM_IS_EMPTY;
+        return FWM_VENC_RESULT_BITSTREAM_IS_EMPTY;
 
     base = (unsigned char *)BitStreamBaseAddress(e->bufs.bs);
     memset(out, 0, sizeof(*out));
-    out->nID = info->nID;
-    out->nPts = info->nPts;
-    out->nFlag = (unsigned int)info->nFlags;
-    out->frame_info.CurrQp = info->CurrQp;
-    out->frame_info.avQp = info->avQp;
-    out->frame_info.nGopIndex = info->nGopIndex;
-    out->frame_info.nFrameIndex = info->nFrameIndex;
-    out->frame_info.nTotalIndex = info->nTotalIndex;
+    out->id = info->nID;
+    out->pts = info->nPts;
+    out->flags = (unsigned int)info->nFlags;
+    out->stats.qp = info->CurrQp;
+    out->stats.qp_average = info->avQp;
+    out->stats.gop_index = info->nGopIndex;
+    out->stats.frame_index = info->nFrameIndex;
+    out->stats.total_index = info->nTotalIndex;
 
     {
         int ring_size = BitStreamBufferSize(e->bufs.bs);
@@ -1250,31 +1250,31 @@ static int enc_get_frame(void *h, VencOutputBuffer *out)
         int len = info->nStreamLength;
 
         if (off + len <= ring_size) {
-            out->nSize0 = (unsigned int)len;
-            out->pData0 = base + off;
+            out->size0 = (unsigned int)len;
+            out->data0 = base + off;
         } else {
-            out->nSize0 = (unsigned int)(ring_size - off);
-            out->pData0 = base + off;
-            out->nSize1 = (unsigned int)(len - (ring_size - off));
-            out->pData1 = base;
+            out->size0 = (unsigned int)(ring_size - off);
+            out->data0 = base + off;
+            out->size1 = (unsigned int)(len - (ring_size - off));
+            out->data1 = base;
         }
     }
-    out->nID = info->nID;
-    return VENC_RESULT_OK;
+    out->id = info->nID;
+    return FWM_VENC_RESULT_OK;
 }
 
-static int enc_free_frame(void *h, VencOutputBuffer *out)
+static int enc_free_frame(void *h, fwm_venc_output_frame_t *out)
 {
     fc_enc_instance *e = (fc_enc_instance *)h;
     vb_stream_info info;
 
     if (e->bufs.bs == NULL)
-        return VENC_RESULT_ERROR;
+        return FWM_VENC_RESULT_ERROR;
     memset(&info, 0, sizeof(info));
-    info.nID = out->nID;
-    info.nStreamLength = (int)(out->nSize0 + out->nSize1);
+    info.nID = out->id;
+    info.nStreamLength = (int)(out->size0 + out->size1);
     return (BitStreamReturnOneBitstream(e->bufs.bs, &info) == 0)
-           ? VENC_RESULT_OK : VENC_RESULT_ERROR;
+           ? FWM_VENC_RESULT_OK : FWM_VENC_RESULT_ERROR;
 }
 
 static int enc_reset_frames(void *h)
@@ -1282,13 +1282,13 @@ static int enc_reset_frames(void *h)
     fc_enc_instance *e = (fc_enc_instance *)h;
 
     if (e->bufs.bs == NULL)
-        return VENC_RESULT_ERROR;
-    return (BitStreamReset(e->bufs.bs, e->memops) == 0) ? VENC_RESULT_OK : VENC_RESULT_ERROR;
+        return FWM_VENC_RESULT_ERROR;
+    return (BitStreamReset(e->bufs.bs, e->memops) == 0) ? FWM_VENC_RESULT_OK : FWM_VENC_RESULT_ERROR;
 }
 
 /* ---------------------------------------------------------------- tables */
 
-VENC_DEVICE video_encoder_h264_ver2 = {
+fwm_venc_device_t video_encoder_h264_ver2 = {
     "video_encoder_h264_ver2",
     enc_open, enc_init, enc_uninit, enc_close, enc_encode,
     enc_get_parameter, enc_set_parameter,
@@ -1301,7 +1301,7 @@ VENC_DEVICE video_encoder_h264_ver2 = {
  * shipping hardware; aliasing exposes a working encoder rather than an
  * outright failure under that symbol. See spec section 12 for the owner
  * decision point if a future IC below the ver2 threshold is ever targeted. */
-VENC_DEVICE video_encoder_h264_ver1 = {
+fwm_venc_device_t video_encoder_h264_ver1 = {
     "video_encoder_h264_ver1",
     enc_open, enc_init, enc_uninit, enc_close, enc_encode,
     enc_get_parameter, enc_set_parameter,
@@ -1310,30 +1310,30 @@ VENC_DEVICE video_encoder_h264_ver1 = {
 
 /* Section 1: video_encoder_h265 and video_encoder_jpeg are tables whose
  * create returns NULL and whose other entries return the error result. */
-static void *stub_open(VencBaseConfig *cfg, unsigned int ic)
+static void *stub_open(fwm_venc_base_config_t *cfg, unsigned int ic)
 {
     (void)cfg; (void)ic;
     return NULL;
 }
-static int stub_init(void *h, VencBaseConfig *c) { (void)h; (void)c; return VENC_RESULT_NOT_SUPPORT; }
-static int stub_uninit(void *h) { (void)h; return VENC_RESULT_NOT_SUPPORT; }
+static int stub_init(void *h, fwm_venc_base_config_t *c) { (void)h; (void)c; return FWM_VENC_RESULT_NOT_SUPPORT; }
+static int stub_uninit(void *h) { (void)h; return FWM_VENC_RESULT_NOT_SUPPORT; }
 static void stub_close(void *h) { (void)h; }
-static int stub_encode(void *h, VencInputBuffer *b) { (void)h; (void)b; return VENC_RESULT_NOT_SUPPORT; }
-static int stub_get_param(void *h, int i, void *p) { (void)h; (void)i; (void)p; return VENC_RESULT_NOT_SUPPORT; }
-static int stub_set_param(void *h, int i, void *p) { (void)h; (void)i; (void)p; return VENC_RESULT_NOT_SUPPORT; }
-static int stub_valid_count(void *h) { (void)h; return VENC_RESULT_NOT_SUPPORT; }
-static int stub_get_frame(void *h, VencOutputBuffer *b) { (void)h; (void)b; return VENC_RESULT_NOT_SUPPORT; }
-static int stub_free_frame(void *h, VencOutputBuffer *b) { (void)h; (void)b; return VENC_RESULT_NOT_SUPPORT; }
-static int stub_reset_frames(void *h) { (void)h; return VENC_RESULT_NOT_SUPPORT; }
+static int stub_encode(void *h, fwm_venc_input_picture_t *b) { (void)h; (void)b; return FWM_VENC_RESULT_NOT_SUPPORT; }
+static int stub_get_param(void *h, int i, void *p) { (void)h; (void)i; (void)p; return FWM_VENC_RESULT_NOT_SUPPORT; }
+static int stub_set_param(void *h, int i, void *p) { (void)h; (void)i; (void)p; return FWM_VENC_RESULT_NOT_SUPPORT; }
+static int stub_valid_count(void *h) { (void)h; return FWM_VENC_RESULT_NOT_SUPPORT; }
+static int stub_get_frame(void *h, fwm_venc_output_frame_t *b) { (void)h; (void)b; return FWM_VENC_RESULT_NOT_SUPPORT; }
+static int stub_free_frame(void *h, fwm_venc_output_frame_t *b) { (void)h; (void)b; return FWM_VENC_RESULT_NOT_SUPPORT; }
+static int stub_reset_frames(void *h) { (void)h; return FWM_VENC_RESULT_NOT_SUPPORT; }
 
-VENC_DEVICE video_encoder_h265 = {
+fwm_venc_device_t video_encoder_h265 = {
     "video_encoder_h265",
     stub_open, stub_init, stub_uninit, stub_close, stub_encode,
     stub_get_param, stub_set_param,
     stub_valid_count, stub_get_frame, stub_free_frame, stub_reset_frames
 };
 
-VENC_DEVICE video_encoder_jpeg = {
+fwm_venc_device_t video_encoder_jpeg = {
     "video_encoder_jpeg",
     stub_open, stub_init, stub_uninit, stub_close, stub_encode,
     stub_get_param, stub_set_param,

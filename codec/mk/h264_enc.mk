@@ -2,7 +2,7 @@
 # Copyright (C) 2026 freewinner contributors
 #
 # H.264 encoder device (spec/12-encoder-device.md, r4): the video_encoder_h264
-# VENC_DEVICE tables. Built against the kept register/header/ISP/gop units,
+# fwm_venc_device_t tables. Built against the kept register/header/ISP/gop units,
 # this pass's rate-control unit (h264_rc), and the kept support library
 # (venc_base) for the bitstream ring. The host test drives the device table
 # through a fake engine (register window + counters) and a fake memory-

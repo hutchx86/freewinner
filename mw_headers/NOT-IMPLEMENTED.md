@@ -13,7 +13,7 @@ Source of truth: `SPEC.md` section 5 plus the deviations and gaps recorded here.
 | `$(SW)/system/public/include/utils/cdx_list_type.h` | dragged in only by the vendor `plat_type.h`; the clean one does not include it |
 | `$(ISP)/isp_dev/media.h` | no clean consumer (SPEC 5) |
 | `$(ISP)/include/V4l2Camera/sunxi_camera_v2.h`, `.../linux/videodev2.h`, `v4l2-common.h`, `v4l2-controls.h`, `v4l2-mediabus.h` | replaced by the toolchain's `<linux/videodev2.h>` (SPEC 3.4): `v4l2_pix_format_mplane` is byte-identical (192 B, `plane_fmt` 20, `num_planes` 180) and carries the three `V4L2_*` constants used |
-| `$(CEDARC)/include/veInterface.h`, `sc_interface.h` | the two pointer-only `VencBaseConfig` fields are declared `void *`; no forward declaration of the vendor op structs is needed |
+| `$(CEDARC)/include/veInterface.h`, `sc_interface.h` | the two pointer-only `fwm_venc_base_config_t` fields (`engine_ops`, `engine`) are declared `void *`; no forward declaration of the vendor op structs is needed |
 | `mpi_videoformat_conversion.h` | `map_PIXEL_FORMAT_E_to_V4L2_PIX_FMT` is called by `main.c` with no visible declaration in the vendor include set either (SPEC 7.1); the clean tree matches that and does not declare it |
 
 Empty stubs **are** carried for: `utils/plat_errno.h`, `utils/plat_defines.h`,
@@ -63,9 +63,10 @@ them:
 
 - `RGN_ATTR_S.unAttr` (16 B) and `RGN_CHN_ATTR_S.unChnAttr` (56 B) union members;
 - `VENC_DATA_TYPE_U` (4 B), `VENC_PACK_INFO_S` (12 B);
-- `VencAdvancedRefParam` (16 B), `VencFixQP` (12 B), `VencMBModeCtrl` (8 B),
-  `VencOverlayCoverYuvS` (4 B, 2-byte aligned so it sits at `+10`);
-- the unnamed `VencRcParam` gap fields (`+4..+56`, `+88..+128`).
+- in the encoder records, which `vencoder.h` now takes from the codec's
+  `freecodec/venc_types.h`: `fwm_venc_cover_colour_t` (4 B, 2-byte aligned so
+  it sits at `+10`) and the unnamed `fwm_venc_rate_control_t` gap fields
+  (`+4..+56`, `+88..+128`).
 
 If package A/C ever needs a real field of one of these, `SPEC.md` section 4 must
 be extended with that record's measured layout first.

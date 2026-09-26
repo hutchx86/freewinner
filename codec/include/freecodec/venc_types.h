@@ -2,8 +2,9 @@
 /* Copyright (C) 2026 freewinner contributors */
 
 /* Records, value sets and the device table shared by the encoder device
- * interface (vencoder.h) and the encoder framework (src/fenc/fenc_abi.h), as
- * specified in spec r2/05 part B.
+ * interface (vencoder.h), the encoder framework (src/fenc/fenc_abi.h) and the
+ * daemon (mw_headers/vencoder.h forwards here), as specified in spec r2/05
+ * part B.
  *
  * Sizes, offsets and numeric values are binary facts of the 32-bit ARM EABI
  * target and are asserted at the end of this file under __arm__. Every C
@@ -35,21 +36,28 @@ typedef enum fwm_venc_h264_level_e {
     FWM_VENC_H264_LEVEL51 = 51
 } fwm_venc_h264_level_e;
 
+/* Picture structure of the coded stream. */
+typedef enum fwm_venc_coding_mode_e {
+    FWM_VENC_CODING_FRAME = 0,
+    FWM_VENC_CODING_FIELD = 1,
+    FWM_VENC_CODING_MB16  = 2
+} fwm_venc_coding_mode_e;
+
 /* Input picture layouts. */
 typedef enum fwm_venc_pixel_format_e {
     FWM_VENC_PIXEL_YUV420SP = 0,    /* Y plane + interleaved UV (NV12)            */
     FWM_VENC_PIXEL_YVU420SP = 1,    /* Y plane + interleaved VU (NV21)            */
-    FWM_VENC_PIXEL_LBC_AW   = 19    /* engine-specific frame-compressed input     */
+    FWM_VENC_PIXEL_LBC      = 19    /* engine-specific frame-compressed input     */
 } fwm_venc_pixel_format_e;
 
-typedef enum VENC_RC_MODE {
-    AW_CBR  = 0,                /* constant bit rate                          */
-    AW_VBR  = 1,                /* variable bit rate                          */
-    AW_AVBR = 2                 /* average variable bit rate                  */
-} VENC_RC_MODE;
+typedef enum fwm_venc_rc_mode_e {
+    FWM_VENC_RC_CBR  = 0,           /* constant bit rate                          */
+    FWM_VENC_RC_VBR  = 1,           /* variable bit rate                          */
+    FWM_VENC_RC_AVBR = 2            /* average variable bit rate                  */
+} fwm_venc_rc_mode_e;
 
 typedef enum fwm_venc_gop_mode_e {
-    FWM_AW_NORMALP = 1              /* I followed by a plain chain of P pictures  */
+    FWM_VENC_GOP_NORMAL_P = 1       /* I followed by a plain chain of P pictures  */
 } fwm_venc_gop_mode_e;
 
 typedef enum fwm_venc_overlay_argb_type_e {
@@ -57,531 +65,543 @@ typedef enum fwm_venc_overlay_argb_type_e {
 } fwm_venc_overlay_argb_type_e;
 
 typedef enum fwm_venc_overlay_type_e {
-    FWM_NORMAL_OVERLAY = 0,
-    FWM_LUMA_REVERSE_OVERLAY = 2   /* normal bitmap + per-frame luma inversion */
+    FWM_VENC_OVERLAY_NORMAL       = 0,
+    FWM_VENC_OVERLAY_LUMA_REVERSE = 2   /* normal bitmap + per-frame luma inversion */
 } fwm_venc_overlay_type_e;
 
 /* Codec requested from the framework at create time. */
-typedef enum VENC_CODEC_TYPE {
-    VENC_CODEC_H264      = 0,
-    VENC_CODEC_JPEG      = 1,
-    VENC_CODEC_H264_VER2 = 2,   /* H.264 on the version-2 engine class        */
-    VENC_CODEC_H265      = 3,
-    VENC_CODEC_VP8       = 4
-} VENC_CODEC_TYPE;
+typedef enum fwm_venc_codec_e {
+    FWM_VENC_CODEC_H264      = 0,
+    FWM_VENC_CODEC_JPEG      = 1,
+    FWM_VENC_CODEC_H264_VER2 = 2,   /* H.264 on the version-2 engine class        */
+    FWM_VENC_CODEC_H265      = 3,
+    FWM_VENC_CODEC_VP8       = 4
+} fwm_venc_codec_e;
 
 /* Index argument of the get/set-parameter calls. The device and the framework
  * share one set; a value the consumer never uses is forwarded unchanged. */
-typedef enum VENC_INDEXTYPE {
-    VENC_IndexParamBitrate                = 0x000,
-    VENC_IndexParamFramerate              = 0x001,
-    VENC_IndexParamMaxKeyInterval         = 0x002,
-    VENC_IndexParamIfilter                = 0x003,
-    VENC_IndexParamRotation               = 0x004,
-    VENC_IndexParamSliceHeight            = 0x005,
-    VENC_IndexParamForceKeyFrame          = 0x006,
-    VENC_IndexParamROIConfig              = 0x00b,
-    VENC_IndexParamStride                 = 0x00c,
-    VENC_IndexParamColorFormat            = 0x00d,
-    VENC_IndexParamSize                   = 0x00e,
-    VENC_IndexParamSetVbvSize             = 0x00f,
-    VENC_IndexParamVbvInfo                = 0x010,
-    VENC_IndexParamSetPSkip               = 0x012,
-    VENC_IndexParamHorizonFlip            = 0x015,
-    VENC_IndexParamH264Param              = 0x100,
-    VENC_IndexParamH264SPSPPS             = 0x101,
-    VENC_IndexParamH264QPRange            = 0x102,
-    VENC_IndexParamH264ProfileLevel       = 0x103,
-    VENC_IndexParamH264EntropyCodingCABAC = 0x104,
-    VENC_IndexParamH264FixQP              = 0x106,
-    VENC_IndexParamH264SVCSkip            = 0x107,
-    VENC_IndexParamFastEnc                = 0x109,
-    VENC_IndexParamChmoraGray             = 0x10c,
-    VENC_IndexParamIQpOffset              = 0x10d,
-    VENC_IndexParamSetFrameLenThreshold   = 0x205,
-    VENC_IndexParamSetBitRateRange        = 0x207,
-    VENC_IndexParamH265Param              = 0x300,
-    VENC_IndexParamAlterFrame             = 0x400,
-    VENC_IndexParamChannelNum             = 0x402,
-    VENC_IndexParamSetOverlay             = 0x404,
-    VENC_IndexParam3DFilter               = 0x40e,
-    VENC_IndexParamSetNullFrame           = 0x500,
-    VENC_IndexParamFillingCbr             = 0x505,
-    VENC_IndexParamRoi                    = 0x506
-} VENC_INDEXTYPE;
+typedef enum fwm_venc_param_e {
+    FWM_VENC_PARAM_BITRATE                = 0x000,
+    FWM_VENC_PARAM_FRAME_RATE             = 0x001,
+    FWM_VENC_PARAM_MAX_KEY_INTERVAL       = 0x002,
+    FWM_VENC_PARAM_I_FILTER               = 0x003,
+    FWM_VENC_PARAM_ROTATION               = 0x004,
+    FWM_VENC_PARAM_SLICE_HEIGHT           = 0x005,
+    FWM_VENC_PARAM_FORCE_KEY_FRAME        = 0x006,
+    FWM_VENC_PARAM_ROI_CONFIG             = 0x00b,
+    FWM_VENC_PARAM_STRIDE                 = 0x00c,
+    FWM_VENC_PARAM_COLOUR_FORMAT          = 0x00d,
+    FWM_VENC_PARAM_SIZE                   = 0x00e,
+    FWM_VENC_PARAM_BITSTREAM_SIZE         = 0x00f,
+    FWM_VENC_PARAM_BITSTREAM_STATUS       = 0x010,
+    FWM_VENC_PARAM_P_SKIP                 = 0x012,
+    FWM_VENC_PARAM_HORIZONTAL_FLIP        = 0x015,
+    FWM_VENC_PARAM_H264_CONFIG            = 0x100,
+    FWM_VENC_PARAM_H264_SPS_PPS           = 0x101,
+    FWM_VENC_PARAM_H264_QP_RANGE          = 0x102,
+    FWM_VENC_PARAM_H264_PROFILE_LEVEL     = 0x103,
+    FWM_VENC_PARAM_H264_CABAC             = 0x104,
+    FWM_VENC_PARAM_H264_FIXED_QP          = 0x106,
+    FWM_VENC_PARAM_H264_TEMPORAL_SKIP     = 0x107,
+    FWM_VENC_PARAM_FAST_ENCODE            = 0x109,
+    FWM_VENC_PARAM_CHROMA_GRAY            = 0x10c,
+    FWM_VENC_PARAM_I_QP_OFFSET            = 0x10d,
+    FWM_VENC_PARAM_FRAME_LENGTH_THRESHOLD = 0x205,
+    FWM_VENC_PARAM_BITRATE_RANGE          = 0x207,
+    FWM_VENC_PARAM_H265_CONFIG            = 0x300,
+    FWM_VENC_PARAM_ALTER_FRAME            = 0x400,
+    FWM_VENC_PARAM_CHANNEL                = 0x402,
+    FWM_VENC_PARAM_OVERLAY                = 0x404,
+    FWM_VENC_PARAM_FILTER_3D              = 0x40e,
+    FWM_VENC_PARAM_NULL_FRAME             = 0x500,
+    FWM_VENC_PARAM_CBR_FILLING            = 0x505,
+    FWM_VENC_PARAM_ROI                    = 0x506
+} fwm_venc_param_e;
 
 /* Result codes of the device, the framework and the support library. */
-#define VENC_RESULT_ERROR             (-1)
-#define VENC_RESULT_OK                0
-#define VENC_RESULT_NO_FRAME_BUFFER   1    /* no input picture queued         */
-#define VENC_RESULT_BITSTREAM_IS_FULL 2    /* bitstream buffer full           */
-#define VENC_RESULT_ILLEGAL_PARAM     3
-#define VENC_RESULT_NOT_SUPPORT       4
-#define VENC_RESULT_BITSTREAM_IS_EMPTY 5   /* no finished frame waiting       */
-#define VENC_RESULT_NO_MEMORY         6
-#define VENC_RESULT_NO_RESOURCE       7
-#define VENC_RESULT_NULL_PTR          8
-#define VENC_RESULT_DROP_FRAME        9    /* frame dropped                   */
-#define VENC_RESULT_EFUSE_ERROR       25   /* e-fuse check failed             */
+#define FWM_VENC_RESULT_ERROR             (-1)
+#define FWM_VENC_RESULT_OK                0
+#define FWM_VENC_RESULT_NO_FRAME_BUFFER   1    /* no input picture queued         */
+#define FWM_VENC_RESULT_BITSTREAM_IS_FULL 2    /* bitstream buffer full           */
+#define FWM_VENC_RESULT_ILLEGAL_PARAM     3
+#define FWM_VENC_RESULT_NOT_SUPPORT       4
+#define FWM_VENC_RESULT_BITSTREAM_IS_EMPTY 5   /* no finished frame waiting       */
+#define FWM_VENC_RESULT_NO_MEMORY         6
+#define FWM_VENC_RESULT_NO_RESOURCE       7
+#define FWM_VENC_RESULT_NULL_PTR          8
+#define FWM_VENC_RESULT_DROP_FRAME        9    /* frame dropped                   */
+#define FWM_VENC_RESULT_EFUSE_ERROR       25   /* e-fuse check failed             */
 
 /* Output-frame flags. */
-#define VENC_BUFFERFLAG_KEYFRAME 0x1
+#define FWM_VENC_FRAME_KEYFRAME 0x1
 
-/* P-skip factors accepted by VENC_IndexParamSetPSkip. */
-#define SKIP_4 4
-#define SKIP_8 8
+/* P-skip factors accepted by FWM_VENC_PARAM_P_SKIP. */
+#define FWM_VENC_PSKIP_4 4
+#define FWM_VENC_PSKIP_8 8
 
 /* Overlay (OSD) regions per picture. */
-#define MAX_OVERLAY_SIZE 64
+#define FWM_VENC_OVERLAY_MAX_REGIONS 64
 
 /* =============================================================== records */
 
 /* Rectangle in pixels (16 bytes). */
-typedef struct VencRect {
-    int nLeft;
-    int nTop;
-    int nWidth;
-    int nHeight;
-} VencRect;
+typedef struct fwm_venc_rect {
+    int left;
+    int top;
+    int width;
+    int height;
+} fwm_venc_rect_t;
 
 /* One region of interest (32 bytes). */
-typedef struct VencROIConfig {
-    int            bEnable;
-    int            index;        /* region slot, 0..7                         */
-    int            nQPoffset;    /* QP delta, or absolute QP (flag below)     */
-    unsigned char  roi_abs_flag; /* non-zero: nQPoffset is an absolute QP     */
-    VencRect       sRect;
-} VencROIConfig;
+typedef struct fwm_venc_roi {
+    int             enable;
+    int             index;          /* region slot, 0..7                         */
+    int             qp_offset;      /* QP delta, or absolute QP (flag below)     */
+    unsigned char   qp_absolute_en; /* non-zero: qp_offset is an absolute QP     */
+    fwm_venc_rect_t rect;
+} fwm_venc_roi_t;
 
 /* Profile and level (8 bytes). */
-typedef struct VencH264ProfileLevel {
-    fwm_venc_h264_profile_e nProfile;
-    fwm_venc_h264_level_e   nLevel;
-} VencH264ProfileLevel;
+typedef struct fwm_venc_h264_profile_level {
+    fwm_venc_h264_profile_e profile;
+    fwm_venc_h264_level_e   level;
+} fwm_venc_h264_profile_level_t;
 
 /* Slice-QP bounds (8 bytes). */
-typedef struct VencQPRange {
-    int nMaxqp;
-    int nMinqp;
-} VencQPRange;
+typedef struct fwm_venc_qp_range {
+    int qp_max;
+    int qp_min;
+} fwm_venc_qp_range_t;
 
 /* Reference options of the GOP block (16 bytes; only the first word is read). */
-typedef struct VencAdvancedRefParam {
-    int          bAdvancedRefEn;
+typedef struct fwm_venc_ref_options {
+    int          advanced_ref_en;
     unsigned int _reserved[3];
-} VencAdvancedRefParam;
+} fwm_venc_ref_options_t;
 
 /* GOP structure (32 bytes). */
-typedef struct VencGopParam {
-    unsigned char        bUseGopCtrlEn;
-    fwm_venc_gop_mode_e  eGopMode;
-    int                  nVirtualIFrameInterval;
-    int                  nSpInterval;
-    VencAdvancedRefParam sRefParam;
-} VencGopParam;
+typedef struct fwm_venc_gop {
+    unsigned char          gop_control_en;
+    fwm_venc_gop_mode_e    gop_mode;
+    int                    virtual_i_interval;
+    int                    sp_interval;
+    fwm_venc_ref_options_t ref_options;
+} fwm_venc_gop_t;
 
 /* Variable-bit-rate options (12 bytes). */
-typedef struct VencVbrParam {
-    unsigned int uMaxBitRate;
-    int          nMovingTh;
-    int          nQuality;
-} VencVbrParam;
+typedef struct fwm_venc_vbr {
+    unsigned int max_bitrate;
+    int          motion_threshold;
+    int          quality;
+} fwm_venc_vbr_t;
 
 /* Fixed-QP mode (12 bytes). */
-typedef struct VencFixQP {
-    int bEnable;
-    int nIQp;
-    int nPQp;
-} VencFixQP;
+typedef struct fwm_venc_fixed_qp {
+    int enable;
+    int i_qp;
+    int p_qp;
+} fwm_venc_fixed_qp_t;
 
 /* Per-macroblock QP map (8 bytes on the target). */
-typedef struct VencMBModeCtrl {
+typedef struct fwm_venc_qp_map {
     unsigned int mode_ctrl_en;
-    void        *p_info;
-} VencMBModeCtrl;
+    void        *info;
+} fwm_venc_qp_map_t;
 
 /* Rate-control block (128 bytes); the unnamed words are not read. */
-typedef struct VencRcParam {
-    VENC_RC_MODE   eRcMode;
-    unsigned int   _gap0[13];
-    VencVbrParam   sVbrParam;
-    VencFixQP      sFixQp;
-    VencMBModeCtrl sQpMap;
-    unsigned int   _gap1[10];
-} VencRcParam;
+typedef struct fwm_venc_rate_control {
+    fwm_venc_rc_mode_e  mode;
+    unsigned int        _gap0[13];
+    fwm_venc_vbr_t      vbr;
+    fwm_venc_fixed_qp_t fixed_qp;
+    fwm_venc_qp_map_t   qp_map;
+    unsigned int        _gap1[10];
+} fwm_venc_rate_control_t;
 
 /* H.264 stream parameters (200 bytes). */
-typedef struct VencH264Param {
-    VencH264ProfileLevel sProfileLevel;
-    int                  bEntropyCodingCABAC;
-    VencQPRange          sQPRange;
-    int                  nFramerate;
-    int                  nSrcFramerate;
-    int                  nBitrate;
-    int                  nMaxKeyInterval;
-    int                  nCodingMode;
-    VencGopParam         sGopParam;
-    VencRcParam          sRcParam;
-} VencH264Param;
+typedef struct fwm_venc_h264_config {
+    fwm_venc_h264_profile_level_t profile_level;
+    int                           cabac_en;
+    fwm_venc_qp_range_t           qp_range;
+    int                           frame_rate;
+    int                           source_frame_rate;
+    int                           bitrate;
+    int                           key_interval_max;
+    int                           coding_mode;
+    fwm_venc_gop_t                gop;
+    fwm_venc_rate_control_t       rate_control;
+} fwm_venc_h264_config_t;
+
+/* Bit-rate bounds for the rate controller (8 bytes). */
+typedef struct fwm_venc_bitrate_range {
+    unsigned int bitrate_max;
+    unsigned int bitrate_min;
+} fwm_venc_bitrate_range_t;
 
 /* Device configuration handed to init (44 bytes). The framework fills in the
  * three engine/memory pointer fields. */
-typedef struct VencBaseConfig {
-    unsigned char   bEncH264Nalu;        /* emit NAL units with start codes    */
-    unsigned int    nInputWidth;         /* input picture, px                  */
-    unsigned int    nInputHeight;
-    unsigned int    nDstWidth;           /* coded picture, px; 0 = input size  */
-    unsigned int    nDstHeight;
-    unsigned int    nStride;             /* input line stride, px; 0 = width   */
-    fwm_venc_pixel_format_e  eInputFormat;
+typedef struct fwm_venc_base_config {
+    unsigned char   nalu_en;             /* emit NAL units with start codes    */
+    unsigned int    input_width;         /* input picture, px                  */
+    unsigned int    input_height;
+    unsigned int    output_width;        /* coded picture, px; 0 = input size  */
+    unsigned int    output_height;
+    unsigned int    input_stride;        /* input line stride, px; 0 = width   */
+    fwm_venc_pixel_format_e input_format;
     void           *memops;              /* support-library memory table       */
-    void           *veOpsS;              /* engine operations table            */
-    void           *pVeOpsSelf;          /* engine instance                    */
-    unsigned char   bOnlyWbFlag;
-    unsigned char   bLbcLossyComEnFlag2x;
-    unsigned char   bLbcLossyComEnFlag2_5x;
-    unsigned char   bIsVbvNoCache;
-} VencBaseConfig;
+    void           *engine_ops;          /* engine operations table            */
+    void           *engine;              /* engine instance                    */
+    unsigned char   write_back_only_en;
+    unsigned char   lbc_lossy_2x_en;
+    unsigned char   lbc_lossy_2_5x_en;
+    unsigned char   bitstream_uncached_en;
+} fwm_venc_base_config_t;
 
-/* One input picture (344 bytes). The support library uses only nID, the four
- * plane addresses and bAllocMemSelf; everything else is carried opaquely. */
-typedef struct VencInputBuffer {
-    unsigned long   nID;
-    long long       nPts;                /* presentation time stamp            */
-    unsigned int    nFlag;
-    unsigned char  *pAddrPhyY;           /* luma, physical                     */
-    unsigned char  *pAddrPhyC;           /* chroma, physical                   */
-    unsigned char  *pAddrVirY;           /* luma, CPU mapping                  */
-    unsigned char  *pAddrVirC;           /* chroma, CPU mapping                */
-    int             bEnableCorp;
-    VencRect        sCropInfo;
-    int             ispPicVar;           /* picture variance from the ISP      */
-    int             ispPicVarChroma;
-    int             bUseInputBufferRoi;  /* per-picture ROI                    */
-    VencROIConfig   roi_param[8];
-    int             bAllocMemSelf;       /* allocated by the support library   */
-    int             nShareBufFd;         /* shared dma-buf fd                  */
-    unsigned char   bUseCsiColorFormat;
-    int             eCsiColorFormat;
-    int             envLV;               /* scene light value                  */
-} VencInputBuffer;
+/* One input picture (344 bytes). The support library uses only id, the four
+ * plane addresses and pool_owned_en; everything else is carried opaquely. */
+typedef struct fwm_venc_input_picture {
+    unsigned long   id;
+    long long       pts;                 /* presentation time stamp            */
+    unsigned int    flags;
+    unsigned char  *luma_phys;           /* luma, physical                     */
+    unsigned char  *chroma_phys;         /* chroma, physical                   */
+    unsigned char  *luma_virt;           /* luma, CPU mapping                  */
+    unsigned char  *chroma_virt;         /* chroma, CPU mapping                */
+    int             crop_en;
+    fwm_venc_rect_t crop;
+    int             isp_variance;        /* picture variance from the ISP      */
+    int             isp_variance_chroma;
+    int             roi_en;              /* per-picture ROI                    */
+    fwm_venc_roi_t  rois[8];
+    int             pool_owned_en;       /* allocated by the support library   */
+    int             dmabuf_fd;           /* shared dma-buf fd                  */
+    unsigned char   csi_colour_format_en;
+    int             csi_colour_format;
+    int             light_value;         /* scene light value                  */
+} fwm_venc_input_picture_t;
 
 /* Per-frame coding statistics (20 bytes). */
-typedef struct FrameInfo {
-    int CurrQp;
-    int avQp;
-    int nGopIndex;
-    int nFrameIndex;
-    int nTotalIndex;
-} FrameInfo;
+typedef struct fwm_venc_frame_stats {
+    int qp;
+    int qp_average;
+    int gop_index;
+    int frame_index;
+    int total_index;
+} fwm_venc_frame_stats_t;
 
 /* One finished frame (64 bytes). A frame that wraps around the end of the
  * bitstream ring comes in two parts; part 2 is an optional extra. */
-typedef struct VencOutputBuffer {
-    int             nID;
-    long long       nPts;
-    unsigned int    nFlag;
-    unsigned int    nSize0;
-    unsigned int    nSize1;
-    unsigned char  *pData0;
-    unsigned char  *pData1;
-    FrameInfo       frame_info;
-    unsigned int    nSize2;
-    unsigned char  *pData2;
-} VencOutputBuffer;
+typedef struct fwm_venc_output_frame {
+    int                    id;
+    long long              pts;
+    unsigned int           flags;
+    unsigned int           size0;
+    unsigned int           size1;
+    unsigned char         *data0;
+    unsigned char         *data1;
+    fwm_venc_frame_stats_t stats;
+    unsigned int           size2;
+    unsigned char         *data2;
+} fwm_venc_output_frame_t;
 
 /* A byte blob (8 bytes): the SPS + PPS headers. */
-typedef struct VencHeaderData {
-    unsigned char *pBuffer;
-    unsigned int   nLength;
-} VencHeaderData;
+typedef struct fwm_venc_header_blob {
+    unsigned char *data;
+    unsigned int   length;
+} fwm_venc_header_blob_t;
 
 /* Four bytes of cover colour, 2-byte aligned. */
-typedef union VencOverlayCoverYuvS {
+typedef union fwm_venc_cover_colour {
     unsigned short _reserved[2];
-} VencOverlayCoverYuvS;
+} fwm_venc_cover_colour_t;
 
 /* One overlay region (40 bytes); coordinates in macroblocks. */
-typedef struct VencOverlayHeaderS {
-    unsigned short        start_mb_x;
-    unsigned short        end_mb_x;
-    unsigned short        start_mb_y;
-    unsigned short        end_mb_y;
-    unsigned char         extra_alpha_flag;
-    unsigned char         extra_alpha;
-    VencOverlayCoverYuvS  cover_yuv;
-    fwm_venc_overlay_type_e     overlay_type;
-    unsigned char        *overlay_blk_addr;
-    unsigned int          bitmap_size;
-    unsigned int          bforce_reverse_flag;
-    unsigned int          reverse_unit_mb_w_minus1;   /* invert unit, MB - 1    */
-    unsigned int          reverse_unit_mb_h_minus1;
-} VencOverlayHeaderS;
+typedef struct fwm_venc_overlay_region {
+    unsigned short          start_mb_x;
+    unsigned short          end_mb_x;
+    unsigned short          start_mb_y;
+    unsigned short          end_mb_y;
+    unsigned char           extra_alpha_en;
+    unsigned char           extra_alpha;
+    fwm_venc_cover_colour_t cover_colour;
+    fwm_venc_overlay_type_e overlay_type;
+    unsigned char          *bitmap;
+    unsigned int            bitmap_size;
+    unsigned int            force_reverse_en;
+    unsigned int            reverse_unit_mb_w_minus1;   /* invert unit, MB - 1  */
+    unsigned int            reverse_unit_mb_h_minus1;
+} fwm_venc_overlay_region_t;
 
 /* Overlay configuration (2576 bytes). */
-typedef struct VencOverlayInfoS {
-    unsigned char           blk_num;
-    fwm_venc_overlay_argb_type_e  argb_type;
-    VencOverlayHeaderS      overlayHeaderList[MAX_OVERLAY_SIZE];
-    unsigned int            invert_mode;
-    unsigned int            invert_threshold;
-} VencOverlayInfoS;
+typedef struct fwm_venc_overlay {
+    unsigned char                region_count;
+    fwm_venc_overlay_argb_type_e argb_type;
+    fwm_venc_overlay_region_t    regions[FWM_VENC_OVERLAY_MAX_REGIONS];
+    unsigned int                 invert_mode;
+    unsigned int                 invert_threshold;
+} fwm_venc_overlay_t;
 
 /* Picture size (8 bytes). */
-typedef struct VencSize {
-    int nWidth;
-    int nHeight;
-} VencSize;
+typedef struct fwm_venc_size {
+    int width;
+    int height;
+} fwm_venc_size_t;
 
 /* Bitstream buffer status (16 bytes). */
-typedef struct VbvInfo {
+typedef struct fwm_venc_bitstream_status {
     unsigned int vbv_size;
     unsigned int coded_frame_num;
     unsigned int coded_size;
-    unsigned int maxFrameLen;
-} VbvInfo;
+    unsigned int max_frame_length;
+} fwm_venc_bitstream_status_t;
 
 /* Temporal layering / frame skipping (28 bytes). */
-typedef struct VencH264SVCSkip {
-    int          nTemporalSVC;
-    int          nSkipFrame;
-    int          bEnableLayerRatio;
-    unsigned int nLayerRatio[4];
-} VencH264SVCSkip;
+typedef struct fwm_venc_temporal_skip {
+    int          temporal_layers;
+    int          skip_frames;
+    int          layer_ratio_en;
+    unsigned int layer_ratio[4];
+} fwm_venc_temporal_skip_t;
 
 /* Input-picture pool request (12 bytes). */
-typedef struct VencAllocateBufferParam {
-    unsigned int nBufferNum;
-    unsigned int nSizeY;
-    unsigned int nSizeC;
-} VencAllocateBufferParam;
+typedef struct fwm_venc_input_pool {
+    unsigned int count;
+    unsigned int luma_size;
+    unsigned int chroma_size;
+} fwm_venc_input_pool_t;
 
 /* ========================================================== device table */
 
 /* One encoder device: 12 slots (48 bytes on the target). Handles are opaque. */
-typedef struct VENC_DEVICE {
+typedef struct fwm_venc_device {
     const char *name;
-    void *(*open)(VencBaseConfig *pBaseConfig, unsigned int nIcVersion);
-    int   (*init)(void *handle, VencBaseConfig *pBaseConfig);  /* allocates buffers */
+    void *(*open)(fwm_venc_base_config_t *base_config, unsigned int ic_version);
+    int   (*init)(void *handle, fwm_venc_base_config_t *base_config); /* allocates buffers */
     int   (*uninit)(void *handle);
     void  (*close)(void *handle);
-    int   (*encode)(void *handle, VencInputBuffer *pInBuffer); /* one picture */
-    int   (*GetParameter)(void *handle, int indexType, void *param);
-    int   (*SetParameter)(void *handle, int indexType, void *param);
-    int   (*ValidBitStreamFrameNum)(void *handle);             /* finished, waiting */
-    int   (*GetOneBitStreamFrame)(void *handle, VencOutputBuffer *pOutBuffer);
-    int   (*FreeOneBitStreamFrame)(void *handle, VencOutputBuffer *pOutBuffer);
-    int   (*ResetBitStreamFrame)(void *handle);                /* discard all */
-} VENC_DEVICE;
+    int   (*encode)(void *handle, fwm_venc_input_picture_t *in);      /* one picture */
+    int   (*get_parameter)(void *handle, int index, void *param);
+    int   (*set_parameter)(void *handle, int index, void *param);
+    int   (*ready_frame_count)(void *handle);                         /* finished, waiting */
+    int   (*get_frame)(void *handle, fwm_venc_output_frame_t *out);
+    int   (*release_frame)(void *handle, fwm_venc_output_frame_t *out);
+    int   (*reset_frames)(void *handle);                              /* discard all */
+} fwm_venc_device_t;
 
 /* Exported device tables (fixed link names, spec r2/05 B.1): the two H.264
  * entries describe the working device; the others fail every call. */
-extern VENC_DEVICE video_encoder_h264_ver1;
-extern VENC_DEVICE video_encoder_h264_ver2;
-extern VENC_DEVICE video_encoder_h265;
-extern VENC_DEVICE video_encoder_jpeg;
+extern fwm_venc_device_t video_encoder_h264_ver1;
+extern fwm_venc_device_t video_encoder_h264_ver2;
+extern fwm_venc_device_t video_encoder_h265;
+extern fwm_venc_device_t video_encoder_jpeg;
 
 /* ========================================================= layout checks */
 
 #if defined(__arm__)
 _Static_assert(sizeof(fwm_venc_h264_profile_e) == 4, "fwm_venc_h264_profile_e is 4 bytes");
 _Static_assert(sizeof(fwm_venc_h264_level_e) == 4, "fwm_venc_h264_level_e is 4 bytes");
+_Static_assert(sizeof(fwm_venc_coding_mode_e) == 4, "fwm_venc_coding_mode_e is 4 bytes");
 _Static_assert(sizeof(fwm_venc_pixel_format_e) == 4, "fwm_venc_pixel_format_e is 4 bytes");
-_Static_assert(sizeof(VENC_RC_MODE) == 4, "VENC_RC_MODE is 4 bytes");
+_Static_assert(sizeof(fwm_venc_rc_mode_e) == 4, "fwm_venc_rc_mode_e is 4 bytes");
 _Static_assert(sizeof(fwm_venc_gop_mode_e) == 4, "fwm_venc_gop_mode_e is 4 bytes");
 _Static_assert(sizeof(fwm_venc_overlay_argb_type_e) == 4, "fwm_venc_overlay_argb_type_e is 4 bytes");
 _Static_assert(sizeof(fwm_venc_overlay_type_e) == 4, "fwm_venc_overlay_type_e is 4 bytes");
-_Static_assert(sizeof(VENC_CODEC_TYPE) == 4, "VENC_CODEC_TYPE is 4 bytes");
-_Static_assert(sizeof(VENC_INDEXTYPE) == 4, "VENC_INDEXTYPE is 4 bytes");
+_Static_assert(sizeof(fwm_venc_codec_e) == 4, "fwm_venc_codec_e is 4 bytes");
+_Static_assert(sizeof(fwm_venc_param_e) == 4, "fwm_venc_param_e is 4 bytes");
 
 /* B.4.1 rectangle */
-_Static_assert(sizeof(VencRect) == 16, "VencRect is 16 bytes");
-_Static_assert(offsetof(VencRect, nLeft) == 0, "VencRect.nLeft");
-_Static_assert(offsetof(VencRect, nTop) == 4, "VencRect.nTop");
-_Static_assert(offsetof(VencRect, nWidth) == 8, "VencRect.nWidth");
-_Static_assert(offsetof(VencRect, nHeight) == 12, "VencRect.nHeight");
+_Static_assert(sizeof(fwm_venc_rect_t) == 16, "rect is 16 bytes");
+_Static_assert(offsetof(fwm_venc_rect_t, left) == 0, "rect.left");
+_Static_assert(offsetof(fwm_venc_rect_t, top) == 4, "rect.top");
+_Static_assert(offsetof(fwm_venc_rect_t, width) == 8, "rect.width");
+_Static_assert(offsetof(fwm_venc_rect_t, height) == 12, "rect.height");
 
 /* B.4.2 ROI entry */
-_Static_assert(sizeof(VencROIConfig) == 32, "VencROIConfig is 32 bytes");
-_Static_assert(offsetof(VencROIConfig, bEnable) == 0, "VencROIConfig.bEnable");
-_Static_assert(offsetof(VencROIConfig, index) == 4, "VencROIConfig.index");
-_Static_assert(offsetof(VencROIConfig, nQPoffset) == 8, "VencROIConfig.nQPoffset");
-_Static_assert(offsetof(VencROIConfig, roi_abs_flag) == 12, "VencROIConfig.roi_abs_flag");
-_Static_assert(offsetof(VencROIConfig, sRect) == 16, "VencROIConfig.sRect");
+_Static_assert(sizeof(fwm_venc_roi_t) == 32, "roi is 32 bytes");
+_Static_assert(offsetof(fwm_venc_roi_t, enable) == 0, "roi.enable");
+_Static_assert(offsetof(fwm_venc_roi_t, index) == 4, "roi.index");
+_Static_assert(offsetof(fwm_venc_roi_t, qp_offset) == 8, "roi.qp_offset");
+_Static_assert(offsetof(fwm_venc_roi_t, qp_absolute_en) == 12, "roi.qp_absolute_en");
+_Static_assert(offsetof(fwm_venc_roi_t, rect) == 16, "roi.rect");
 
 /* B.4.3 profile / level */
-_Static_assert(sizeof(VencH264ProfileLevel) == 8, "VencH264ProfileLevel is 8 bytes");
-_Static_assert(offsetof(VencH264ProfileLevel, nProfile) == 0, "VencH264ProfileLevel.nProfile");
-_Static_assert(offsetof(VencH264ProfileLevel, nLevel) == 4, "VencH264ProfileLevel.nLevel");
+_Static_assert(sizeof(fwm_venc_h264_profile_level_t) == 8, "profile_level is 8 bytes");
+_Static_assert(offsetof(fwm_venc_h264_profile_level_t, profile) == 0, "profile_level.profile");
+_Static_assert(offsetof(fwm_venc_h264_profile_level_t, level) == 4, "profile_level.level");
 
 /* B.4.4 QP range */
-_Static_assert(sizeof(VencQPRange) == 8, "VencQPRange is 8 bytes");
-_Static_assert(offsetof(VencQPRange, nMaxqp) == 0, "VencQPRange.nMaxqp");
-_Static_assert(offsetof(VencQPRange, nMinqp) == 4, "VencQPRange.nMinqp");
+_Static_assert(sizeof(fwm_venc_qp_range_t) == 8, "qp_range is 8 bytes");
+_Static_assert(offsetof(fwm_venc_qp_range_t, qp_max) == 0, "qp_range.qp_max");
+_Static_assert(offsetof(fwm_venc_qp_range_t, qp_min) == 4, "qp_range.qp_min");
 
 /* B.4.5 GOP block */
-_Static_assert(sizeof(VencAdvancedRefParam) == 16, "VencAdvancedRefParam is 16 bytes");
-_Static_assert(offsetof(VencAdvancedRefParam, bAdvancedRefEn) == 0, "VencAdvancedRefParam.bAdvancedRefEn");
-_Static_assert(sizeof(VencGopParam) == 32, "VencGopParam is 32 bytes");
-_Static_assert(offsetof(VencGopParam, bUseGopCtrlEn) == 0, "VencGopParam.bUseGopCtrlEn");
-_Static_assert(offsetof(VencGopParam, eGopMode) == 4, "VencGopParam.eGopMode");
-_Static_assert(offsetof(VencGopParam, nVirtualIFrameInterval) == 8, "VencGopParam.nVirtualIFrameInterval");
-_Static_assert(offsetof(VencGopParam, nSpInterval) == 12, "VencGopParam.nSpInterval");
-_Static_assert(offsetof(VencGopParam, sRefParam) == 16, "VencGopParam.sRefParam");
+_Static_assert(sizeof(fwm_venc_ref_options_t) == 16, "ref_options is 16 bytes");
+_Static_assert(offsetof(fwm_venc_ref_options_t, advanced_ref_en) == 0, "ref_options.advanced_ref_en");
+_Static_assert(sizeof(fwm_venc_gop_t) == 32, "gop is 32 bytes");
+_Static_assert(offsetof(fwm_venc_gop_t, gop_control_en) == 0, "gop.gop_control_en");
+_Static_assert(offsetof(fwm_venc_gop_t, gop_mode) == 4, "gop.gop_mode");
+_Static_assert(offsetof(fwm_venc_gop_t, virtual_i_interval) == 8, "gop.virtual_i_interval");
+_Static_assert(offsetof(fwm_venc_gop_t, sp_interval) == 12, "gop.sp_interval");
+_Static_assert(offsetof(fwm_venc_gop_t, ref_options) == 16, "gop.ref_options");
 
 /* B.4.6 VBR / fixed-QP / QP-map blocks */
-_Static_assert(sizeof(VencVbrParam) == 12, "VencVbrParam is 12 bytes");
-_Static_assert(offsetof(VencVbrParam, uMaxBitRate) == 0, "VencVbrParam.uMaxBitRate");
-_Static_assert(offsetof(VencVbrParam, nMovingTh) == 4, "VencVbrParam.nMovingTh");
-_Static_assert(offsetof(VencVbrParam, nQuality) == 8, "VencVbrParam.nQuality");
-_Static_assert(sizeof(VencFixQP) == 12, "VencFixQP is 12 bytes");
-_Static_assert(offsetof(VencFixQP, bEnable) == 0, "VencFixQP.bEnable");
-_Static_assert(offsetof(VencFixQP, nIQp) == 4, "VencFixQP.nIQp");
-_Static_assert(offsetof(VencFixQP, nPQp) == 8, "VencFixQP.nPQp");
-_Static_assert(sizeof(VencMBModeCtrl) == 8, "VencMBModeCtrl is 8 bytes");
-_Static_assert(offsetof(VencMBModeCtrl, mode_ctrl_en) == 0, "VencMBModeCtrl.mode_ctrl_en");
-_Static_assert(offsetof(VencMBModeCtrl, p_info) == 4, "VencMBModeCtrl.p_info");
+_Static_assert(sizeof(fwm_venc_vbr_t) == 12, "vbr is 12 bytes");
+_Static_assert(offsetof(fwm_venc_vbr_t, max_bitrate) == 0, "vbr.max_bitrate");
+_Static_assert(offsetof(fwm_venc_vbr_t, motion_threshold) == 4, "vbr.motion_threshold");
+_Static_assert(offsetof(fwm_venc_vbr_t, quality) == 8, "vbr.quality");
+_Static_assert(sizeof(fwm_venc_fixed_qp_t) == 12, "fixed_qp is 12 bytes");
+_Static_assert(offsetof(fwm_venc_fixed_qp_t, enable) == 0, "fixed_qp.enable");
+_Static_assert(offsetof(fwm_venc_fixed_qp_t, i_qp) == 4, "fixed_qp.i_qp");
+_Static_assert(offsetof(fwm_venc_fixed_qp_t, p_qp) == 8, "fixed_qp.p_qp");
+_Static_assert(sizeof(fwm_venc_qp_map_t) == 8, "qp_map is 8 bytes");
+_Static_assert(offsetof(fwm_venc_qp_map_t, mode_ctrl_en) == 0, "qp_map.mode_ctrl_en");
+_Static_assert(offsetof(fwm_venc_qp_map_t, info) == 4, "qp_map.info");
 
 /* B.4.7 rate-control block */
-_Static_assert(sizeof(VencRcParam) == 128, "VencRcParam is 128 bytes");
-_Static_assert(offsetof(VencRcParam, eRcMode) == 0, "VencRcParam.eRcMode");
-_Static_assert(offsetof(VencRcParam, sVbrParam) == 56, "VencRcParam.sVbrParam");
-_Static_assert(offsetof(VencRcParam, sFixQp) == 68, "VencRcParam.sFixQp");
-_Static_assert(offsetof(VencRcParam, sQpMap) == 80, "VencRcParam.sQpMap");
+_Static_assert(sizeof(fwm_venc_rate_control_t) == 128, "rate_control is 128 bytes");
+_Static_assert(offsetof(fwm_venc_rate_control_t, mode) == 0, "rate_control.mode");
+_Static_assert(offsetof(fwm_venc_rate_control_t, vbr) == 56, "rate_control.vbr");
+_Static_assert(offsetof(fwm_venc_rate_control_t, fixed_qp) == 68, "rate_control.fixed_qp");
+_Static_assert(offsetof(fwm_venc_rate_control_t, qp_map) == 80, "rate_control.qp_map");
 
 /* B.4.8 H.264 parameter block */
-_Static_assert(sizeof(VencH264Param) == 200, "VencH264Param is 200 bytes");
-_Static_assert(offsetof(VencH264Param, sProfileLevel) == 0, "VencH264Param.sProfileLevel");
-_Static_assert(offsetof(VencH264Param, bEntropyCodingCABAC) == 8, "VencH264Param.bEntropyCodingCABAC");
-_Static_assert(offsetof(VencH264Param, sQPRange) == 12, "VencH264Param.sQPRange");
-_Static_assert(offsetof(VencH264Param, nFramerate) == 20, "VencH264Param.nFramerate");
-_Static_assert(offsetof(VencH264Param, nSrcFramerate) == 24, "VencH264Param.nSrcFramerate");
-_Static_assert(offsetof(VencH264Param, nBitrate) == 28, "VencH264Param.nBitrate");
-_Static_assert(offsetof(VencH264Param, nMaxKeyInterval) == 32, "VencH264Param.nMaxKeyInterval");
-_Static_assert(offsetof(VencH264Param, nCodingMode) == 36, "VencH264Param.nCodingMode");
-_Static_assert(offsetof(VencH264Param, sGopParam) == 40, "VencH264Param.sGopParam");
-_Static_assert(offsetof(VencH264Param, sRcParam) == 72, "VencH264Param.sRcParam");
+_Static_assert(sizeof(fwm_venc_h264_config_t) == 200, "h264_config is 200 bytes");
+_Static_assert(offsetof(fwm_venc_h264_config_t, profile_level) == 0, "h264_config.profile_level");
+_Static_assert(offsetof(fwm_venc_h264_config_t, cabac_en) == 8, "h264_config.cabac_en");
+_Static_assert(offsetof(fwm_venc_h264_config_t, qp_range) == 12, "h264_config.qp_range");
+_Static_assert(offsetof(fwm_venc_h264_config_t, frame_rate) == 20, "h264_config.frame_rate");
+_Static_assert(offsetof(fwm_venc_h264_config_t, source_frame_rate) == 24, "h264_config.source_frame_rate");
+_Static_assert(offsetof(fwm_venc_h264_config_t, bitrate) == 28, "h264_config.bitrate");
+_Static_assert(offsetof(fwm_venc_h264_config_t, key_interval_max) == 32, "h264_config.key_interval_max");
+_Static_assert(offsetof(fwm_venc_h264_config_t, coding_mode) == 36, "h264_config.coding_mode");
+_Static_assert(offsetof(fwm_venc_h264_config_t, gop) == 40, "h264_config.gop");
+_Static_assert(offsetof(fwm_venc_h264_config_t, rate_control) == 72, "h264_config.rate_control");
+
+/* bit-rate bounds */
+_Static_assert(sizeof(fwm_venc_bitrate_range_t) == 8, "bitrate_range is 8 bytes");
+_Static_assert(offsetof(fwm_venc_bitrate_range_t, bitrate_max) == 0, "bitrate_range.bitrate_max");
+_Static_assert(offsetof(fwm_venc_bitrate_range_t, bitrate_min) == 4, "bitrate_range.bitrate_min");
 
 /* B.4.9 base configuration */
-_Static_assert(sizeof(VencBaseConfig) == 44, "VencBaseConfig is 44 bytes");
-_Static_assert(offsetof(VencBaseConfig, bEncH264Nalu) == 0, "VencBaseConfig.bEncH264Nalu");
-_Static_assert(offsetof(VencBaseConfig, nInputWidth) == 4, "VencBaseConfig.nInputWidth");
-_Static_assert(offsetof(VencBaseConfig, nInputHeight) == 8, "VencBaseConfig.nInputHeight");
-_Static_assert(offsetof(VencBaseConfig, nDstWidth) == 12, "VencBaseConfig.nDstWidth");
-_Static_assert(offsetof(VencBaseConfig, nDstHeight) == 16, "VencBaseConfig.nDstHeight");
-_Static_assert(offsetof(VencBaseConfig, nStride) == 20, "VencBaseConfig.nStride");
-_Static_assert(offsetof(VencBaseConfig, eInputFormat) == 24, "VencBaseConfig.eInputFormat");
-_Static_assert(offsetof(VencBaseConfig, memops) == 28, "VencBaseConfig.memops");
-_Static_assert(offsetof(VencBaseConfig, veOpsS) == 32, "VencBaseConfig.veOpsS");
-_Static_assert(offsetof(VencBaseConfig, pVeOpsSelf) == 36, "VencBaseConfig.pVeOpsSelf");
-_Static_assert(offsetof(VencBaseConfig, bOnlyWbFlag) == 40, "VencBaseConfig.bOnlyWbFlag");
-_Static_assert(offsetof(VencBaseConfig, bLbcLossyComEnFlag2x) == 41, "VencBaseConfig.bLbcLossyComEnFlag2x");
-_Static_assert(offsetof(VencBaseConfig, bLbcLossyComEnFlag2_5x) == 42, "VencBaseConfig.bLbcLossyComEnFlag2_5x");
-_Static_assert(offsetof(VencBaseConfig, bIsVbvNoCache) == 43, "VencBaseConfig.bIsVbvNoCache");
+_Static_assert(sizeof(fwm_venc_base_config_t) == 44, "base_config is 44 bytes");
+_Static_assert(offsetof(fwm_venc_base_config_t, nalu_en) == 0, "base_config.nalu_en");
+_Static_assert(offsetof(fwm_venc_base_config_t, input_width) == 4, "base_config.input_width");
+_Static_assert(offsetof(fwm_venc_base_config_t, input_height) == 8, "base_config.input_height");
+_Static_assert(offsetof(fwm_venc_base_config_t, output_width) == 12, "base_config.output_width");
+_Static_assert(offsetof(fwm_venc_base_config_t, output_height) == 16, "base_config.output_height");
+_Static_assert(offsetof(fwm_venc_base_config_t, input_stride) == 20, "base_config.input_stride");
+_Static_assert(offsetof(fwm_venc_base_config_t, input_format) == 24, "base_config.input_format");
+_Static_assert(offsetof(fwm_venc_base_config_t, memops) == 28, "base_config.memops");
+_Static_assert(offsetof(fwm_venc_base_config_t, engine_ops) == 32, "base_config.engine_ops");
+_Static_assert(offsetof(fwm_venc_base_config_t, engine) == 36, "base_config.engine");
+_Static_assert(offsetof(fwm_venc_base_config_t, write_back_only_en) == 40, "base_config.write_back_only_en");
+_Static_assert(offsetof(fwm_venc_base_config_t, lbc_lossy_2x_en) == 41, "base_config.lbc_lossy_2x_en");
+_Static_assert(offsetof(fwm_venc_base_config_t, lbc_lossy_2_5x_en) == 42, "base_config.lbc_lossy_2_5x_en");
+_Static_assert(offsetof(fwm_venc_base_config_t, bitstream_uncached_en) == 43, "base_config.bitstream_uncached_en");
 
 /* B.4.10 input picture */
-_Static_assert(sizeof(VencInputBuffer) == 344, "VencInputBuffer is 344 bytes");
-_Static_assert(offsetof(VencInputBuffer, nID) == 0, "VencInputBuffer.nID");
-_Static_assert(offsetof(VencInputBuffer, nPts) == 8, "VencInputBuffer.nPts");
-_Static_assert(offsetof(VencInputBuffer, nFlag) == 16, "VencInputBuffer.nFlag");
-_Static_assert(offsetof(VencInputBuffer, pAddrPhyY) == 20, "VencInputBuffer.pAddrPhyY");
-_Static_assert(offsetof(VencInputBuffer, pAddrPhyC) == 24, "VencInputBuffer.pAddrPhyC");
-_Static_assert(offsetof(VencInputBuffer, pAddrVirY) == 28, "VencInputBuffer.pAddrVirY");
-_Static_assert(offsetof(VencInputBuffer, pAddrVirC) == 32, "VencInputBuffer.pAddrVirC");
-_Static_assert(offsetof(VencInputBuffer, bEnableCorp) == 36, "VencInputBuffer.bEnableCorp");
-_Static_assert(offsetof(VencInputBuffer, sCropInfo) == 40, "VencInputBuffer.sCropInfo");
-_Static_assert(offsetof(VencInputBuffer, ispPicVar) == 56, "VencInputBuffer.ispPicVar");
-_Static_assert(offsetof(VencInputBuffer, ispPicVarChroma) == 60, "VencInputBuffer.ispPicVarChroma");
-_Static_assert(offsetof(VencInputBuffer, bUseInputBufferRoi) == 64, "VencInputBuffer.bUseInputBufferRoi");
-_Static_assert(offsetof(VencInputBuffer, roi_param) == 68, "VencInputBuffer.roi_param");
-_Static_assert(offsetof(VencInputBuffer, bAllocMemSelf) == 324, "VencInputBuffer.bAllocMemSelf");
-_Static_assert(offsetof(VencInputBuffer, nShareBufFd) == 328, "VencInputBuffer.nShareBufFd");
-_Static_assert(offsetof(VencInputBuffer, bUseCsiColorFormat) == 332, "VencInputBuffer.bUseCsiColorFormat");
-_Static_assert(offsetof(VencInputBuffer, eCsiColorFormat) == 336, "VencInputBuffer.eCsiColorFormat");
-_Static_assert(offsetof(VencInputBuffer, envLV) == 340, "VencInputBuffer.envLV");
+_Static_assert(sizeof(fwm_venc_input_picture_t) == 344, "input_picture is 344 bytes");
+_Static_assert(offsetof(fwm_venc_input_picture_t, id) == 0, "input_picture.id");
+_Static_assert(offsetof(fwm_venc_input_picture_t, pts) == 8, "input_picture.pts");
+_Static_assert(offsetof(fwm_venc_input_picture_t, flags) == 16, "input_picture.flags");
+_Static_assert(offsetof(fwm_venc_input_picture_t, luma_phys) == 20, "input_picture.luma_phys");
+_Static_assert(offsetof(fwm_venc_input_picture_t, chroma_phys) == 24, "input_picture.chroma_phys");
+_Static_assert(offsetof(fwm_venc_input_picture_t, luma_virt) == 28, "input_picture.luma_virt");
+_Static_assert(offsetof(fwm_venc_input_picture_t, chroma_virt) == 32, "input_picture.chroma_virt");
+_Static_assert(offsetof(fwm_venc_input_picture_t, crop_en) == 36, "input_picture.crop_en");
+_Static_assert(offsetof(fwm_venc_input_picture_t, crop) == 40, "input_picture.crop");
+_Static_assert(offsetof(fwm_venc_input_picture_t, isp_variance) == 56, "input_picture.isp_variance");
+_Static_assert(offsetof(fwm_venc_input_picture_t, isp_variance_chroma) == 60, "input_picture.isp_variance_chroma");
+_Static_assert(offsetof(fwm_venc_input_picture_t, roi_en) == 64, "input_picture.roi_en");
+_Static_assert(offsetof(fwm_venc_input_picture_t, rois) == 68, "input_picture.rois");
+_Static_assert(offsetof(fwm_venc_input_picture_t, pool_owned_en) == 324, "input_picture.pool_owned_en");
+_Static_assert(offsetof(fwm_venc_input_picture_t, dmabuf_fd) == 328, "input_picture.dmabuf_fd");
+_Static_assert(offsetof(fwm_venc_input_picture_t, csi_colour_format_en) == 332, "input_picture.csi_colour_format_en");
+_Static_assert(offsetof(fwm_venc_input_picture_t, csi_colour_format) == 336, "input_picture.csi_colour_format");
+_Static_assert(offsetof(fwm_venc_input_picture_t, light_value) == 340, "input_picture.light_value");
 
-/* B.4.11 output frame and frame info */
-_Static_assert(sizeof(VencOutputBuffer) == 64, "VencOutputBuffer is 64 bytes");
-_Static_assert(offsetof(VencOutputBuffer, nID) == 0, "VencOutputBuffer.nID");
-_Static_assert(offsetof(VencOutputBuffer, nPts) == 8, "VencOutputBuffer.nPts");
-_Static_assert(offsetof(VencOutputBuffer, nFlag) == 16, "VencOutputBuffer.nFlag");
-_Static_assert(offsetof(VencOutputBuffer, nSize0) == 20, "VencOutputBuffer.nSize0");
-_Static_assert(offsetof(VencOutputBuffer, nSize1) == 24, "VencOutputBuffer.nSize1");
-_Static_assert(offsetof(VencOutputBuffer, pData0) == 28, "VencOutputBuffer.pData0");
-_Static_assert(offsetof(VencOutputBuffer, pData1) == 32, "VencOutputBuffer.pData1");
-_Static_assert(offsetof(VencOutputBuffer, frame_info) == 36, "VencOutputBuffer.frame_info");
-_Static_assert(offsetof(VencOutputBuffer, nSize2) == 56, "VencOutputBuffer.nSize2");
-_Static_assert(offsetof(VencOutputBuffer, pData2) == 60, "VencOutputBuffer.pData2");
-_Static_assert(sizeof(FrameInfo) == 20, "FrameInfo is 20 bytes");
-_Static_assert(offsetof(FrameInfo, CurrQp) == 0, "FrameInfo.CurrQp");
-_Static_assert(offsetof(FrameInfo, avQp) == 4, "FrameInfo.avQp");
-_Static_assert(offsetof(FrameInfo, nGopIndex) == 8, "FrameInfo.nGopIndex");
-_Static_assert(offsetof(FrameInfo, nFrameIndex) == 12, "FrameInfo.nFrameIndex");
-_Static_assert(offsetof(FrameInfo, nTotalIndex) == 16, "FrameInfo.nTotalIndex");
+/* B.4.11 output frame and frame statistics */
+_Static_assert(sizeof(fwm_venc_output_frame_t) == 64, "output_frame is 64 bytes");
+_Static_assert(offsetof(fwm_venc_output_frame_t, id) == 0, "output_frame.id");
+_Static_assert(offsetof(fwm_venc_output_frame_t, pts) == 8, "output_frame.pts");
+_Static_assert(offsetof(fwm_venc_output_frame_t, flags) == 16, "output_frame.flags");
+_Static_assert(offsetof(fwm_venc_output_frame_t, size0) == 20, "output_frame.size0");
+_Static_assert(offsetof(fwm_venc_output_frame_t, size1) == 24, "output_frame.size1");
+_Static_assert(offsetof(fwm_venc_output_frame_t, data0) == 28, "output_frame.data0");
+_Static_assert(offsetof(fwm_venc_output_frame_t, data1) == 32, "output_frame.data1");
+_Static_assert(offsetof(fwm_venc_output_frame_t, stats) == 36, "output_frame.stats");
+_Static_assert(offsetof(fwm_venc_output_frame_t, size2) == 56, "output_frame.size2");
+_Static_assert(offsetof(fwm_venc_output_frame_t, data2) == 60, "output_frame.data2");
+_Static_assert(sizeof(fwm_venc_frame_stats_t) == 20, "frame_stats is 20 bytes");
+_Static_assert(offsetof(fwm_venc_frame_stats_t, qp) == 0, "frame_stats.qp");
+_Static_assert(offsetof(fwm_venc_frame_stats_t, qp_average) == 4, "frame_stats.qp_average");
+_Static_assert(offsetof(fwm_venc_frame_stats_t, gop_index) == 8, "frame_stats.gop_index");
+_Static_assert(offsetof(fwm_venc_frame_stats_t, frame_index) == 12, "frame_stats.frame_index");
+_Static_assert(offsetof(fwm_venc_frame_stats_t, total_index) == 16, "frame_stats.total_index");
 
 /* B.4.12 header blob */
-_Static_assert(sizeof(VencHeaderData) == 8, "VencHeaderData is 8 bytes");
-_Static_assert(offsetof(VencHeaderData, pBuffer) == 0, "VencHeaderData.pBuffer");
-_Static_assert(offsetof(VencHeaderData, nLength) == 4, "VencHeaderData.nLength");
+_Static_assert(sizeof(fwm_venc_header_blob_t) == 8, "header_blob is 8 bytes");
+_Static_assert(offsetof(fwm_venc_header_blob_t, data) == 0, "header_blob.data");
+_Static_assert(offsetof(fwm_venc_header_blob_t, length) == 4, "header_blob.length");
 
-/* B.4.13 overlay region header and block */
-_Static_assert(sizeof(VencOverlayCoverYuvS) == 4, "VencOverlayCoverYuvS is 4 bytes");
-_Static_assert(sizeof(VencOverlayHeaderS) == 40, "VencOverlayHeaderS is 40 bytes");
-_Static_assert(offsetof(VencOverlayHeaderS, start_mb_x) == 0, "VencOverlayHeaderS.start_mb_x");
-_Static_assert(offsetof(VencOverlayHeaderS, end_mb_x) == 2, "VencOverlayHeaderS.end_mb_x");
-_Static_assert(offsetof(VencOverlayHeaderS, start_mb_y) == 4, "VencOverlayHeaderS.start_mb_y");
-_Static_assert(offsetof(VencOverlayHeaderS, end_mb_y) == 6, "VencOverlayHeaderS.end_mb_y");
-_Static_assert(offsetof(VencOverlayHeaderS, extra_alpha_flag) == 8, "VencOverlayHeaderS.extra_alpha_flag");
-_Static_assert(offsetof(VencOverlayHeaderS, extra_alpha) == 9, "VencOverlayHeaderS.extra_alpha");
-_Static_assert(offsetof(VencOverlayHeaderS, cover_yuv) == 10, "VencOverlayHeaderS.cover_yuv");
-_Static_assert(offsetof(VencOverlayHeaderS, overlay_type) == 16, "VencOverlayHeaderS.overlay_type");
-_Static_assert(offsetof(VencOverlayHeaderS, overlay_blk_addr) == 20, "VencOverlayHeaderS.overlay_blk_addr");
-_Static_assert(offsetof(VencOverlayHeaderS, bitmap_size) == 24, "VencOverlayHeaderS.bitmap_size");
-_Static_assert(offsetof(VencOverlayHeaderS, bforce_reverse_flag) == 28, "VencOverlayHeaderS.bforce_reverse_flag");
-_Static_assert(offsetof(VencOverlayHeaderS, reverse_unit_mb_w_minus1) == 32, "VencOverlayHeaderS.reverse_unit_mb_w_minus1");
-_Static_assert(offsetof(VencOverlayHeaderS, reverse_unit_mb_h_minus1) == 36, "VencOverlayHeaderS.reverse_unit_mb_h_minus1");
-_Static_assert(sizeof(VencOverlayInfoS) == 2576, "VencOverlayInfoS is 2576 bytes");
-_Static_assert(offsetof(VencOverlayInfoS, blk_num) == 0, "VencOverlayInfoS.blk_num");
-_Static_assert(offsetof(VencOverlayInfoS, argb_type) == 4, "VencOverlayInfoS.argb_type");
-_Static_assert(offsetof(VencOverlayInfoS, overlayHeaderList) == 8, "VencOverlayInfoS.overlayHeaderList");
-_Static_assert(offsetof(VencOverlayInfoS, invert_mode) == 2568, "VencOverlayInfoS.invert_mode");
-_Static_assert(offsetof(VencOverlayInfoS, invert_threshold) == 2572, "VencOverlayInfoS.invert_threshold");
+/* B.4.13 overlay region and overlay block */
+_Static_assert(sizeof(fwm_venc_cover_colour_t) == 4, "cover_colour is 4 bytes");
+_Static_assert(sizeof(fwm_venc_overlay_region_t) == 40, "overlay_region is 40 bytes");
+_Static_assert(offsetof(fwm_venc_overlay_region_t, start_mb_x) == 0, "overlay_region.start_mb_x");
+_Static_assert(offsetof(fwm_venc_overlay_region_t, end_mb_x) == 2, "overlay_region.end_mb_x");
+_Static_assert(offsetof(fwm_venc_overlay_region_t, start_mb_y) == 4, "overlay_region.start_mb_y");
+_Static_assert(offsetof(fwm_venc_overlay_region_t, end_mb_y) == 6, "overlay_region.end_mb_y");
+_Static_assert(offsetof(fwm_venc_overlay_region_t, extra_alpha_en) == 8, "overlay_region.extra_alpha_en");
+_Static_assert(offsetof(fwm_venc_overlay_region_t, extra_alpha) == 9, "overlay_region.extra_alpha");
+_Static_assert(offsetof(fwm_venc_overlay_region_t, cover_colour) == 10, "overlay_region.cover_colour");
+_Static_assert(offsetof(fwm_venc_overlay_region_t, overlay_type) == 16, "overlay_region.overlay_type");
+_Static_assert(offsetof(fwm_venc_overlay_region_t, bitmap) == 20, "overlay_region.bitmap");
+_Static_assert(offsetof(fwm_venc_overlay_region_t, bitmap_size) == 24, "overlay_region.bitmap_size");
+_Static_assert(offsetof(fwm_venc_overlay_region_t, force_reverse_en) == 28, "overlay_region.force_reverse_en");
+_Static_assert(offsetof(fwm_venc_overlay_region_t, reverse_unit_mb_w_minus1) == 32, "overlay_region.reverse_unit_mb_w_minus1");
+_Static_assert(offsetof(fwm_venc_overlay_region_t, reverse_unit_mb_h_minus1) == 36, "overlay_region.reverse_unit_mb_h_minus1");
+_Static_assert(sizeof(fwm_venc_overlay_t) == 2576, "overlay is 2576 bytes");
+_Static_assert(offsetof(fwm_venc_overlay_t, region_count) == 0, "overlay.region_count");
+_Static_assert(offsetof(fwm_venc_overlay_t, argb_type) == 4, "overlay.argb_type");
+_Static_assert(offsetof(fwm_venc_overlay_t, regions) == 8, "overlay.regions");
+_Static_assert(offsetof(fwm_venc_overlay_t, invert_mode) == 2568, "overlay.invert_mode");
+_Static_assert(offsetof(fwm_venc_overlay_t, invert_threshold) == 2572, "overlay.invert_threshold");
 
-/* B.4.14 size, VBV info, temporal-skip block */
-_Static_assert(sizeof(VencSize) == 8, "VencSize is 8 bytes");
-_Static_assert(offsetof(VencSize, nWidth) == 0, "VencSize.nWidth");
-_Static_assert(offsetof(VencSize, nHeight) == 4, "VencSize.nHeight");
-_Static_assert(sizeof(VbvInfo) == 16, "VbvInfo is 16 bytes");
-_Static_assert(offsetof(VbvInfo, vbv_size) == 0, "VbvInfo.vbv_size");
-_Static_assert(offsetof(VbvInfo, coded_frame_num) == 4, "VbvInfo.coded_frame_num");
-_Static_assert(offsetof(VbvInfo, coded_size) == 8, "VbvInfo.coded_size");
-_Static_assert(offsetof(VbvInfo, maxFrameLen) == 12, "VbvInfo.maxFrameLen");
-_Static_assert(sizeof(VencH264SVCSkip) == 28, "VencH264SVCSkip is 28 bytes");
-_Static_assert(offsetof(VencH264SVCSkip, nTemporalSVC) == 0, "VencH264SVCSkip.nTemporalSVC");
-_Static_assert(offsetof(VencH264SVCSkip, nSkipFrame) == 4, "VencH264SVCSkip.nSkipFrame");
-_Static_assert(offsetof(VencH264SVCSkip, bEnableLayerRatio) == 8, "VencH264SVCSkip.bEnableLayerRatio");
-_Static_assert(offsetof(VencH264SVCSkip, nLayerRatio) == 12, "VencH264SVCSkip.nLayerRatio");
+/* B.4.14 size, bitstream status, temporal-skip block */
+_Static_assert(sizeof(fwm_venc_size_t) == 8, "size is 8 bytes");
+_Static_assert(offsetof(fwm_venc_size_t, width) == 0, "size.width");
+_Static_assert(offsetof(fwm_venc_size_t, height) == 4, "size.height");
+_Static_assert(sizeof(fwm_venc_bitstream_status_t) == 16, "bitstream_status is 16 bytes");
+_Static_assert(offsetof(fwm_venc_bitstream_status_t, vbv_size) == 0, "bitstream_status.vbv_size");
+_Static_assert(offsetof(fwm_venc_bitstream_status_t, coded_frame_num) == 4, "bitstream_status.coded_frame_num");
+_Static_assert(offsetof(fwm_venc_bitstream_status_t, coded_size) == 8, "bitstream_status.coded_size");
+_Static_assert(offsetof(fwm_venc_bitstream_status_t, max_frame_length) == 12, "bitstream_status.max_frame_length");
+_Static_assert(sizeof(fwm_venc_temporal_skip_t) == 28, "temporal_skip is 28 bytes");
+_Static_assert(offsetof(fwm_venc_temporal_skip_t, temporal_layers) == 0, "temporal_skip.temporal_layers");
+_Static_assert(offsetof(fwm_venc_temporal_skip_t, skip_frames) == 4, "temporal_skip.skip_frames");
+_Static_assert(offsetof(fwm_venc_temporal_skip_t, layer_ratio_en) == 8, "temporal_skip.layer_ratio_en");
+_Static_assert(offsetof(fwm_venc_temporal_skip_t, layer_ratio) == 12, "temporal_skip.layer_ratio");
 
 /* B.4.15 allocation request */
-_Static_assert(sizeof(VencAllocateBufferParam) == 12, "VencAllocateBufferParam is 12 bytes");
-_Static_assert(offsetof(VencAllocateBufferParam, nBufferNum) == 0, "VencAllocateBufferParam.nBufferNum");
-_Static_assert(offsetof(VencAllocateBufferParam, nSizeY) == 4, "VencAllocateBufferParam.nSizeY");
-_Static_assert(offsetof(VencAllocateBufferParam, nSizeC) == 8, "VencAllocateBufferParam.nSizeC");
+_Static_assert(sizeof(fwm_venc_input_pool_t) == 12, "input_pool is 12 bytes");
+_Static_assert(offsetof(fwm_venc_input_pool_t, count) == 0, "input_pool.count");
+_Static_assert(offsetof(fwm_venc_input_pool_t, luma_size) == 4, "input_pool.luma_size");
+_Static_assert(offsetof(fwm_venc_input_pool_t, chroma_size) == 8, "input_pool.chroma_size");
 
 /* B.3 device table: 12 slots, slot n at 4 * n */
-_Static_assert(sizeof(VENC_DEVICE) == 48, "VENC_DEVICE is 48 bytes");
-_Static_assert(offsetof(VENC_DEVICE, name) == 0, "VENC_DEVICE.name");
-_Static_assert(offsetof(VENC_DEVICE, open) == 4, "VENC_DEVICE.open");
-_Static_assert(offsetof(VENC_DEVICE, init) == 8, "VENC_DEVICE.init");
-_Static_assert(offsetof(VENC_DEVICE, uninit) == 12, "VENC_DEVICE.uninit");
-_Static_assert(offsetof(VENC_DEVICE, close) == 16, "VENC_DEVICE.close");
-_Static_assert(offsetof(VENC_DEVICE, encode) == 20, "VENC_DEVICE.encode");
-_Static_assert(offsetof(VENC_DEVICE, GetParameter) == 24, "VENC_DEVICE.GetParameter");
-_Static_assert(offsetof(VENC_DEVICE, SetParameter) == 28, "VENC_DEVICE.SetParameter");
-_Static_assert(offsetof(VENC_DEVICE, ValidBitStreamFrameNum) == 32, "VENC_DEVICE.ValidBitStreamFrameNum");
-_Static_assert(offsetof(VENC_DEVICE, GetOneBitStreamFrame) == 36, "VENC_DEVICE.GetOneBitStreamFrame");
-_Static_assert(offsetof(VENC_DEVICE, FreeOneBitStreamFrame) == 40, "VENC_DEVICE.FreeOneBitStreamFrame");
-_Static_assert(offsetof(VENC_DEVICE, ResetBitStreamFrame) == 44, "VENC_DEVICE.ResetBitStreamFrame");
+_Static_assert(sizeof(fwm_venc_device_t) == 48, "device is 48 bytes");
+_Static_assert(offsetof(fwm_venc_device_t, name) == 0, "device.name");
+_Static_assert(offsetof(fwm_venc_device_t, open) == 4, "device.open");
+_Static_assert(offsetof(fwm_venc_device_t, init) == 8, "device.init");
+_Static_assert(offsetof(fwm_venc_device_t, uninit) == 12, "device.uninit");
+_Static_assert(offsetof(fwm_venc_device_t, close) == 16, "device.close");
+_Static_assert(offsetof(fwm_venc_device_t, encode) == 20, "device.encode");
+_Static_assert(offsetof(fwm_venc_device_t, get_parameter) == 24, "device.get_parameter");
+_Static_assert(offsetof(fwm_venc_device_t, set_parameter) == 28, "device.set_parameter");
+_Static_assert(offsetof(fwm_venc_device_t, ready_frame_count) == 32, "device.ready_frame_count");
+_Static_assert(offsetof(fwm_venc_device_t, get_frame) == 36, "device.get_frame");
+_Static_assert(offsetof(fwm_venc_device_t, release_frame) == 40, "device.release_frame");
+_Static_assert(offsetof(fwm_venc_device_t, reset_frames) == 44, "device.reset_frames");
 #endif
 
 #ifdef __cplusplus

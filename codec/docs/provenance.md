@@ -46,7 +46,7 @@ workspace excluded).
 
 | Compiled-in table | Where | What it is | How obtained / class |
 |---|---|---|---|
-| `isp_pattern_in_mode[20]` | `src/h264/isp/h264_isp.c:25` | `VENC_PIXEL_FMT` → the ISP control word's input-layout code `[31:27]`, full 20-entry map: `{0,4,0x18,0x1a,2,6,0x1c,0x1e,1,3,5,7,0x10,0x12,0x14,0x16,0x0a,0x0c,8,0x15}` | **Interface fact** (hardware register field): the mapping and the 20-entry width are reproduced in `spec/13-isp-and-picture-ring.md` §1.1, recovered from the deployed encoder object (2026-09-21). Index 1 (`YVU420SP`, the format the VI delivers) = 4 — omitting it made the ISP read NV21 as NV12 and swap U/V. |
+| `isp_pattern_in_mode[20]` | `src/h264/isp/h264_isp.c:25` | `fwm_venc_pixel_format_e` → the ISP control word's input-layout code `[31:27]`, full 20-entry map: `{0,4,0x18,0x1a,2,6,0x1c,0x1e,1,3,5,7,0x10,0x12,0x14,0x16,0x0a,0x0c,8,0x15}` | **Interface fact** (hardware register field): the mapping and the 20-entry width are reproduced in `spec/13-isp-and-picture-ring.md` §1.1, recovered from the deployed encoder object (2026-09-21). Index 1 (`YVU420SP`, the format the VI delivers) = 4 — omitting it made the ISP read NV21 as NV12 and swap U/V. |
 | `group_off[]` | `src/h264/ve/ve_driver.c:381` | VE register-group base offsets `{0x000, 0x100, 0x200, 0x300, 0x400, 0x500, 0xe00}` for the register-group base | **Interface fact** (hardware register layout), matching `freecodec_ve_register_group` in `include/freecodec/ve_iface.h:25`. |
 
 Dispatch tables of our own function pointers
