@@ -101,6 +101,52 @@ Re-derived in code
   taps summing to `0x100`, packed `(256 - phase) << 16 | phase`. No table is
   compiled in.
 
+OSD overlay: luma-adaptive inversion
+------------------------------------
+
+The overlay ("OSD") path (`set_overlay` / `ovl_invert_setup`,
+`src/h264/enc/freecodec_enc.c`; header packer in `src/h264/isp/h264_isp.c`)
+supports the input-ISP block's per-block luma inversion: the hardware redraws
+an overlay block inverted when the background under it would make it
+illegible. It was written from a behaviour-only clean-room specification
+(private workspace, not shipped; facts tagged FACT/OBS/INFER) written by an
+analyst role. The code depends on these facts and values:
+
+- **`FC_OVL_REVERSE_LUMA` = `1u << 29`**: per-block enable bit in header word
+  +8. **Interface fact** (hardware header layout).
+- **IC-version gate**: `ovl_invert_setup` does nothing when
+  `ic_version <= 0x2110f` (no bit 29, no register `0x54`). **Interface fact**:
+  the 16-byte header with the reverse bits and the `0x54` invert buffer exist
+  only above that version; the same cut-off appears in the ic_version list
+  above.
+- **Invert scratch buffer** at register `0x54`: one per encoder instance,
+  `ceil(input_width / 16) * 32` bytes, 256-byte aligned, zeroed once and never
+  touched by software. **Interface fact** (size rule and register).
+- **`FC_OVL_INVERT_MODE` = `2`, `FC_OVL_INVERT_THRESH` = `96`**: invert when
+  the video/overlay luma difference is below 96. **Observed**: these are the
+  values the stock camera application programs (with inversion switched off
+  on its own blocks, so stock never actually inverts); we reuse them and
+  confirmed them on the device.
+- **Reverse-unit nibbles** (header byte +15): passed through from the caller,
+  clamped to 0..3 (16..64 px units). The vendor stack never writes them.
+
+`FREECODEC_OVL_INVERT=0` clears bit 29 on every block (the buffer is still
+registered). It is this project's own switch, not a vendor control.
+
+Device results (y623, 2026-09-26): with bit 29 set, white text turns black
+over bright backgrounds and stays white over dark ones. The decision is made
+once per overlay *block* from the background under the whole block; setting
+the unit nibbles did not make it finer. Per-letter inversion therefore needs
+the caller to emit one block per glyph column, which is what `yi-mediad` does
+in its hardware mode. That mode is opt-in (`MEDIAD_OSD_HWINV=1`); mediad's
+default picks the text colour in software from AE statistics and sends plain
+`NORMAL` blocks, so this path is idle unless enabled.
+
+Release gate and patents: this feature is covered by the same private
+publish guard as the rest of the repository (see the release-status note in
+`isp/docs/provenance.md`). The royalty position for H.264/AVC and AAC is in
+the root `CREDITS.md` and in "Third-party components" below.
+
 Public prior art (independent implementations of the same VE block)
 -------------------------------------------------------------------
 

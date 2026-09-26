@@ -970,7 +970,7 @@ static int enc_get_parameter(void *h, int index, void *param)
 /* Overlay (OSD), h264-overlay.md: pack the caller's blocks with the kept ISP
  * unit's packer into grow-only header/data buffers, flush them, and latch the
  * engine addresses (>> 8, the width the ISP registers take) for every later
- * picture. Only NORMAL blocks are supported; blk_num 0 disables. Runs under
+ * picture. NORMAL and LUMA_REVERSE blocks are supported; blk_num 0 disables. Runs under
  * the shared VE lock so an in-flight encode never reads a half-packed or
  * freed buffer (the framework takes that lock around encode() only). */
 /*
