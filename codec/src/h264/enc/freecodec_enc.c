@@ -131,7 +131,13 @@ static void free_buffers(fc_enc_instance *e)
 static int alloc_buffers(fc_enc_instance *e)
 {
     const fc_enc_geom *g = &e->geom;
-    unsigned int luma = fc_enc_align_up(g->w16, 32u) * fc_enc_align_up(g->h16, 64u);
+    /* Luma rows are align64(h16 + 1), not the spec's align64(h16): when h16 is
+     * already a multiple of 64 (e.g. 1920x1088) the spec leaves no padding and
+     * the engine writes past the luma plane into the start of the reference
+     * chroma (top-left chroma drift that grows every P-frame, r35gb
+     * 2026-09-26). One 16-row band of padding was measured clean; other
+     * heights are unchanged. */
+    unsigned int luma = fc_enc_align_up(g->w16, 32u) * fc_enc_align_up(g->h16 + 1u, 64u);
     unsigned int chroma = fc_enc_align_up(g->w16, 32u) * fc_enc_align_up(g->h16, 128u) / 2u;
     unsigned int full_size = luma + chroma;
     int i;
