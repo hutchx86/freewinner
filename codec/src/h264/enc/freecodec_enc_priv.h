@@ -91,6 +91,7 @@ typedef struct fc_enc_params {
     int          fixed_qp_enable;
     int          fast_enc;           /* 0x10 fast-mode bits (spec 11) */
     unsigned int filter_3d_level;    /* 0 off, 1..6 (FWM_VENC_PARAM_FILTER_3D, 3D-filter spec §7) */
+    unsigned int filter_3d_strength; /* 0 = level rules; 1..511 = direct T (venc_ext.h) */
     int          vbv_no_cache;       /* bitstream ring allocated uncached */
     int          fixed_i_qp, fixed_p_qp;
     int          qp_min, qp_max;

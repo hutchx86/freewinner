@@ -30,4 +30,14 @@ typedef struct fwm_venc_display_offset {
     int top;
 } fwm_venc_display_offset_t;
 
+/* int *: encoder 3D (temporal) filter strength, written directly as the 9-bit
+ * threshold field T of the filter's threshold register, 0..511 (values above
+ * 511 are clamped). 0 (default) = off: the FWM_VENC_PARAM_FILTER_3D level
+ * rules apply unchanged. Non-zero enables the filter as level 3 does (enable,
+ * scratch planes and fill) but with T = strength at every QP instead of the
+ * level's small QP-banded value (1..12), which is barely visible. A freecodec
+ * extension: the hardware field is 9 bits, the vendor levels use only 1..12.
+ * Read afresh per picture, so a live change applies to the next picture. */
+#define FWM_VENC_PARAM_FILTER_3D_STRENGTH 0x7f000003
+
 #endif

@@ -1301,7 +1301,7 @@ static void f3d_picture(fwm_venc_device_t *dev, void *h, const char *tag,
     fwm_venc_input_picture_t in = make_input();
     unsigned int n = e->pic.picture_count;
     unsigned int last = (n == 0u) ? 0u : (n - 1u) % 2u, curr = n % 2u;
-    unsigned int lvl = e->params.filter_3d_level;
+    unsigned int lvl = e->params.filter_3d_strength ? 3u : e->params.filter_3d_level;
     unsigned int sz = e->bufs.filt3d[0].size;
     uint32_t p0 = (uint32_t)((uintptr_t)e->bufs.filt3d[0].phy >> 8);
     uint32_t p1 = (uint32_t)((uintptr_t)e->bufs.filt3d[1].phy >> 8);
@@ -1448,6 +1448,35 @@ static void test_filter_3d_device(void)
     dev->close(h);
 }
 
+/* FWM_VENC_PARAM_FILTER_3D_STRENGTH (venc_ext.h): non-zero runs the filter
+ * as level 3 with T = strength at every QP; 0 falls back to the level rules;
+ * clamped to 0..511. */
+static void test_filter_3d_strength(void)
+{
+    fwm_venc_device_t *dev = &video_encoder_h264_ver2;
+    fwm_venc_base_config_t cfg = make_base_config(176, 144);
+    fc_enc_instance *e;
+    int s;
+    void *h;
+
+    /* Level 0 at init, fixed QP I 25 / P 40 (P QP 40 would give T = 3 at level 3). */
+    h = f3d_open(dev, &cfg, 0u);
+    if (!h) { fail("3dstr: open/init failed"); return; }
+    e = (fc_enc_instance *)h;
+    s = 511; dev->set_parameter(h, FWM_VENC_PARAM_FILTER_3D_STRENGTH, &s);
+    f3d_picture(dev, h, "3dstr pic0 (first, still off)", 0, 0u);
+    f3d_picture(dev, h, "3dstr pic1 T=511", 1, 511u << 23);
+    s = 40; dev->set_parameter(h, FWM_VENC_PARAM_FILTER_3D_STRENGTH, &s);
+    f3d_picture(dev, h, "3dstr pic2 T=40 at QP 40 (no banding)", 1, 40u << 23);
+    s = 9999; dev->set_parameter(h, FWM_VENC_PARAM_FILTER_3D_STRENGTH, &s);
+    checkf(e->params.filter_3d_strength == 511u, "3dstr: > 511 clamps to 511");
+    s = -5; dev->set_parameter(h, FWM_VENC_PARAM_FILTER_3D_STRENGTH, &s);
+    checkf(e->params.filter_3d_strength == 0u, "3dstr: < 0 clamps to 0");
+    f3d_picture(dev, h, "3dstr pic3 strength 0, level 0 -> off", 0, 0u);
+    dev->uninit(h);
+    dev->close(h);
+}
+
 /* §7: 0..6 stored unchanged, > 6 -> 3. */
 static void test_filter_3d_param(void)
 {
@@ -1501,6 +1530,7 @@ int main(void)
     test_filter_3d_script();
     test_filter_3d_device();
     test_filter_3d_param();
+    test_filter_3d_strength();
 
     if (g_fail)
         return 1;

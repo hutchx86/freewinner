@@ -609,14 +609,18 @@ static int enc_encode(void *h, fwm_venc_input_picture_t *in)
      * (§3); T follows the slice QP, QP >= 52 keeping the previous T (§2.2);
      * the last-slot plane is reset to F(level) and flushed on every picture
      * with level != 0, the first included (§5). */
-    f3d_level = e->params.filter_3d_level;
+    /* A direct strength (venc_ext.h) runs the filter as level 3 does, with
+     * its own T below; otherwise the level rules of the 3D-filter spec. */
+    f3d_level = e->params.filter_3d_strength ? 3u : e->params.filter_3d_level;
     f3d_enabled = freecodec_h264_3d_enabled(f3d_level, n);
     if (f3d_level != 0u) {
         fc_enc_buf *pl;
 
         if (qp >= 52)
             fprintf(stderr, "freecodec_enc: 3D filter: slice QP %d >= 52, threshold kept\n", qp);
-        e->filt3d_t = freecodec_h264_3d_threshold(f3d_level, qp, e->filt3d_t);
+        e->filt3d_t = e->params.filter_3d_strength
+                      ? e->params.filter_3d_strength
+                      : freecodec_h264_3d_threshold(f3d_level, qp, e->filt3d_t);
         if (e->bufs.filt3d[0].vir == NULL || e->bufs.filt3d[1].vir == NULL)
             alloc_filt3d(e);            /* §5 defensive path, normally allocated at init */
         pl = &e->bufs.filt3d[main_last];
@@ -1226,6 +1230,12 @@ static int enc_set_parameter(void *h, int index, void *param)
             lvl = 3u;
         }
         e->params.filter_3d_level = lvl;
+        return FWM_VENC_RESULT_OK;
+    }
+    case FWM_VENC_PARAM_FILTER_3D_STRENGTH: {
+        int s = *(int *)param;
+
+        e->params.filter_3d_strength = s < 0 ? 0u : s > 511 ? 511u : (unsigned int)s;
         return FWM_VENC_RESULT_OK;
     }
     case FWM_VENC_PARAM_MAX_KEY_INTERVAL:
