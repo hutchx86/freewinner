@@ -309,6 +309,31 @@ void freecodec_h264_set_reg_ver2(freecodec_h264_slice_state *st,
     regs[5] = mv_addr_phy;
 }
 
+/* 3D (temporal noise) filter helpers, from the 3D-filter spec. */
+unsigned int freecodec_h264_3d_enabled(unsigned int level, unsigned int picture_index)
+{
+    return (level != 0u && picture_index != 0u) ? 1u : 0u;     /* §3 */
+}
+
+unsigned int freecodec_h264_3d_threshold(unsigned int level, int slice_qp,
+                                         unsigned int prev_t)
+{
+    /* §2.2: only the QP 20..30 band doubles the level; QP >= 52 keeps T. */
+    if (slice_qp >= 52)
+        return prev_t;
+    if (slice_qp >= 20 && slice_qp <= 30)
+        return 2u * level;
+    return level;
+}
+
+unsigned int freecodec_h264_3d_fill(unsigned int level)
+{
+    /* §5: F = max(0xCC, ((16 - level) * 0x11) & 0xFF): 0xFF, 0xEE, 0xDD, then 0xCC. */
+    unsigned int f = ((16u - level) * 0x11u) & 0xffu;
+
+    return f > 0xccu ? f : 0xccu;
+}
+
 /* Per-frame VETOP register script (register-config step) from
  * spec/h264-config-registers.md and the full capture; golden-authoritative. */
 static unsigned int pic_idx(unsigned int idx)
@@ -325,13 +350,15 @@ void freecodec_h264_config_registers(const freecodec_h264_config_reg_cfg *cfg,
      * the slice step re-stores it before the kick. */
     regs[0x04u / 4u] = cfg->rpara0_v1 | 0x80000000u;
 
-    /* 0x08: slice_stride_control. 3D-filter init sets the 3-D filter enable (bit 22) when curr_frm_idx != 0;
-     * dynamic ME ORs bit 8 + misc bits (see spec r2/02 section 2.3). Always stored from context so a
-     * cleared block cannot leave the dynamic-ME enable zero (spec sec. 5.6). */
+    /* 0x08: slice_stride_control. The 3D step sets the 3-D filter enable (bit 22) when the level is
+     * non-zero and this is not the instance's first picture, and clears it otherwise (3D-filter spec
+     * §3: picture index, not the ring slot); dynamic ME ORs bit 8 + misc bits (see spec r2/02
+     * section 2.3). Always stored from context so a cleared block cannot leave the dynamic-ME enable
+     * zero (spec sec. 5.6). */
     {
-        uint32_t rpara1 = cfg->rpara1;
+        uint32_t rpara1 = cfg->rpara1 & ~(1u << 22);
 
-        if (cfg->filter_3d_level != 0u && cfg->curr_frm_idx != 0u)
+        if (freecodec_h264_3d_enabled(cfg->filter_3d_level, cfg->picture_index))
             rpara1 |= 1u << 22;                 /* 3-D filter enable */
         if (cfg->dynamic_me_enable) {
             rpara1 |= 0x100u;                   /* dynamic-ME enable */
@@ -448,9 +475,13 @@ void freecodec_h264_config_registers(const freecodec_h264_config_reg_cfg *cfg,
         regs[0x8cu / 4u] = end_bits;
     }
 
-    /* 0x94: 3D-filter threshold. Exact derivation is an open item; golden stores
-     * level << 24 for the captured level 4. Stored from context, zero when off. */
-    regs[0x94u / 4u] = cfg->filter_3d_level << 24;
+    /* 0x94: 3D-filter threshold T << 23 (9-bit field), only when the filter is
+     * enabled, else left at the reset value 0 (3D-filter spec §2; the captured
+     * level << 24 is T << 23 in the QP 20..30 band, where T = 2 x level). */
+    if (freecodec_h264_3d_enabled(cfg->filter_3d_level, cfg->picture_index))
+        regs[0x94u / 4u] = (cfg->filter_3d_threshold & 0x1ffu) << 23;
+    else
+        regs[0x94u / 4u] = 0u;
 
     /* 0x9c: macroblock rate-control buffer physical address, stored from context
      * every frame so it is never left zero (spec sec. 5.6). */
@@ -484,15 +515,17 @@ void freecodec_h264_config_registers(const freecodec_h264_config_reg_cfg *cfg,
         regs[0xbcu / 4u] = cfg->sub_enc_pic_y[pic_idx(cfg->sub_rec)];
     }
 
-    /* 0xa8/0xac: 3D-filter source planes (the last / current slot), zero when off. */
+    /* 0xa8/0xac: 3D-filter planes, zero when off. 0xac (current slot) on every
+     * picture with level != 0; 0xa8 (last slot) only when the filter is enabled,
+     * so the first picture leaves it 0 (3D-filter spec §4). */
+    regs[0xa8u / 4u] = 0u;
+    regs[0xacu / 4u] = 0u;
     if (cfg->filter_3d_level != 0u) {
-        regs[0xa8u / 4u] = cfg->filter_3d_phy[cfg->main_ring_last_idx < 2u
-                                              ? cfg->main_ring_last_idx : 0u];
         regs[0xacu / 4u] = cfg->filter_3d_phy[cfg->main_ring_curr_idx < 2u
                                               ? cfg->main_ring_curr_idx : 0u];
-    } else {
-        regs[0xa8u / 4u] = 0u;
-        regs[0xacu / 4u] = 0u;
+        if (freecodec_h264_3d_enabled(cfg->filter_3d_level, cfg->picture_index))
+            regs[0xa8u / 4u] = cfg->filter_3d_phy[cfg->main_ring_last_idx < 2u
+                                                  ? cfg->main_ring_last_idx : 0u];
     }
 
     /* 0xc0/0xc4: macroblock-info / deblock buffers. */

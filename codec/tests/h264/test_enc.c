@@ -1190,6 +1190,293 @@ static void test_vbv_cache(void)
     dev->close(h);
 }
 
+/* ============================================= 3D filter (3D-filter spec) */
+
+/* §8.1: 0x94 = T << 23, T from the level / slice-QP band table; §5 fill
+ * values; §3 enable. Pure helpers. */
+static void test_filter_3d_tables(void)
+{
+    static const struct { unsigned int l; int q; uint32_t r94; } t81[] = {
+        { 1, 10, 0x00800000u }, { 1, 25, 0x01000000u }, { 1, 40, 0x00800000u },
+        { 2, 10, 0x01000000u }, { 2, 25, 0x02000000u }, { 2, 40, 0x01000000u },
+        { 3, 10, 0x01800000u }, { 3, 25, 0x03000000u }, { 3, 40, 0x01800000u },
+        { 4, 25, 0x04000000u }, { 4, 10, 0x02000000u },
+    };
+    static const unsigned int fill[7] = { 0, 0xffu, 0xeeu, 0xddu, 0xccu, 0xccu, 0xccu };
+    unsigned int k, l;
+
+    for (k = 0; k < sizeof(t81) / sizeof(t81[0]); k++) {
+        uint32_t v = freecodec_h264_3d_threshold(t81[k].l, t81[k].q, 99u) << 23;
+
+        checkf(v == t81[k].r94, "3d: L=%u Q=%d 0x94 = %08x, want %08x",
+               t81[k].l, t81[k].q, v, t81[k].r94);
+    }
+    for (l = 1; l <= 6; l++) {
+        checkf(freecodec_h264_3d_threshold(l, 0, 99u) == l, "3d: Q=0 -> T=L (L=%u)", l);
+        checkf(freecodec_h264_3d_threshold(l, 19, 99u) == l, "3d: Q=19 -> T=L (L=%u)", l);
+        checkf(freecodec_h264_3d_threshold(l, 20, 99u) == 2u * l, "3d: Q=20 -> T=2L (L=%u)", l);
+        checkf(freecodec_h264_3d_threshold(l, 30, 99u) == 2u * l, "3d: Q=30 -> T=2L (L=%u)", l);
+        checkf(freecodec_h264_3d_threshold(l, 31, 99u) == l, "3d: Q=31 -> T=L (L=%u)", l);
+        checkf(freecodec_h264_3d_threshold(l, 51, 99u) == l, "3d: Q=51 -> T=L (L=%u)", l);
+        checkf(freecodec_h264_3d_threshold(l, 52, 7u) == 7u, "3d: Q=52 keeps T (L=%u)", l);
+        checkf(freecodec_h264_3d_threshold(l, 60, 5u) == 5u, "3d: Q=60 keeps T (L=%u)", l);
+        checkf(freecodec_h264_3d_fill(l) == fill[l], "3d: F(%u) = %02x, want %02x",
+               l, freecodec_h264_3d_fill(l), fill[l]);
+    }
+    checkf(!freecodec_h264_3d_enabled(0u, 0u) && !freecodec_h264_3d_enabled(0u, 5u) &&
+           !freecodec_h264_3d_enabled(3u, 0u) && freecodec_h264_3d_enabled(3u, 1u) &&
+           freecodec_h264_3d_enabled(3u, 2u), "3d: enable = level != 0 && picture index != 0");
+}
+
+/* Register script alone, §8.2-§8.5 with the spec's own slot pairs (incl. the
+ * vendor ring's 0/0 IDR) and the §8.5 hypothetical addresses. */
+static void test_filter_3d_script(void)
+{
+    static const struct {
+        unsigned int l, pidx, last, curr; int q;
+        uint32_t b22, r94, ra8, rac;
+    } c[] = {
+        { 2, 0, 0, 0, 25, 0, 0u,          0u,          0x001c0000u },   /* §8.2 */
+        { 2, 1, 0, 1, 25, 1, 0x02000000u, 0x001c0000u, 0x001c0300u },   /* §8.5 */
+        { 2, 2, 1, 0, 40, 1, 0x01000000u, 0x001c0300u, 0x001c0000u },   /* §8.3 */
+        { 3, 9, 0, 0, 10, 1, 0x01800000u, 0x001c0000u, 0x001c0000u },   /* §8.4 IDR */
+        { 0, 9, 1, 0, 25, 0, 0u,          0u,          0u },            /* off */
+    };
+    unsigned int k;
+
+    for (k = 0; k < sizeof(c) / sizeof(c[0]); k++) {
+        freecodec_h264_config_reg_cfg cfg;
+        uint32_t regs[0x200];
+
+        memset(&cfg, 0, sizeof(cfg));
+        memset(regs, 0, sizeof(regs));
+        cfg.filter_3d_level = c[k].l;
+        cfg.picture_index = c[k].pidx;
+        cfg.curr_frm_idx = 1u;               /* the ring slot no longer gates bit 22 */
+        cfg.slice_qp = c[k].q;
+        cfg.filter_3d_threshold = freecodec_h264_3d_threshold(c[k].l, c[k].q, 0u);
+        cfg.main_ring_last_idx = c[k].last;
+        cfg.main_ring_curr_idx = c[k].curr;
+        cfg.filter_3d_phy[0] = 0x1c000000u >> 8;
+        cfg.filter_3d_phy[1] = 0x1c030000u >> 8;
+        cfg.rpara1 = 1u << 22;               /* a stale bit is forced to the rule */
+        freecodec_h264_config_registers(&cfg, regs);
+        checkf(((regs[0x08u / 4u] >> 22) & 1u) == c[k].b22, "3dscr[%u]: 0x08 bit 22", k);
+        checkf(regs[0x94u / 4u] == c[k].r94, "3dscr[%u]: 0x94 = %08x, want %08x",
+               k, regs[0x94u / 4u], c[k].r94);
+        checkf(regs[0xa8u / 4u] == c[k].ra8, "3dscr[%u]: 0xa8 = %08x, want %08x",
+               k, regs[0xa8u / 4u], c[k].ra8);
+        checkf(regs[0xacu / 4u] == c[k].rac, "3dscr[%u]: 0xac = %08x, want %08x",
+               k, regs[0xacu / 4u], c[k].rac);
+    }
+}
+
+static int all_bytes(const void *p, unsigned int n, unsigned char v)
+{
+    const unsigned char *b = p;
+    unsigned int i;
+
+    for (i = 0; i < n; i++)
+        if (b[i] != v)
+            return 0;
+    return 1;
+}
+
+static int flushed(const void *p, int len)
+{
+    int k;
+
+    for (k = 0; k < g_nflush && k < 64; k++)
+        if (g_flush_at[k] == p && g_flush_len[k] == len)
+            return 1;
+    return 0;
+}
+
+/* Encode one picture with the planes poisoned, then check the 3D step's
+ * register writes and scratch fill against the ring slots it used. */
+static void f3d_picture(fwm_venc_device_t *dev, void *h, const char *tag,
+                        int want_b22, uint32_t want_94)
+{
+    fc_enc_instance *e = (fc_enc_instance *)h;
+    fwm_venc_input_picture_t in = make_input();
+    unsigned int n = e->pic.picture_count;
+    unsigned int last = (n == 0u) ? 0u : (n - 1u) % 2u, curr = n % 2u;
+    unsigned int lvl = e->params.filter_3d_level;
+    unsigned int sz = e->bufs.filt3d[0].size;
+    uint32_t p0 = (uint32_t)((uintptr_t)e->bufs.filt3d[0].phy >> 8);
+    uint32_t p1 = (uint32_t)((uintptr_t)e->bufs.filt3d[1].phy >> 8);
+    uint32_t v = 0;
+    int i8;
+
+    memset(e->bufs.filt3d[0].vir, 0x11, sz);
+    memset(e->bufs.filt3d[1].vir, 0x11, sz);
+    g_nlog = 0;
+    g_nflush = 0;
+    g_ve.sim_bits = 8000;
+    checkf(dev->encode(h, &in) == FWM_VENC_RESULT_OK, "%s: encode OK", tag);
+
+    /* 0x08: the script write and the slice-header re-store agree (§3/§6). */
+    i8 = find_write(0, 0x08, 0);
+    checkf(i8 >= 0 && ((g_log[i8].val >> 22) & 1u) == (uint32_t)want_b22,
+           "%s: script 0x08 bit 22 = %d", tag, want_b22);
+    last_write(0, 0x08, &v);
+    checkf(find_write(0, 0x08, i8 + 1) >= 0 && ((v >> 22) & 1u) == (uint32_t)want_b22,
+           "%s: slice re-store 0x08 bit 22 = %d (got %08x)", tag, want_b22, v);
+
+    if (want_b22) {
+        checkf(last_write(0, 0x94, &v) >= 0 && v == want_94,
+               "%s: 0x94 = %08x, want %08x", tag, v, want_94);
+        checkf(last_write(0, 0xa8, &v) >= 0 && v == (last ? p1 : p0),
+               "%s: 0xa8 = plane[last=%u]", tag, last);
+    } else {
+        checkf(find_write(0, 0x94, 0) < 0, "%s: 0x94 not written", tag);
+        checkf(find_write(0, 0xa8, 0) < 0, "%s: 0xa8 not written", tag);
+    }
+    if (lvl != 0u) {
+        uint32_t a0 = 0;
+
+        checkf(last_write(0, 0xac, &v) >= 0 && v == (curr ? p1 : p0),
+               "%s: 0xac = plane[curr=%u]", tag, curr);
+        /* same slots as the reference plane (0xa0) */
+        last_write(0, 0xa0, &a0);
+        checkf(a0 == (uint32_t)((uintptr_t)e->bufs.full[last].phy >> 8),
+               "%s: 0xa8/0xa0 share the last slot", tag);
+        checkf(all_bytes(e->bufs.filt3d[last].vir, sz,
+                         (unsigned char)freecodec_h264_3d_fill(lvl)),
+               "%s: plane[last=%u] filled with F(%u)", tag, last, lvl);
+        checkf(flushed(e->bufs.filt3d[last].vir, (int)sz), "%s: plane[last] flushed", tag);
+        if (last != curr)
+            checkf(all_bytes(e->bufs.filt3d[curr].vir, sz, 0x11),
+                   "%s: plane[curr] not touched", tag);
+    } else {
+        checkf(find_write(0, 0xac, 0) < 0, "%s: 0xac not written", tag);
+        checkf(all_bytes(e->bufs.filt3d[0].vir, sz, 0x11) &&
+               all_bytes(e->bufs.filt3d[1].vir, sz, 0x11), "%s: no plane touched", tag);
+    }
+}
+
+static void *f3d_open(fwm_venc_device_t *dev, fwm_venc_base_config_t *cfg,
+                      unsigned int level)
+{
+    fwm_venc_fixed_qp_t fq;
+    unsigned char l = (unsigned char)level;
+    void *h;
+
+    install_fake_ve();
+    install_fake_memops();
+    h = dev->open(cfg, 0x21210u);
+    if (!h)
+        return NULL;
+    fc_enc_set_trace(h, trace_cb, NULL);
+    fq.enable = 1; fq.i_qp = 25; fq.p_qp = 40;
+    dev->set_parameter(h, FWM_VENC_PARAM_H264_FIXED_QP, &fq);
+    dev->set_parameter(h, FWM_VENC_PARAM_FILTER_3D, &l);
+    if (dev->init(h, cfg) != FWM_VENC_RESULT_OK) {
+        dev->close(h);
+        return NULL;
+    }
+    return h;
+}
+
+/* Device level, §8.2-§8.4 plus §6/§7 (live change, dynamic-ME latch). */
+static void test_filter_3d_device(void)
+{
+    fwm_venc_device_t *dev = &video_encoder_h264_ver2;
+    fwm_venc_base_config_t cfg = make_base_config(176, 144);
+    fc_enc_instance *e;
+    unsigned char l;
+    int i8;
+    void *h;
+
+    /* Level 2, I QP 25 (T = 4), P QP 40 (T = 2). */
+    h = f3d_open(dev, &cfg, 2u);
+    if (!h) { fail("3ddev: open/init failed"); return; }
+    e = (fc_enc_instance *)h;
+    checkf(e->bufs.filt3d[0].size == 12u * 9u * 16u, "3ddev: plane size 12*H*align8(W)");
+    checkf(e->reg_info.dynamic_me_enable == 0u, "3ddev: dynamic ME latched off (level 2 at init)");
+    f3d_picture(dev, h, "3ddev pic0 (IDR, §8.2)", 0, 0u);
+    f3d_picture(dev, h, "3ddev pic1 (P)", 1, 0x01000000u);
+    f3d_picture(dev, h, "3ddev pic2 (P)", 1, 0x01000000u);
+    dev->set_parameter(h, FWM_VENC_PARAM_FORCE_KEY_FRAME, NULL);
+    f3d_picture(dev, h, "3ddev pic3 (IDR, §8.4)", 1, 0x02000000u);
+    checkf(e->pic.frame_num == 0u, "3ddev: pic3 really was an IDR");
+    f3d_picture(dev, h, "3ddev pic4 (P after IDR)", 1, 0x01000000u);
+    dev->set_parameter(h, FWM_VENC_PARAM_FORCE_KEY_FRAME, NULL);
+    f3d_picture(dev, h, "3ddev pic5 (IDR, §8.4)", 1, 0x02000000u);
+
+    /* Live 2 -> 5 (F = 0xCC), then off: next picture follows (§7); dynamic
+     * ME stays latched off (§6). */
+    l = 5; dev->set_parameter(h, FWM_VENC_PARAM_FILTER_3D, &l);
+    f3d_picture(dev, h, "3ddev live 5", 1, 0x02800000u);
+    l = 0; dev->set_parameter(h, FWM_VENC_PARAM_FILTER_3D, &l);
+    f3d_picture(dev, h, "3ddev live 0", 0, 0u);
+    i8 = find_write(0, 0x08, 0);
+    checkf(i8 >= 0 && (g_log[i8].val & 0x100u) == 0u,
+           "3ddev: level 0 live does not re-enable dynamic ME");
+
+    /* QP 52 keeps the previous T (§2.2): T was 5 from the level-5 P picture. */
+    {
+        fwm_venc_fixed_qp_t fq = { 1, 25, 52 };
+
+        l = 1; dev->set_parameter(h, FWM_VENC_PARAM_FILTER_3D, &l);
+        dev->set_parameter(h, FWM_VENC_PARAM_H264_FIXED_QP, &fq);
+        f3d_picture(dev, h, "3ddev QP 52", 1, 5u << 23);
+    }
+    dev->uninit(h);
+    dev->close(h);
+
+    /* Level 0 at init: dynamic ME latched on; raising the level live runs
+     * both (§6), and the first picture was still an "off" picture. */
+    h = f3d_open(dev, &cfg, 0u);
+    if (!h) { fail("3ddev0: open/init failed"); return; }
+    e = (fc_enc_instance *)h;
+    checkf(e->reg_info.dynamic_me_enable == 1u, "3ddev0: dynamic ME latched on");
+    f3d_picture(dev, h, "3ddev0 pic0 (off)", 0, 0u);
+    l = 3; dev->set_parameter(h, FWM_VENC_PARAM_FILTER_3D, &l);
+    f3d_picture(dev, h, "3ddev0 pic1 (live 3)", 1, 0x01800000u);
+    i8 = find_write(0, 0x08, 0);
+    checkf(i8 >= 0 && (g_log[i8].val & 0x100u) != 0u,
+           "3ddev0: dynamic ME still on after a live level raise");
+    dev->uninit(h);
+    dev->close(h);
+
+    /* First picture at a non-zero level on a fresh instance (§8.2, level 1). */
+    h = f3d_open(dev, &cfg, 1u);
+    if (!h) { fail("3ddev1: open/init failed"); return; }
+    f3d_picture(dev, h, "3ddev1 pic0", 0, 0u);
+    dev->uninit(h);
+    dev->close(h);
+}
+
+/* §7: 0..6 stored unchanged, > 6 -> 3. */
+static void test_filter_3d_param(void)
+{
+    fwm_venc_device_t *dev = &video_encoder_h264_ver2;
+    fwm_venc_base_config_t cfg = make_base_config(64, 64);
+    fc_enc_instance *e;
+    static const unsigned int vals[] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 100, 255, 0 };
+    unsigned int i;
+    void *h;
+
+    install_fake_ve();
+    install_fake_memops();
+    h = dev->open(&cfg, 0x21210u);
+    if (!h) { fail("3dpar: open() returned NULL"); return; }
+    e = (fc_enc_instance *)h;
+    checkf(e->params.filter_3d_level == 0u, "3dpar: default level 0");
+    for (i = 0; i < sizeof(vals) / sizeof(vals[0]); i++) {
+        unsigned int k = vals[i];
+        unsigned char b[4] = { (unsigned char)k, 0xaa, 0xaa, 0xaa };   /* first byte only */
+        unsigned int want = (k <= 6u) ? k : 3u;
+
+        checkf(dev->set_parameter(h, FWM_VENC_PARAM_FILTER_3D, b) == FWM_VENC_RESULT_OK,
+               "3dpar: %u accepted", k);
+        checkf(e->params.filter_3d_level == want, "3dpar: %u -> %u, want %u",
+               k, e->params.filter_3d_level, want);
+    }
+    dev->close(h);
+}
+
 int main(void)
 {
     test_lifecycle_and_sequence();
@@ -1210,12 +1497,16 @@ int main(void)
     test_overlay_set_parameter();
     test_live_rc_and_fastenc();
     test_vbv_cache();
+    test_filter_3d_tables();
+    test_filter_3d_script();
+    test_filter_3d_device();
+    test_filter_3d_param();
 
     if (g_fail)
         return 1;
     printf("enc: lifecycle, confirmed bug fixes 1/2, error paths, bit-writer "
           "skip, register parity, two instances, take/return, ver1 alias, lock "
           "contract, init-time input config, SPS crop + offset, offset-0 publish, "
-          "overlay, live RC, fast-enc, VBV cache ok\n");
+          "overlay, live RC, fast-enc, VBV cache, 3D filter ok\n");
     return 0;
 }

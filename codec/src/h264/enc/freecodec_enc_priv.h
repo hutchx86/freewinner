@@ -90,7 +90,7 @@ typedef struct fc_enc_params {
     int          cabac_enable;
     int          fixed_qp_enable;
     int          fast_enc;           /* 0x10 fast-mode bits (spec 11) */
-    unsigned int filter_3d_level;    /* 0 off, 1..3 (FWM_VENC_PARAM_FILTER_3D) */
+    unsigned int filter_3d_level;    /* 0 off, 1..6 (FWM_VENC_PARAM_FILTER_3D, 3D-filter spec §7) */
     int          vbv_no_cache;       /* bitstream ring allocated uncached */
     int          fixed_i_qp, fixed_p_qp;
     int          qp_min, qp_max;
@@ -133,6 +133,7 @@ typedef struct fc_enc_instance {
 
     freecodec_rc    rc;
     int             last_p_qp;      /* QP of the latest P picture, 0 = none yet */
+    unsigned int    filt3d_t;       /* last 3D-filter threshold T (3D-filter spec §2.2) */
     int             initialised;   /* init() has succeeded at least once */
 
     freecodec_h264_reg_info_out reg_info;   /* persistent per-instance values */

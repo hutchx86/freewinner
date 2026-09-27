@@ -66,13 +66,19 @@ static const unsigned int ENC_SCRIPT_WRITE_OFFSETS[] = {
     0xc0u, 0xc4u, 0xc8u, 0xf8u, 0xfcu
 };
 
-static void enc_write_script_selective(fc_enc_instance *e, const uint32_t *words)
+static void enc_write_script_selective(fc_enc_instance *e, const uint32_t *words,
+                                       unsigned int f3d_level, unsigned int f3d_enabled)
 {
     unsigned int i;
 
     for (i = 0; i < sizeof(ENC_SCRIPT_WRITE_OFFSETS) / sizeof(ENC_SCRIPT_WRITE_OFFSETS[0]); i++) {
         unsigned int off = ENC_SCRIPT_WRITE_OFFSETS[i];
 
+        /* The 3D step writes 0xac only with level != 0, 0x94/0xa8 only when
+         * enabled; otherwise they keep the reset value 0 (3D-filter spec §1-§4). */
+        if ((off == 0xacu && f3d_level == 0u) ||
+            ((off == 0x94u || off == 0xa8u) && !f3d_enabled))
+            continue;
         enc_write(e, off, words[off / 4u]);
     }
 }
@@ -129,6 +135,26 @@ static void free_buffers(fc_enc_instance *e)
     e->ovl.b_overlay = 0;
 }
 
+/* 3D-filter planes: dst-height-MB * 12 * align8(dst-width-MB), two of them,
+ * memset 0xff (memory spec, allocation table 0x15d0). Also the defensive
+ * encode-time path of 3D-filter spec §5; allocates only missing planes. */
+static int alloc_filt3d(fc_enc_instance *e)
+{
+    const fc_enc_geom *g = &e->geom;
+    unsigned int f3d_size = g->h_mb * 12u * fc_enc_align_up(g->w_mb, 8u);
+    int i;
+
+    for (i = 0; i < 2; i++) {
+        if (e->bufs.filt3d[i].vir != NULL)
+            continue;
+        if (alloc_one(e, &e->bufs.filt3d[i], f3d_size) != 0)
+            return -1;
+        memset(e->bufs.filt3d[i].vir, 0xff, f3d_size);
+        e->memops->flush_cache(e->bufs.filt3d[i].vir, (int)f3d_size);
+    }
+    return 0;
+}
+
 static int alloc_buffers(fc_enc_instance *e)
 {
     const fc_enc_geom *g = &e->geom;
@@ -176,18 +202,8 @@ static int alloc_buffers(fc_enc_instance *e)
     if (alloc_one(e, &e->bufs.mv, g->h_mb * 8u * fc_enc_align_up(g->w_mb, 4u)) != 0)
         goto fail;
 
-    /* 3D-filter planes: dst-height-MB * 12 * align8(dst-width-MB), two of them,
-     * memset 0xff (memory spec, allocation table 0x15d0). */
-    {
-        unsigned int f3d_size = g->h_mb * 12u * fc_enc_align_up(g->w_mb, 8u);
-
-        for (i = 0; i < 2; i++) {
-            if (alloc_one(e, &e->bufs.filt3d[i], f3d_size) != 0)
-                goto fail;
-            memset(e->bufs.filt3d[i].vir, 0xff, f3d_size);
-            e->memops->flush_cache(e->bufs.filt3d[i].vir, (int)f3d_size);
-        }
-    }
+    if (alloc_filt3d(e) != 0)
+        goto fail;
 
     e->bufs.bs = BitStreamCreate(e->params.vbv_no_cache ? 1 : 0, (int)e->params.vbv_size, e->memops,
                                  e->ve_ops, e->ve_self);
@@ -517,6 +533,7 @@ static int enc_encode(void *h, fwm_venc_input_picture_t *in)
     freecodec_h264_config_reg_cfg rcfg;
     unsigned int main_last, main_curr;
     uint32_t baseline, status, slice_regs[6];
+    unsigned int f3d_level, f3d_enabled;
     long long length;
     freecodec_h264_slice_state sstate;
     freecodec_h264_slice_cfg scfg;
@@ -587,6 +604,28 @@ static int enc_encode(void *h, fwm_venc_input_picture_t *in)
     main_curr = n % 2u;
     main_last = (n == 0u) ? 0u : ((n - 1u) % 2u);
 
+    /* 3D-filter step (3D-filter spec): the level is read afresh every picture
+     * (§7). Enable = level != 0 and not the first picture of the instance
+     * (§3); T follows the slice QP, QP >= 52 keeping the previous T (§2.2);
+     * the last-slot plane is reset to F(level) and flushed on every picture
+     * with level != 0, the first included (§5). */
+    f3d_level = e->params.filter_3d_level;
+    f3d_enabled = freecodec_h264_3d_enabled(f3d_level, n);
+    if (f3d_level != 0u) {
+        fc_enc_buf *pl;
+
+        if (qp >= 52)
+            fprintf(stderr, "freecodec_enc: 3D filter: slice QP %d >= 52, threshold kept\n", qp);
+        e->filt3d_t = freecodec_h264_3d_threshold(f3d_level, qp, e->filt3d_t);
+        if (e->bufs.filt3d[0].vir == NULL || e->bufs.filt3d[1].vir == NULL)
+            alloc_filt3d(e);            /* §5 defensive path, normally allocated at init */
+        pl = &e->bufs.filt3d[main_last];
+        if (pl->vir != NULL) {
+            memset(pl->vir, (int)freecodec_h264_3d_fill(f3d_level), pl->size);
+            e->memops->flush_cache(pl->vir, (int)pl->size);
+        }
+    }
+
     memset(&rcfg, 0, sizeof(rcfg));
     /* The step-2 reset pulse returns the engine's own (shared,
      * engine-internal) bitstream write position to 0, and 0x88 does not move
@@ -608,13 +647,16 @@ static int enc_encode(void *h, fwm_venc_input_picture_t *in)
     rcfg.n_slice_height = 0u;    /* software-header path, the only one used */
     rcfg.slice_qp = qp;
     rcfg.curr_frm_idx = main_curr;
+    rcfg.picture_index = n;
     rcfg.frame_count = n;
     rcfg.classify_engine_enable = e->params.fixed_qp_enable ? 0u : 1u;
     rcfg.mb_rc_enable = e->reg_info.mb_rc_enable;
-    /* The 3D filter level can change live; dynamic ME runs only with it off
-     * (reg-shadow spec: dynamic-ME enable <- level == 0). */
-    rcfg.filter_3d_level = e->params.filter_3d_level;
-    rcfg.dynamic_me_enable = e->params.filter_3d_level == 0u;
+    /* The 3D filter level can change live; the dynamic-ME enable is the
+     * init-time latch (level == 0 at init), not re-evaluated per picture
+     * (3D-filter spec §6). */
+    rcfg.filter_3d_level = f3d_level;
+    rcfg.filter_3d_threshold = e->filt3d_t;
+    rcfg.dynamic_me_enable = e->reg_info.dynamic_me_enable;
     rcfg.filter_3d_phy[0] = (unsigned int)((uintptr_t)e->bufs.filt3d[0].phy >> 8);
     rcfg.filter_3d_phy[1] = (unsigned int)((uintptr_t)e->bufs.filt3d[1].phy >> 8);
     rcfg.qp_mad_sse_output_flag = 0u;   /* stays off, spec 12 section 16 item 4 */
@@ -656,7 +698,7 @@ static int enc_encode(void *h, fwm_venc_input_picture_t *in)
     rcfg.dyn_me_th[3] = (e->geom.w_mb * 32u) / 10u;
 
     freecodec_h264_config_registers(&rcfg, regs);
-    enc_write_script_selective(e, regs); /* selected offsets only -- see the fix note above enc_write_script_selective */
+    enc_write_script_selective(e, regs, f3d_level, f3d_enabled); /* selected offsets only -- see the fix note above enc_write_script_selective */
 
     /* step 4: ISP, after the register script (spec 12 section 5.5). */
     program_isp(e, in);
@@ -686,6 +728,13 @@ static int enc_encode(void *h, fwm_venc_input_picture_t *in)
     scfg.n_long_ref_poc = 0u;
     scfg.virtual_period = 0u;
     scfg.motion_parameter = 0u;
+    /* The slice step re-stores 0x08 from this seed, so the 3D-filter enable
+     * must be part of it or the re-store would clear it (3D-filter spec §3/§6). */
+    e->slice_seed = e->reg_info.shadow;
+    if (f3d_enabled)
+        e->slice_seed.slice_stride_control |= 1u << 22;
+    else
+        e->slice_seed.slice_stride_control &= ~(1u << 22);
     scfg.seed_shadow = &e->slice_seed;
 
     if (is_idr) {
@@ -922,6 +971,7 @@ static int enc_init(void *h, fwm_venc_base_config_t *cfg)
 
     memset(&e->pic, 0, sizeof(e->pic));
     e->pic.first_picture = 1;
+    e->filt3d_t = 0u;
     e->initialised = 1;
 
     return FWM_VENC_RESULT_OK;
@@ -1169,7 +1219,13 @@ static int enc_set_parameter(void *h, int index, void *param)
     case FWM_VENC_PARAM_FILTER_3D: {
         unsigned int lvl = *(unsigned char *)param;
 
-        e->params.filter_3d_level = lvl > 3u ? 3u : lvl;
+        /* 0..6 stored unchanged; above 6 falls back to 3, not 6 (3D-filter
+         * spec §7). Read afresh per picture, so a live change applies next. */
+        if (lvl > 6u) {
+            fprintf(stderr, "freecodec_enc: 3D filter level %u out of range, using 3\n", lvl);
+            lvl = 3u;
+        }
+        e->params.filter_3d_level = lvl;
         return FWM_VENC_RESULT_OK;
     }
     case FWM_VENC_PARAM_MAX_KEY_INTERVAL:

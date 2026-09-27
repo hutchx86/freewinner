@@ -174,7 +174,8 @@ typedef struct freecodec_h264_config_reg_cfg {
     unsigned int coding_type;
     unsigned int n_slice_height;
     int          slice_qp;
-    unsigned int curr_frm_idx;
+    unsigned int curr_frm_idx;     /* ring slot; not used by the 3D step (3D-filter spec §3) */
+    unsigned int picture_index;    /* pictures encoded since init, not reset by IDR */
     unsigned int frame_count;
 
     unsigned int long_term_ref_enable;
@@ -187,6 +188,7 @@ typedef struct freecodec_h264_config_reg_cfg {
     unsigned int hp_contrast_th;
     unsigned int hp_mad_th;
     unsigned int filter_3d_level;
+    unsigned int filter_3d_threshold; /* T of 3D-filter spec §2.2 (caller keeps it across pictures) */
     unsigned int classify_engine_enable;
     unsigned int mb_rc_enable;
     unsigned int b_test_i_frame;
@@ -239,6 +241,16 @@ typedef struct freecodec_h264_config_reg_cfg {
 
 void freecodec_h264_config_registers(const freecodec_h264_config_reg_cfg *cfg,
                                      uint32_t regs[0x200]);
+
+/* 3D (temporal noise) filter helpers (3D-filter spec). */
+/* Enable (0x08 bit 22): level != 0 and not the instance's first picture (§3). */
+unsigned int freecodec_h264_3d_enabled(unsigned int level, unsigned int picture_index);
+/* Threshold T for register 0x94 (= T << 23), §2.2: level in QP 0..19 and
+ * 31..51, 2 x level in 20..30; QP >= 52 keeps `prev_t`. */
+unsigned int freecodec_h264_3d_threshold(unsigned int level, int slice_qp,
+                                         unsigned int prev_t);
+/* Per-picture scratch-plane fill byte F(level), §5 (level != 0). */
+unsigned int freecodec_h264_3d_fill(unsigned int level);
 
 #ifdef __cplusplus
 }
