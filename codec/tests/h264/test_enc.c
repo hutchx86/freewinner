@@ -698,7 +698,8 @@ static void test_ver1_alias(void)
 
 static void test_h265_jpeg_stubs(void)
 {
-    checkf(video_encoder_h265.open(NULL, 0) == NULL, "h265 open() returns NULL");
+    /* video_encoder_h265 is now the real device, tested in tests/h265; only
+     * the JPEG table is still a stub in this translation unit. */
     checkf(video_encoder_jpeg.open(NULL, 0) == NULL, "jpeg open() returns NULL");
 }
 

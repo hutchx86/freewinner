@@ -115,14 +115,23 @@ static void test_create_selection(void)
     check(e != NULL, "#4 create h264_ver2");
     check(seam_ver2.open_n == 1 && seam_ver1.open_n == 0, "#4 open on ver2");
     VideoEncDestroy(e);
+
+    /* #9: H.265 selects the H.265 device. */
+    seam_reset();
+    e = VideoEncCreate(FWM_VENC_CODEC_H265);
+    check(e != NULL, "#9 create h265");
+    check(seam_h265.open_n == 1 && seam_ver2.open_n == 0 && seam_ver1.open_n == 0,
+          "#9 open on h265");
+    check(seam_h265.open_ic == 0x1708u, "#9 h265 saw ic version");
+    check(seam_last_ve_format == (unsigned)FWM_VENC_CODEC_H265, "#9 ve work mode");
+    VideoEncDestroy(e);
 }
 
 static void test_reject(void)
 {
-    /* #3: only H.264 values are accepted. */
+    /* #3: values with no device are rejected. */
     seam_reset();
     check(VideoEncCreate(FWM_VENC_CODEC_JPEG) == NULL, "#3 jpeg rejected");
-    check(VideoEncCreate(FWM_VENC_CODEC_H265) == NULL, "#3 h265 rejected");
     check(VideoEncCreate(FWM_VENC_CODEC_VP8) == NULL, "#3 vp8 rejected");
     check(seam_ve_init_n == 0, "#3 no ve init");
     check(seam_ver2.open_n == 0 && seam_ver1.open_n == 0 &&

@@ -1350,8 +1350,9 @@ fwm_venc_device_t video_encoder_h264_ver1 = {
     enc_valid_count, enc_get_frame, enc_free_frame, enc_reset_frames
 };
 
-/* Section 1: video_encoder_h265 and video_encoder_jpeg are tables whose
- * create returns NULL and whose other entries return the error result. */
+/* Section 1: video_encoder_jpeg is a table whose create returns NULL and whose
+ * other entries return the error result. (The H.265 device, video_encoder_h265,
+ * lives in src/h265/enc/freecodec_h265_enc.c.) */
 static void *stub_open(fwm_venc_base_config_t *cfg, unsigned int ic)
 {
     (void)cfg; (void)ic;
@@ -1367,13 +1368,6 @@ static int stub_valid_count(void *h) { (void)h; return FWM_VENC_RESULT_NOT_SUPPO
 static int stub_get_frame(void *h, fwm_venc_output_frame_t *b) { (void)h; (void)b; return FWM_VENC_RESULT_NOT_SUPPORT; }
 static int stub_free_frame(void *h, fwm_venc_output_frame_t *b) { (void)h; (void)b; return FWM_VENC_RESULT_NOT_SUPPORT; }
 static int stub_reset_frames(void *h) { (void)h; return FWM_VENC_RESULT_NOT_SUPPORT; }
-
-fwm_venc_device_t video_encoder_h265 = {
-    "video_encoder_h265",
-    stub_open, stub_init, stub_uninit, stub_close, stub_encode,
-    stub_get_param, stub_set_param,
-    stub_valid_count, stub_get_frame, stub_free_frame, stub_reset_frames
-};
 
 fwm_venc_device_t video_encoder_jpeg = {
     "video_encoder_jpeg",

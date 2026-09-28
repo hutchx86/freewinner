@@ -55,6 +55,27 @@ typedef enum fwm_venc_gop_mode_e {
     FWM_VENC_GOP_NORMAL_P = 1       /* I followed by a plain chain of P pictures  */
 } fwm_venc_gop_mode_e;
 
+/* H.265 general_profile_idc; only Main is produced by this encoder (spec H265
+ * 13 section 4). */
+typedef enum fwm_venc_h265_profile_e {
+    FWM_VENC_H265_PROFILE_MAIN = 1
+} fwm_venc_h265_profile_e;
+
+/* H.265 rate-control selection carried in VencH265Param.sRcParam.eRcMode
+ * (spec H265 10 section 1). */
+typedef enum fwm_venc_h265_rc_mode_e {
+    FWM_VENC_H265_RC_CBR   = 0,     /* classify engine, CBR tables             */
+    FWM_VENC_H265_RC_VBR   = 1,     /* as CBR plus img-bin output from f1      */
+    FWM_VENC_H265_RC_ABR   = 2,     /* MB-level RC, zeroed MAD tables          */
+    FWM_VENC_H265_RC_AVBR  = 3,     /* ABR family                                */
+    FWM_VENC_H265_RC_FIXQP = 4      /* classify engine off, QP anchored        */
+} fwm_venc_h265_rc_mode_e;
+
+/* H.265 GOP control modes (spec H265 10 section 1); only AW_NORMALP is used. */
+typedef enum fwm_venc_h265_gop_mode_e {
+    FWM_VENC_H265_GOP_NORMAL_P = 1  /* single-reference P chain                 */
+} fwm_venc_h265_gop_mode_e;
+
 typedef enum fwm_venc_overlay_argb_type_e {
     FWM_VENC_OVERLAY_ARGB1555 = 2
 } fwm_venc_overlay_argb_type_e;
@@ -104,6 +125,19 @@ typedef enum fwm_venc_param_e {
     FWM_VENC_PARAM_FRAME_LENGTH_THRESHOLD = 0x205,
     FWM_VENC_PARAM_BITRATE_RANGE          = 0x207,
     FWM_VENC_PARAM_H265_CONFIG            = 0x300,
+    FWM_VENC_PARAM_H265_GOP               = 0x301,
+    FWM_VENC_PARAM_H265_TOTAL_FRAMES      = 0x302,
+    FWM_VENC_PARAM_H265_UPDATE_LT_REF     = 0x303,
+    FWM_VENC_PARAM_H265_HEADER            = 0x304,
+    FWM_VENC_PARAM_H265_TENDENCY          = 0x305,
+    FWM_VENC_PARAM_H265_TRANSFORM         = 0x306,
+    FWM_VENC_PARAM_H265_SAO               = 0x307,
+    FWM_VENC_PARAM_H265_DEBLOCK           = 0x308,
+    FWM_VENC_PARAM_H265_TIMING            = 0x309,
+    FWM_VENC_PARAM_H265_INTRA_PERIOD      = 0x30a,
+    FWM_VENC_PARAM_H265_MB_MODE_CTRL      = 0x30b,
+    FWM_VENC_PARAM_H265_MB_INFO_OUTPUT    = 0x30d,
+    FWM_VENC_PARAM_H265_ENC_TIME          = 0x40d,
     FWM_VENC_PARAM_ALTER_FRAME            = 0x400,
     FWM_VENC_PARAM_CHANNEL                = 0x402,
     FWM_VENC_PARAM_OVERLAY                = 0x404,
@@ -365,6 +399,78 @@ typedef struct fwm_venc_input_pool {
     unsigned int chroma_size;
 } fwm_venc_input_pool_t;
 
+/* ===================================================== H.265 records (spec 12) */
+
+/* Profile / level (8 bytes). level is the H.265 general_level_idc: 123 = 4.1. */
+typedef struct fwm_venc_h265_profile_level {
+    fwm_venc_h265_profile_e profile;
+    int                     level;
+} fwm_venc_h265_profile_level_t;
+
+/* GOP control (16 bytes; spec H265 12 section 3.1 index 0x301, 10 section 1).
+ * The vendor record is 0x1f90 bytes; only these fields are read. */
+typedef struct fwm_venc_h265_gop {
+    unsigned char            gop_control_en;
+    fwm_venc_h265_gop_mode_e gop_mode;
+    int                      gop_size;
+    int                      total_frames_num;
+} fwm_venc_h265_gop_t;
+
+/* Tendency coefficients (12 bytes; spec H265 12 section 3.1 index 0x305). */
+typedef struct fwm_venc_h265_tendency {
+    unsigned int inter;
+    unsigned int skip;
+    unsigned int merge_sub;
+} fwm_venc_h265_tendency_t;
+
+/* Transform flags (8 bytes; index 0x306, spec H265 11 section 3.2 / 13 section 6). */
+typedef struct fwm_venc_h265_transform {
+    int transform_skip_en;   /* PPS transform_skip_enabled_flag                   */
+    int transform_8x8_en;    /* command-block +0x08 bit 27                        */
+} fwm_venc_h265_transform_t;
+
+/* Sample-adaptive-offset flags (12 bytes; index 0x307, spec H265 13 section 8). */
+typedef struct fwm_venc_h265_sao {
+    int enabled;
+    int slice_sao_luma;      /* slice_sao_luma_flag                               */
+    int slice_sao_chroma;    /* slice_sao_chroma_flag                             */
+} fwm_venc_h265_sao_t;
+
+/* Deblocking controls (16 bytes; index 0x308, spec H265 11 section 3.1). */
+typedef struct fwm_venc_h265_deblock {
+    int deblock_idc;
+    int tc_offset_div2;      /* command-block +0x04 bits [19:16]                  */
+    int beta_offset_div2;    /* command-block +0x04 bits [23:20]                  */
+    int _reserved;
+} fwm_venc_h265_deblock_t;
+
+/* Timing (16 bytes; index 0x309). */
+typedef struct fwm_venc_h265_timing {
+    unsigned int num_units_in_tick;
+    unsigned int time_scale;
+    int          num_ticks_poc_diff_one;
+    unsigned int framerate;
+} fwm_venc_h265_timing_t;
+
+/* H.265 stream parameters (spec H265 12 section 3.3). The vendor block is
+ * 0x18c+ bytes; these are the fields this device reads. */
+typedef struct fwm_venc_h265_config {
+    fwm_venc_h265_profile_level_t profile_level;
+    fwm_venc_qp_range_t           qp_range;
+    int                           frame_rate;
+    int                           source_frame_rate;
+    int                           bitrate;
+    int                           idr_period;      /* handler forces 40        */
+    int                           intra_period;    /* handler forces 40        */
+    int                           gop_size;        /* handler forces 20        */
+    int                           qp_init;
+    fwm_venc_h265_rc_mode_e       rc_mode;
+    int                           min_i_qp;
+    fwm_venc_vbr_t                vbr;
+    fwm_venc_fixed_qp_t           fixed_qp;
+    fwm_venc_h265_gop_t           gop;
+} fwm_venc_h265_config_t;
+
 /* ========================================================== device table */
 
 /* One encoder device: 12 slots (48 bytes on the target). Handles are opaque. */
@@ -582,6 +688,54 @@ _Static_assert(sizeof(fwm_venc_input_pool_t) == 12, "input_pool is 12 bytes");
 _Static_assert(offsetof(fwm_venc_input_pool_t, count) == 0, "input_pool.count");
 _Static_assert(offsetof(fwm_venc_input_pool_t, luma_size) == 4, "input_pool.luma_size");
 _Static_assert(offsetof(fwm_venc_input_pool_t, chroma_size) == 8, "input_pool.chroma_size");
+
+/* H.265 records (spec H265 12 section 3). */
+_Static_assert(sizeof(fwm_venc_h265_profile_e) == 4, "fwm_venc_h265_profile_e is 4 bytes");
+_Static_assert(sizeof(fwm_venc_h265_rc_mode_e) == 4, "fwm_venc_h265_rc_mode_e is 4 bytes");
+_Static_assert(sizeof(fwm_venc_h265_gop_mode_e) == 4, "fwm_venc_h265_gop_mode_e is 4 bytes");
+_Static_assert(sizeof(fwm_venc_h265_profile_level_t) == 8, "h265_profile_level is 8 bytes");
+_Static_assert(offsetof(fwm_venc_h265_profile_level_t, profile) == 0, "h265_profile_level.profile");
+_Static_assert(offsetof(fwm_venc_h265_profile_level_t, level) == 4, "h265_profile_level.level");
+_Static_assert(sizeof(fwm_venc_h265_gop_t) == 16, "h265_gop is 16 bytes");
+_Static_assert(offsetof(fwm_venc_h265_gop_t, gop_control_en) == 0, "h265_gop.gop_control_en");
+_Static_assert(offsetof(fwm_venc_h265_gop_t, gop_mode) == 4, "h265_gop.gop_mode");
+_Static_assert(offsetof(fwm_venc_h265_gop_t, gop_size) == 8, "h265_gop.gop_size");
+_Static_assert(offsetof(fwm_venc_h265_gop_t, total_frames_num) == 12, "h265_gop.total_frames_num");
+_Static_assert(sizeof(fwm_venc_h265_tendency_t) == 12, "h265_tendency is 12 bytes");
+_Static_assert(offsetof(fwm_venc_h265_tendency_t, inter) == 0, "h265_tendency.inter");
+_Static_assert(offsetof(fwm_venc_h265_tendency_t, skip) == 4, "h265_tendency.skip");
+_Static_assert(offsetof(fwm_venc_h265_tendency_t, merge_sub) == 8, "h265_tendency.merge_sub");
+_Static_assert(sizeof(fwm_venc_h265_transform_t) == 8, "h265_transform is 8 bytes");
+_Static_assert(offsetof(fwm_venc_h265_transform_t, transform_skip_en) == 0, "h265_transform.transform_skip_en");
+_Static_assert(offsetof(fwm_venc_h265_transform_t, transform_8x8_en) == 4, "h265_transform.transform_8x8_en");
+_Static_assert(sizeof(fwm_venc_h265_sao_t) == 12, "h265_sao is 12 bytes");
+_Static_assert(offsetof(fwm_venc_h265_sao_t, enabled) == 0, "h265_sao.enabled");
+_Static_assert(offsetof(fwm_venc_h265_sao_t, slice_sao_luma) == 4, "h265_sao.slice_sao_luma");
+_Static_assert(offsetof(fwm_venc_h265_sao_t, slice_sao_chroma) == 8, "h265_sao.slice_sao_chroma");
+_Static_assert(sizeof(fwm_venc_h265_deblock_t) == 16, "h265_deblock is 16 bytes");
+_Static_assert(offsetof(fwm_venc_h265_deblock_t, deblock_idc) == 0, "h265_deblock.deblock_idc");
+_Static_assert(offsetof(fwm_venc_h265_deblock_t, tc_offset_div2) == 4, "h265_deblock.tc_offset_div2");
+_Static_assert(offsetof(fwm_venc_h265_deblock_t, beta_offset_div2) == 8, "h265_deblock.beta_offset_div2");
+_Static_assert(sizeof(fwm_venc_h265_timing_t) == 16, "h265_timing is 16 bytes");
+_Static_assert(offsetof(fwm_venc_h265_timing_t, num_units_in_tick) == 0, "h265_timing.num_units_in_tick");
+_Static_assert(offsetof(fwm_venc_h265_timing_t, time_scale) == 4, "h265_timing.time_scale");
+_Static_assert(offsetof(fwm_venc_h265_timing_t, num_ticks_poc_diff_one) == 8, "h265_timing.num_ticks_poc_diff_one");
+_Static_assert(offsetof(fwm_venc_h265_timing_t, framerate) == 12, "h265_timing.framerate");
+_Static_assert(sizeof(fwm_venc_h265_config_t) == 92, "h265_config is 92 bytes");
+_Static_assert(offsetof(fwm_venc_h265_config_t, profile_level) == 0, "h265_config.profile_level");
+_Static_assert(offsetof(fwm_venc_h265_config_t, qp_range) == 8, "h265_config.qp_range");
+_Static_assert(offsetof(fwm_venc_h265_config_t, frame_rate) == 16, "h265_config.frame_rate");
+_Static_assert(offsetof(fwm_venc_h265_config_t, source_frame_rate) == 20, "h265_config.source_frame_rate");
+_Static_assert(offsetof(fwm_venc_h265_config_t, bitrate) == 24, "h265_config.bitrate");
+_Static_assert(offsetof(fwm_venc_h265_config_t, idr_period) == 28, "h265_config.idr_period");
+_Static_assert(offsetof(fwm_venc_h265_config_t, intra_period) == 32, "h265_config.intra_period");
+_Static_assert(offsetof(fwm_venc_h265_config_t, gop_size) == 36, "h265_config.gop_size");
+_Static_assert(offsetof(fwm_venc_h265_config_t, qp_init) == 40, "h265_config.qp_init");
+_Static_assert(offsetof(fwm_venc_h265_config_t, rc_mode) == 44, "h265_config.rc_mode");
+_Static_assert(offsetof(fwm_venc_h265_config_t, min_i_qp) == 48, "h265_config.min_i_qp");
+_Static_assert(offsetof(fwm_venc_h265_config_t, vbr) == 52, "h265_config.vbr");
+_Static_assert(offsetof(fwm_venc_h265_config_t, fixed_qp) == 64, "h265_config.fixed_qp");
+_Static_assert(offsetof(fwm_venc_h265_config_t, gop) == 76, "h265_config.gop");
 
 /* B.3 device table: 12 slots, slot n at 4 * n */
 _Static_assert(sizeof(fwm_venc_device_t) == 48, "device is 48 bytes");

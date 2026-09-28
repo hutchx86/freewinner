@@ -47,6 +47,8 @@ static fwm_venc_device_t *fenc_pick_device(fwm_venc_codec_e codec, unsigned int 
     if (codec == FWM_VENC_CODEC_H264)
         return ic_version >= FENC_IC_H264_VER2_MIN ? &video_encoder_h264_ver2
                                                    : &video_encoder_h264_ver1;
+    if (codec == FWM_VENC_CODEC_H265)
+        return &video_encoder_h265;
     /* FWM_VENC_CODEC_H264_VER2 names the ver2 device explicitly, bypassing the
      * IC-version test. */
     return &video_encoder_h264_ver2;
@@ -78,7 +80,8 @@ fwm_venc_handle_t *VideoEncCreate(fwm_venc_codec_e codecType)
     unsigned int ic_version = 0;
     int mem_inited = 0;
 
-    if (codecType != FWM_VENC_CODEC_H264 && codecType != FWM_VENC_CODEC_H264_VER2) {
+    if (codecType != FWM_VENC_CODEC_H264 && codecType != FWM_VENC_CODEC_H264_VER2 &&
+        codecType != FWM_VENC_CODEC_H265) {
         FENC_LOG("codec type %d is not supported\n", (int)codecType);
         return NULL;
     }

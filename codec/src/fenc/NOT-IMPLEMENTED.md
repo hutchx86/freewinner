@@ -10,7 +10,7 @@ in the spec's scope-and-non-goals list.
 
 | Area | Behaviour here |
 | --- | --- |
-| H.265, JPEG and VP8 codecs | `VideoEncCreate` accepts only `FWM_VENC_CODEC_H264` and `FWM_VENC_CODEC_H264_VER2`; every other codec type is rejected with NULL before anything is allocated. The clean codec's error-returning device stubs (`video_encoder_h265`, `video_encoder_jpeg`, `video_encoder_h264_ver1`) are never opened by this package. |
+| JPEG and VP8 codecs | `VideoEncCreate` accepts `FWM_VENC_CODEC_H264`, `FWM_VENC_CODEC_H264_VER2` and `FWM_VENC_CODEC_H265`; the remaining codec types are rejected with NULL before anything is allocated. The clean codec's error-returning device stubs (`video_encoder_jpeg`, and a VP8 slot if present) are never opened by this package. |
 | Still-JPEG path (`AWJpecEnc`) and its ION import/export helpers | Not provided. Nothing in the media daemon calls it, and no ION symbol is referenced from this package. |
 | Create-time SDK version banner | Not emitted. The clean implementation prints no vendor version text. |
 | Frame-rate / time accounting facility | Not reimplemented. The original's timing log was behind a compile-time switch that is off in this build; this package has no timing code and no `gettimeofday` use. |
