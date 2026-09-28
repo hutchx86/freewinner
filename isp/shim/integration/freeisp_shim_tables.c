@@ -23,6 +23,9 @@
 /* The freewinner locator: its `freeisp_tables_t` is the 38-member vendor
  * view and `freeisp_tables_load_rmm`/`_locate`/`_free` do all location work. */
 #include "freeisp/rmm_tables.h"
+#include "freeisp/pltm_presets.h"
+
+#include <stdio.h>
 
 /*
  * Per-module clean table types.  Every clean header declares its own
@@ -109,6 +112,45 @@ static afs_clean_trig_t    g_afs;
 static iso_clean_tables_t  g_iso;
 static gtm_clean_tables_t  g_gtm;
 static pltm_clean_tables_t g_pltm;
+
+/* PLTM presets: resolved separately from the table bundle (own text cache),
+ * kept across freeisp_shim_tables_free(), NULL-injected when unresolved. */
+static freeisp_pltm_presets_t g_presets;
+static int                    g_presets_ok;
+static char                   g_presets_status[96] = "not resolved";
+
+static void presets_note(const char *src, const char *why)
+{
+    snprintf(g_presets_status, sizeof(g_presets_status), "%s (%s)", src, why);
+}
+
+/* Presets from the firmware image; on success, optionally seed the text cache. */
+static void presets_from_image(const void *image, size_t len, const char *path,
+                               const char *cache)
+{
+    const char *why = "no image";
+    int ok = image ? freeisp_pltm_presets_extract(image, len, g_presets, &why) == 0
+                   : freeisp_pltm_presets_extract_file(path, g_presets, &why) == 0;
+
+    g_presets_ok = ok;
+    if (!ok) {
+        presets_note("neutral, firmware extraction failed", why);
+        return;
+    }
+    presets_note("extracted from firmware", "ok");
+    if (cache && cache[0] != '\0' &&
+        freeisp_pltm_presets_save_text(cache,
+            (const int32_t (*)[FREEISP_PLTM_PRESET_COLS])g_presets) != 0)
+        presets_note("extracted from firmware", "cache write failed");
+}
+
+static void presets_from_cache(const char *cache)
+{
+    const char *why = "no cache file";
+
+    g_presets_ok = freeisp_pltm_presets_load_text(cache, g_presets, &why) == 0;
+    presets_note(g_presets_ok ? "from cache" : "neutral, no valid cache", why);
+}
 
 /* Whole-descriptor copy target (the vendor pointer is `const HW_S32 *`). */
 static ae_desc_t           g_ae_table_default;
@@ -199,6 +241,7 @@ static void populate(void)
     memset(&g_pltm, 0, sizeof(g_pltm));
     g_pltm.strength_bank = v->pltm_stren_tbl_buf;
     g_pltm.converge_bank = v->AeConverData;   /* shared with AE/GTM */
+    g_pltm.presets       = g_presets_ok ? &g_presets[0][0] : NULL;
 
     if (base_shim_set_locator)
         base_shim_set_locator(v->anti_gamma_table, v->rgb2yuv_matrix,
@@ -234,6 +277,7 @@ int freeisp_shim_tables_from_memory(const void *image, size_t len)
 
     if (freeisp_tables_locate(image, len, &g_vendor) != 0)
         return -1;
+    presets_from_image(image, len, NULL, NULL);
 
     populate();
     install();
@@ -249,6 +293,7 @@ int freeisp_shim_tables_from_rmm(const char *path)
 
     if (freeisp_tables_load_rmm(path, &g_vendor) != 0)
         return -1;
+    presets_from_image(NULL, 0, path, NULL);
 
     populate();
     install();
@@ -268,6 +313,7 @@ int freeisp_shim_tables_from_cache(const char *path)
 
     if (freeisp_tables_load_bundle(path, &g_vendor) != 0)
         return -1;
+    presets_from_cache(FREEISP_PLTM_PRESETS_PATH);
 
     populate();
     install();
@@ -288,9 +334,16 @@ int freeisp_shim_tables_from_rmm_or_cache(const char *rmm_path,
     const char *bp = (bundle_path != NULL) ? bundle_path
                                            : FREEISP_TABLE_BUNDLE_PATH;
 
-    /* 1. cache first: a valid bundle means the vendor image is never read. */
-    if (bp[0] != '\0' && freeisp_shim_tables_from_cache(bp) == 0)
+    /* 1. cache first: a valid bundle means the vendor image is never read,
+     *    unless the PLTM preset cache is missing: then extract only those
+     *    (the PLTM shim holds &g_pltm, so updating the field is enough). */
+    if (bp[0] != '\0' && freeisp_shim_tables_from_cache(bp) == 0) {
+        if (!g_presets_ok && rmm_path != NULL && rmm_path[0] != '\0') {
+            presets_from_image(NULL, 0, rmm_path, FREEISP_PLTM_PRESETS_PATH);
+            g_pltm.presets = g_presets_ok ? &g_presets[0][0] : NULL;
+        }
         return 0;
+    }
 
     /* 2. locator fallback; seed the cache for the next boot.  A failed cache
      *    write must not fail the boot -- the tables are already installed. */
@@ -298,8 +351,13 @@ int freeisp_shim_tables_from_rmm_or_cache(const char *rmm_path,
         return -1;
     if (freeisp_shim_tables_from_rmm(rmm_path) != 0)
         return -1;
-    if (bp[0] != '\0')
+    if (bp[0] != '\0') {
         (void)freeisp_shim_tables_save_cache(bp);
+        if (g_presets_ok &&
+            freeisp_pltm_presets_save_text(FREEISP_PLTM_PRESETS_PATH,
+                (const int32_t (*)[FREEISP_PLTM_PRESET_COLS])g_presets) != 0)
+            presets_note("extracted from firmware", "cache write failed");
+    }
     return 0;
 }
 
@@ -336,4 +394,9 @@ const void *freeisp_shim_tables_get(freeisp_shim_table_id_t id)
     case FREEISP_SHIM_TABLE_PLTM: return &g_pltm;
     default:                      return NULL;
     }
+}
+
+const char *freeisp_shim_pltm_presets_status(void)
+{
+    return g_presets_status;
 }

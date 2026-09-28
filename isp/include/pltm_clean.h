@@ -131,9 +131,21 @@ typedef struct pltm_clean_result {
 /* Injected tables - supplied at runtime, never built in (spec 3.5).   */
 /* ------------------------------------------------------------------ */
 
+/* Preset columns (spec 7.8), one row per quantised strength step. */
+#define PLTM_PRESET_BLEND  0   /* original-picture blend, 0..255          */
+#define PLTM_PRESET_ORDER  1   /* pyramid order, 5..15                     */
+#define PLTM_PRESET_CLIP   2   /* tone clip, Q12                           */
+#define PLTM_PRESET_GAIN   3   /* gain blend, Q12                          */
+#define PLTM_PRESET_COLS   4
+
 typedef struct pltm_clean_tables {
     const int32_t *strength_bank; /* [PLTM_STRENGTH_ROWS][PLTM_STRENGTH_COLS] */
     const uint8_t *converge_bank; /* [PLTM_CONV_ROWS][PLTM_CONV_COLS]         */
+    /* [PLTM_NPRESET][PLTM_PRESET_COLS]; extracted from the device's own
+     * firmware at runtime (src/tables/pltm_presets.c).  NULL = neutral: every
+     * step maps to full original blend, lowest order, no clip, unity gain,
+     * i.e. local tone mapping has no effect. */
+    const int32_t *presets;
 } pltm_clean_tables_t;
 
 typedef struct freeisp_tables {
@@ -195,7 +207,8 @@ void pltm_clean_set_start_frame(int frame);
 void pltm_clean_set_strength_state(pltm_entity_t *e, uint16_t old_strength,
                                    uint16_t next_strength);
 
-/* Preset table query, index 0..18 (spec 7.8). */
+/* Preset table query, index 0..18 (spec 7.8), from the table provider's
+ * presets (neutral when it has none).  Same for the strength map below. */
 void pltm_clean_preset(int index, int *oripic_ratio, int *order,
                        int *clip, int *gain);
 

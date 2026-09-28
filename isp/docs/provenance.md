@@ -83,7 +83,6 @@ Two provenance caveats, stated rather than hidden:
 
    | Compiled-in table | Where | How it was obtained | Class |
    |---|---|---|---|
-   | PLTM preset parameterisation, 19 rows (`k_presets`) | `src/pltm/pltm_clean.c` | **Observed** as a platform default: the deployed library is run under a private differential harness and its output recorded for each preset index. The harness and its output are private and are **not shipped** with this repository; the observed values are reproduced in full in this tree (`src/pltm/pltm_clean.c`, spec `spec/pltm.md` §7.8). **Open item**: still vendor-ordered; the private r1 spec (unit T, tables) proposes an owned monotone mapping in its place, pending owner A/B captures on scene 2 (backlit window) and scene 3 (night IR). | Observed platform default |
    | AF filter coefficients `iir_g[6]` and `fir_g[5]` (two separate `static const` arrays in the AF-configuration block) | `src/iso/iso_clean.c` | **Observed** the same way, from the deployed AF-configuration path's output. The harness and output are private and are **not shipped**; the observed values are reproduced in full in this tree (`src/iso/iso_clean.c`, spec `spec/iso.md` §6.12). The private r1 spec (unit T, tables, item T1) recommends removing this block entirely, since no stock tuning we hold turns AF on; not yet acted on. | Observed platform default |
    | Colour-effect matrices (`c_none`, `c_gray`, `c_neg`, `c_antique`, `c_r`, `c_g`, `c_b`), their dispatch arrays (`c_tbl`, `d_tbl`) and offsets (`d_neg`, `d_zero`) | `src/reg/base.c` | **Re-derived** in code from standard published colour maths: the identity (none); the canonical BT.601 luma-weighted grey (0.3/0.6/0.1); the canonical sepia matrix (antique); signed inversion with a +2.0 offset (negative); and per-channel scale maps of 1.5 and 2/3 (R/G/B). | Re-derived |
    | `src_bit[12]` / `hw_bit[12]` | `src/reg/reg_writers.c` | **Interface facts**: the API's bit order and the set bits of the AF register mask. | Interface fact |
@@ -99,11 +98,28 @@ Two provenance caveats, stated rather than hidden:
    | Library-default dynamic-stats thresholds and compensation tables: `k[6]` (movement threshold base), `tdnf_comp[4]`/`tdnf_diff[4]` (temporal denoise), `lp_ratio[4]` (low-pass threshold ratio), `sharp_hf[4]`/`sharp_edge[4]`/`sharp_us[4]` (sharpen high-frequency/edge/undershoot) | `src/framework/tuning.c`, `isp_library_defaults` | **Vendor reference values**: constants of the deployed framework's full-configuration reset, not tuning data from the camera. The analyst recorded them in the private r1 spec (unit F §8.5). Owner decision Q3 was to reproduce them, because changing them changes image output. | Vendor-recovered constant |
    | `bits[3]` (`HW_ISP_CFG_TUNING_CCM_LOW/MID/HIGH`, two local iteration arrays) | `src/framework/tuning.c` | **Interface facts**: the three CCM-tier feature-bit macros from the tuning-blob ABI, gathered into a local array purely so the three tiers can be decoded in a loop. The bit values are interface facts; the array is our own convenience. | Interface fact |
 
-   The two "observed" rows (`k_presets`, `iir_g`/`fir_g`) are platform
-   defaults: they are not sensor-specific, they are not present in any camera
-   tuning image we searched, and the algorithms need them to reproduce the
-   deployed library's output. Their values were determined by black-box
-   execution of the deployed object code, not by transcribing its source.
+   The "observed" row (`iir_g`/`fir_g`) is a platform default: not
+   sensor-specific, not present in any camera tuning image we searched, and
+   needed to reproduce the deployed library's output. Its values were
+   determined by black-box execution of the deployed object code, not by
+   transcribing its source.
+
+   **PLTM presets (2026-09-28): no longer compiled in.** The 19-step preset
+   bank (spec `spec/pltm.md` §7.8) was previously an observed table in
+   `src/pltm/pltm_clean.c`. It is now read at runtime from the device's own
+   firmware by `src/tables/pltm_presets.c`, in the same posture as the other
+   runtime tables: the stock daemon holds the presets as instruction
+   immediates in one switch function, which the extractor finds by its
+   compiler prologue shape (a bounds check against 18 and a PC-relative jump
+   table), decodes with a small A32 immediate interpreter, and accepts only
+   if structural checks pass (19 rows, field ranges, a neutral first row,
+   monotone reachable rows). The result is cached on the device
+   (`isp_cfg/pltm_presets.txt`) and never leaves it. The source contains no
+   preset values and no comparison against them; its unit test uses a
+   synthetic image with made-up values. Without an extracted table the PLTM
+   core runs neutral (full original blend, unity gain). The extractor was
+   verified against every stock daemon build we hold (7 builds, 5 camera
+   models); the function is byte-identical in all of them.
 
 Runtime data
 ------------
@@ -205,7 +221,6 @@ host test; the older `test_bitmap`, `test_frame_size` and `test_media_helpers`
 also pass against the new code.
 
 **Open items:**
-- `k_presets` (PLTM) is still vendor-ordered; see its table row.
 - `iir_g`/`fir_g` (AF) are still compiled in; unit T item T1 proposes removing
   them, since no stock tuning enables AF.
 - `mw_headers/media/`: whether its declaration text is sufficiently

@@ -3,9 +3,9 @@
 /*
  * pltm_clean.c - clean-room local tone-mapping module.
  *
- * Implements the behaviour specified in spec/pltm.md.  The algorithm tuning
- * tables are injected at runtime through freeisp_get_tables(); the 19-entry
- * preset bank below is the only compiled-in table in this file.  See
+ * Implements the behaviour specified in spec/pltm.md.  All tables, including
+ * the 19-step preset bank, are injected at runtime through
+ * freeisp_get_tables(); this file compiles in no table data.  See
  * docs/provenance.md for the full provenance record (which lists every
  * compiled-in table in the library and how each was obtained).  Sections below
  * mirror the spec's numbered stages.
@@ -96,52 +96,43 @@ static int shl_one(int s)
 }
 
 /* ------------------------------------------------------------------ */
-/* Preset table (spec 7.8): 19 quantised parameter sets.               */
+/* Preset table (spec 7.8): 19 quantised parameter sets, injected.     */
 /* ------------------------------------------------------------------ */
 
-typedef struct pltm_preset {
-    int oripic_ratio;
-    int order;
-    int clip;
-    int gain;
-} pltm_preset_t;
-
-static const pltm_preset_t k_presets[PLTM_NPRESET] = {
-    { 0x0FF,  5, 0x05A, 0x1000 },
-    { 0x080,  5, 0x0B4, 0x0F7C },
-    { 0x040,  5, 0x168, 0x0F3C },
-    { 0x030,  5, 0x2CD, 0x0F16 }, /* switch default */
-    { 0x020,  6, 0x2DF, 0x0E56 },
-    { 0x010,  7, 0x339, 0x0D8A },
-    { 0x002,  8, 0x393, 0x0CE0 },
-    { 0x000,  9, 0x406, 0x0AF0 },
-    { 0x000, 10, 0x564, 0x078A },
-    { 0x000, 11, 0x604, 0x0578 },
-    { 0x000, 12, 0x6F4, 0x02A0 },
-    { 0x000, 13, 0x800, 0x0150 },
-    { 0x000, 13, 0xA00, 0x00A8 },
-    { 0x000, 13, 0xC00, 0x0054 },
-    { 0x000, 13, 0xE00, 0x002A },
-    { 0x000, 13, 0xED8, 0x0015 },
-    { 0x000, 13, 0x1000, 0x0000 },
-    { 0x000, 14, 0x800, 0x0000 },
-    { 0x000, 15, 0x000, 0x0000 }
+/* Row used for every step when no preset table was injected: full original
+ * blend, lowest order, no clip, unity gain -- local tone mapping has no
+ * visible effect. */
+static const int32_t k_neutral_preset[PLTM_PRESET_COLS] = {
+    0xFF, 5, 0, PLTM_Q12_UNITY
 };
 
-static void preset_get(int idx, int *o, int *t, int *c, int *g)
+/* presets: [PLTM_NPRESET][PLTM_PRESET_COLS] or NULL (neutral). */
+static void preset_get(const int32_t *presets, int idx,
+                       int *o, int *t, int *c, int *g)
 {
+    const int32_t *row;
+
     if (idx < 0)
         idx = 0;
     if (idx >= PLTM_NPRESET)
         idx = PLTM_NPRESET - 1;
+    row = presets ? presets + idx * PLTM_PRESET_COLS : k_neutral_preset;
     if (o)
-        *o = k_presets[idx].oripic_ratio;
+        *o = row[PLTM_PRESET_BLEND];
     if (t)
-        *t = k_presets[idx].order;
+        *t = row[PLTM_PRESET_ORDER];
     if (c)
-        *c = k_presets[idx].clip;
+        *c = row[PLTM_PRESET_CLIP];
     if (g)
-        *g = k_presets[idx].gain;
+        *g = row[PLTM_PRESET_GAIN];
+}
+
+/* The provider's presets, for the entity-less query entry points. */
+static const int32_t *provider_presets(void)
+{
+    const freeisp_tables_t *ft = freeisp_get_tables();
+
+    return (ft && ft->pltm) ? ft->pltm->presets : NULL;
 }
 
 /* ------------------------------------------------------------------ */
@@ -404,7 +395,8 @@ static int32_t strength_judge(pltm_entity_t *e, uint16_t x)
 /* Preset selection and modulation (spec 7.7).                         */
 /* ------------------------------------------------------------------ */
 
-static void preset_map(const pltm_clean_params_t *p, uint16_t strength,
+static void preset_map(const pltm_clean_params_t *p, const int32_t *presets,
+                       uint16_t strength,
                        int *oripic_ratio, int *order, int *last_order_ratio,
                        int *clip_out, int *gain_out)
 {
@@ -416,7 +408,7 @@ static void preset_map(const pltm_clean_params_t *p, uint16_t strength,
     int o0, t0, c0, g0;
     int v_oripic, v_order, v_last, v_clip, v_gain;
 
-    preset_get(idx, &o0, &t0, &c0, &g0);
+    preset_get(presets, idx, &o0, &t0, &c0, &g0);
 
     if (low == 0) {
         v_oripic = o0;
@@ -427,7 +419,7 @@ static void preset_map(const pltm_clean_params_t *p, uint16_t strength,
     } else {
         int o1, t1, c1, g1;
         int w = 256 - low;
-        preset_get(idx + 1, &o1, &t1, &c1, &g1);
+        preset_get(presets, idx + 1, &o1, &t1, &c1, &g1);
         v_oripic = sat8((o0 * w + o1 * low) >> 8);
         v_order = t0;
         v_last = (low >> 4) - 1;
@@ -532,7 +524,8 @@ static void strength_apply(pltm_entity_t *e, const pltm_clean_stats_t *st)
     }
     e->next_strength = next;
 
-    preset_map(&e->p, next, &oripic, &order, &last_order, &clip, &gain);
+    preset_map(&e->p, e->tab ? e->tab->presets : NULL, next, &oripic, &order,
+               &last_order, &clip, &gain);
 
     e->oripic_ratio_out = oripic;
     e->order_out = order;
@@ -790,7 +783,7 @@ void pltm_clean_set_strength_state(pltm_entity_t *e, uint16_t old_strength,
 void pltm_clean_preset(int index, int *oripic_ratio, int *order,
                        int *clip, int *gain)
 {
-    preset_get(index, oripic_ratio, order, clip, gain);
+    preset_get(provider_presets(), index, oripic_ratio, order, clip, gain);
 }
 
 void pltm_clean_strength_map(const pltm_clean_params_t *p, uint16_t strength,
@@ -799,7 +792,8 @@ void pltm_clean_strength_map(const pltm_clean_params_t *p, uint16_t strength,
 {
     if (p == NULL)
         return;
-    preset_map(p, strength, oripic_ratio, order, last_order_ratio, clip, gain);
+    preset_map(p, provider_presets(), strength, oripic_ratio, order,
+               last_order_ratio, clip, gain);
 }
 
 void pltm_clean_merge_build(pltm_clean_result_t *result, int nw, int nh)

@@ -45,6 +45,8 @@ static uint16_t g_source[0x300];
 static int32_t  g_strength[PLTM_STRENGTH_ROWS * PLTM_STRENGTH_COLS];
 static uint8_t  g_converge[PLTM_CONV_ROWS * PLTM_CONV_COLS];
 
+static int32_t  g_presets[PLTM_NPRESET * PLTM_PRESET_COLS];
+
 static pltm_clean_tables_t g_tab;
 static freeisp_tables_t g_ft;
 static const freeisp_tables_t *g_ft_ptr = &g_ft;
@@ -72,9 +74,22 @@ static void init_tables(void)
         for (d = 0; d < PLTM_CONV_COLS; d++)
             g_converge[r * PLTM_CONV_COLS + d] = (uint8_t)d;
 
+    /* Synthetic preset bank (made-up, rule-abiding; not device data):
+     * blend 255-17r (0 from row 15), order 5+r/2, clip 100+200r,
+     * gain 4096-200r. */
+    for (r = 0; r < PLTM_NPRESET; r++) {
+        int32_t *row = g_presets + r * PLTM_PRESET_COLS;
+
+        row[PLTM_PRESET_BLEND] = r <= 15 ? 255 - 17 * r : 0;
+        row[PLTM_PRESET_ORDER] = 5 + r / 2;
+        row[PLTM_PRESET_CLIP]  = 100 + 200 * r;
+        row[PLTM_PRESET_GAIN]  = 4096 - 200 * r;
+    }
+
     memset(&g_tab, 0, sizeof(g_tab));
     g_tab.strength_bank = g_strength;
     g_tab.converge_bank = g_converge;
+    g_tab.presets = g_presets;
     g_ft.pltm = &g_tab;
 }
 
@@ -427,33 +442,34 @@ static void test_manual_skips_modulation(void)
 
 static void test_preset_table(void)
 {
-    static const int eo[PLTM_NPRESET] = {
-        0x0FF, 0x080, 0x040, 0x030, 0x020, 0x010, 0x002, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0, 0
-    };
-    static const int et[PLTM_NPRESET] = {
-        5, 5, 5, 5, 6, 7, 8, 9, 10, 11, 12, 13, 13, 13, 13, 13, 13, 14, 15
-    };
-    static const int ec[PLTM_NPRESET] = {
-        0x05A, 0x0B4, 0x168, 0x2CD, 0x2DF, 0x339, 0x393, 0x406, 0x564, 0x604,
-        0x6F4, 0x800, 0xA00, 0xC00, 0xE00, 0xED8, 0x1000, 0x800, 0x000
-    };
-    static const int eg[PLTM_NPRESET] = {
-        0x1000, 0x0F7C, 0x0F3C, 0x0F16, 0x0E56, 0x0D8A, 0x0CE0, 0x0AF0,
-        0x078A, 0x0578, 0x02A0, 0x0150, 0x00A8, 0x0054, 0x002A, 0x0015,
-        0x0000, 0x0000, 0x0000
-    };
     int i, o, t, c, g;
 
     for (i = 0; i < PLTM_NPRESET; i++) {
         pltm_clean_preset(i, &o, &t, &c, &g);
-        CHECK_EQ(o, eo[i], "preset oripic");
-        CHECK_EQ(t, et[i], "preset order");
-        CHECK_EQ(c, ec[i], "preset clip");
-        CHECK_EQ(g, eg[i], "preset gain");
+        CHECK_EQ(o, i <= 15 ? 255 - 17 * i : 0, "preset oripic");
+        CHECK_EQ(t, 5 + i / 2, "preset order");
+        CHECK_EQ(c, 100 + 200 * i, "preset clip");
+        CHECK_EQ(g, 4096 - 200 * i, "preset gain");
     }
+    /* Out-of-range indices clamp to the ends. */
+    pltm_clean_preset(-3, &o, &t, &c, &g);
+    CHECK_EQ(c, 100, "preset clamp low");
+    pltm_clean_preset(40, &o, &t, &c, &g);
+    CHECK_EQ(c, 100 + 200 * 18, "preset clamp high");
+
+    /* No injected presets: every step is neutral. */
+    g_tab.presets = NULL;
+    for (i = 0; i < PLTM_NPRESET; i++) {
+        pltm_clean_preset(i, &o, &t, &c, &g);
+        CHECK_EQ(o, 0xFF, "neutral oripic");
+        CHECK_EQ(t, 5, "neutral order");
+        CHECK_EQ(c, 0, "neutral clip");
+        CHECK_EQ(g, 0x1000, "neutral gain");
+    }
+    g_tab.presets = g_presets;
 }
 
+/* Expected values below are worked by hand from the synthetic bank. */
 static void test_strength_map(void)
 {
     pltm_clean_params_t p;
@@ -462,45 +478,45 @@ static void test_strength_map(void)
     base_params(&p);
 
     pltm_clean_strength_map(&p, 0x000, &o, &t, &l, &c, &g);
-    CHECK_EQ(o, 0x0FF, "map 0x000 oripic");
+    CHECK_EQ(o, 255, "map 0x000 oripic");
     CHECK_EQ(t, 5, "map 0x000 order");
     CHECK_EQ(l, 15, "map 0x000 last");
-    CHECK_EQ(c, 0x05A, "map 0x000 clip");
-    CHECK_EQ(g, 0x1000, "map 0x000 gain");
+    CHECK_EQ(c, 100, "map 0x000 clip");
+    CHECK_EQ(g, 4096, "map 0x000 gain");
 
     pltm_clean_strength_map(&p, 0x100, &o, &t, &l, &c, &g);
-    CHECK_EQ(o, 0x080, "map 0x100 oripic");
-    CHECK_EQ(c, 0x0B4, "map 0x100 clip");
-    CHECK_EQ(g, 0x0F7C, "map 0x100 gain");
+    CHECK_EQ(o, 238, "map 0x100 oripic");
+    CHECK_EQ(c, 300, "map 0x100 clip");
+    CHECK_EQ(g, 3896, "map 0x100 gain");
 
-    /* Fractional, order-bumped preset 3. */
+    /* Fractional, order-bumped preset 3 (w = 1, low = 255 toward row 4). */
     pltm_clean_strength_map(&p, 0x3FF, &o, &t, &l, &c, &g);
-    CHECK_EQ(o, 0x020, "map 0x3FF oripic");
-    CHECK_EQ(t, 6, "map 0x3FF order bump");
+    CHECK_EQ(o, 187, "map 0x3FF oripic");
+    CHECK_EQ(t, 7, "map 0x3FF order bump");
     CHECK_EQ(l, 14, "map 0x3FF last");
-    CHECK_EQ(c, 0x2DE, "map 0x3FF clip");
-    CHECK_EQ(g, 0x0E56, "map 0x3FF gain");
+    CHECK_EQ(c, 899, "map 0x3FF clip");
+    CHECK_EQ(g, 3296, "map 0x3FF gain");
 
-    /* high >= 11 forces last_order = 15, no bump. */
+    /* high >= 11 forces last_order = 15, no bump (halfway rows 11/12). */
     pltm_clean_strength_map(&p, 0xB80, &o, &t, &l, &c, &g);
-    CHECK_EQ(o, 0, "map 0xB80 oripic");
-    CHECK_EQ(t, 13, "map 0xB80 order");
+    CHECK_EQ(o, 59, "map 0xB80 oripic");
+    CHECK_EQ(t, 10, "map 0xB80 order");
     CHECK_EQ(l, 15, "map 0xB80 last");
-    CHECK_EQ(c, 0x900, "map 0xB80 clip");
-    CHECK_EQ(g, 0x0FC, "map 0xB80 gain");
+    CHECK_EQ(c, 2400, "map 0xB80 clip");
+    CHECK_EQ(g, 1796, "map 0xB80 gain");
 
     /* Interpolation reaching preset 16. */
     pltm_clean_strength_map(&p, 0xFFF, &o, &t, &l, &c, &g);
-    CHECK_EQ(t, 13, "map 0xFFF order");
+    CHECK_EQ(t, 12, "map 0xFFF order");
     CHECK_EQ(l, 15, "map 0xFFF last");
-    CHECK_EQ(c, 0x0FFE, "map 0xFFF clip");
-    CHECK_EQ(g, 0, "map 0xFFF gain");
+    CHECK_EQ(c, 3299, "map 0xFFF clip");
+    CHECK_EQ(g, 896, "map 0xFFF gain");
 
     /* high clamps idx to 15 even for out-of-range strengths. */
     pltm_clean_strength_map(&p, 0x2000, &o, &t, &l, &c, &g);
-    CHECK_EQ(t, 13, "map 0x2000 order");
-    CHECK_EQ(c, 0x0ED8, "map 0x2000 clip");
-    CHECK_EQ(g, 0x0015, "map 0x2000 gain");
+    CHECK_EQ(t, 12, "map 0x2000 order");
+    CHECK_EQ(c, 3100, "map 0x2000 clip");
+    CHECK_EQ(g, 1096, "map 0x2000 gain");
 
     /* contrast == 256 zeroes the clip. */
     p.config.contrast = 256;
@@ -511,7 +527,7 @@ static void test_strength_map(void)
     /* auto_strength < 17 scales the clip by /16. */
     p.config.auto_strength = 8;
     pltm_clean_strength_map(&p, 0x000, &o, &t, &l, &c, &g);
-    CHECK_EQ(c, 0x2D, "auto scale clip");
+    CHECK_EQ(c, 50, "auto scale clip");
     p.config.auto_strength = 192;
 
     /* wdr_mode == 1 forces the gain blend to zero. */

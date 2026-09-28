@@ -120,7 +120,7 @@ static uint8_t  g_converge_bank[PLTM_CONV_ROWS * PLTM_CONV_COLS];
 static int      g_defaults_ready;
 
 static const pltm_clean_tables_t g_default_pltm = {
-    g_strength_bank, g_converge_bank
+    g_strength_bank, g_converge_bank, NULL   /* no presets: neutral */
 };
 static const freeisp_tables_t g_default_tables = { &g_default_pltm };
 

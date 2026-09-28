@@ -484,39 +484,36 @@ Finally the tone and gain tables are generated from `clip` and `gain`
 
 ### 7.8 The 19 quantised presets
 
-`preset(i)` returns the four parameters below for every `i` in `0..18`. The
-module's own callers pass indices `0..16`, so presets 17 and 18 are defined but
-unreachable through the strength path. These are the platform's default
-parameters; `../docs/provenance.md` records how they were obtained.
+`preset(i)` returns four parameters for every `i` in `0..18`. The module's
+own callers pass indices `0..16`, so presets 17 and 18 are defined but
+unreachable through the strength path.
 
-| Preset | `oripic_ratio` | `order` | `clip` (pre_adjust) | `gain` (ffunc) |
-| --- | --- | --- | --- | --- |
-| 0 | 0x0FF | 5 | 0x05A | 0x1000 |
-| 1 | 0x080 | 5 | 0x0B4 | 0x0F7C |
-| 2 | 0x040 | 5 | 0x168 | 0x0F3C |
-| 3 | 0x030 | 5 | 0x2CD | 0x0F16 |
-| 4 | 0x020 | 6 | 0x2DF | 0x0E56 |
-| 5 | 0x010 | 7 | 0x339 | 0x0D8A |
-| 6 | 0x002 | 8 | 0x393 | 0x0CE0 |
-| 7 | 0x000 | 9 | 0x406 | 0x0AF0 |
-| 8 | 0x000 | 10 | 0x564 | 0x078A |
-| 9 | 0x000 | 11 | 0x604 | 0x0578 |
-| 10 | 0x000 | 12 | 0x6F4 | 0x02A0 |
-| 11 | 0x000 | 13 | 0x800 | 0x0150 |
-| 12 | 0x000 | 13 | 0xA00 | 0x00A8 |
-| 13 | 0x000 | 13 | 0xC00 | 0x0054 |
-| 14 | 0x000 | 13 | 0xE00 | 0x002A |
-| 15 | 0x000 | 13 | 0xED8 | 0x0015 |
-| 16 | 0x000 | 13 | 0x1000 | 0x0000 |
-| 17 | 0x000 | 14 | 0x800 | 0x0000 |
-| 18 | 0x000 | 15 | 0x000 | 0x0000 |
+| Column | Meaning | Range |
+| --- | --- | --- |
+| `oripic_ratio` | original-picture blend | 0..255 |
+| `order` | pyramid order | 5..15 |
+| `clip` (pre_adjust) | tone-floor increment, Q12 | 0..0x1000 |
+| `gain` (ffunc) | gain blend, Q12 | 0..0x1000 |
 
-Increasing preset index means: the original-picture ratio falls to zero, the
-tone-floor increment rises, and the gain blend moves from unity-weighted to
+The table is platform data, not part of this specification: it is injected at
+runtime (`pltm_clean_tables_t.presets`), read from the device's own firmware
+(`../src/tables/pltm_presets.c`; `../docs/provenance.md` records how). An
+accepted table satisfies:
+
+- preset 0 is neutral: `oripic_ratio` 255 and `gain` 0x1000;
+- over the reachable presets 0..16, with rising index, `oripic_ratio` and
+  `gain` never increase and `order` never decreases;
+- all 19 rows are distinct and every field is in range.
+
+With no table injected, every index returns the neutral row
+(`oripic_ratio` 0xFF, `order` 5, `clip` 0, `gain` 0x1000): no visible local
+tone mapping.
+
+Increasing preset index means: the original-picture ratio falls toward zero,
+the tone-floor increment rises, and the gain blend moves from unity-weighted to
 source-weighted (`gain == 0x1000` replaces the source with Q10 unity `0x400`;
-`gain == 0` keeps the source unchanged, section 8.3). The order rises from 5 to
-15 across the table. The `clip` column is the tone-floor increment itself, used
-directly as the running accumulator step; presets 17 and 18 carry 0x800 and 0x000.
+`gain == 0` keeps the source unchanged, section 8.3). The `clip` column is the
+tone-floor increment itself, used directly as the running accumulator step.
 
 ---
 

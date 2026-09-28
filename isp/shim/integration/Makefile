@@ -19,6 +19,7 @@ CC       ?= gcc
 ROOT     := $(abspath $(CURDIR)/../..)
 INC      := $(ROOT)/include
 FW_SRC   := $(ROOT)/src/tables/rmm_tables.c
+PP_SRC   := $(ROOT)/src/tables/pltm_presets.c
 
 HOST_CFLAGS := -std=gnu99 -O2 -Wall -Wextra -fwrapv \
                -I$(INC) -I.
@@ -56,16 +57,19 @@ build/freeisp_shim_tables.o: freeisp_shim_tables.c freeisp_shim_tables.h | build
 build/rmm_tables.o: $(FW_SRC) | build
 	$(CC) $(HOST_CFLAGS) -c $< -o $@
 
+build/pltm_presets.o: $(PP_SRC) | build
+	$(CC) $(HOST_CFLAGS) -c $< -o $@
+
 build/test_shim_tables.o: test_shim_tables.c freeisp_shim_tables.h | build
 	$(CC) $(HOST_CFLAGS) -c $< -o $@
 
 build/test_table_bundle.o: test_table_bundle.c freeisp_shim_tables.h | build
 	$(CC) $(HOST_CFLAGS) -c $< -o $@
 
-build/test_shim_tables: build/freeisp_shim_tables.o build/rmm_tables.o build/test_shim_tables.o
+build/test_shim_tables: build/freeisp_shim_tables.o build/rmm_tables.o build/pltm_presets.o build/test_shim_tables.o
 	$(CC) $^ -o $@ -lm
 
-build/test_table_bundle: build/freeisp_shim_tables.o build/rmm_tables.o build/test_table_bundle.o
+build/test_table_bundle: build/freeisp_shim_tables.o build/rmm_tables.o build/pltm_presets.o build/test_table_bundle.o
 	$(CC) $^ -o $@ -lm
 
 build_arm/freeisp_shim_tables.o: freeisp_shim_tables.c freeisp_shim_tables.h | build_arm
@@ -74,16 +78,19 @@ build_arm/freeisp_shim_tables.o: freeisp_shim_tables.c freeisp_shim_tables.h | b
 build_arm/rmm_tables.o: $(FW_SRC) | build_arm
 	$(ARM_CC) $(ARM_CFLAGS) -c $< -o $@
 
+build_arm/pltm_presets.o: $(PP_SRC) | build_arm
+	$(ARM_CC) $(ARM_CFLAGS) -c $< -o $@
+
 build_arm/test_shim_tables.o: test_shim_tables.c freeisp_shim_tables.h | build_arm
 	$(ARM_CC) $(ARM_CFLAGS) -c $< -o $@
 
 build_arm/test_table_bundle.o: test_table_bundle.c freeisp_shim_tables.h | build_arm
 	$(ARM_CC) $(ARM_CFLAGS) -c $< -o $@
 
-build_arm/test_shim_tables.arm: build_arm/freeisp_shim_tables.o build_arm/rmm_tables.o build_arm/test_shim_tables.o
+build_arm/test_shim_tables.arm: build_arm/freeisp_shim_tables.o build_arm/rmm_tables.o build_arm/pltm_presets.o build_arm/test_shim_tables.o
 	$(ARM_CC) $(ARM_CFLAGS) $^ -o $@ $(ARM_LDFLAGS) $(ARM_TAIL_LIBS)
 
-build_arm/test_table_bundle.arm: build_arm/freeisp_shim_tables.o build_arm/rmm_tables.o build_arm/test_table_bundle.o
+build_arm/test_table_bundle.arm: build_arm/freeisp_shim_tables.o build_arm/rmm_tables.o build_arm/pltm_presets.o build_arm/test_table_bundle.o
 	$(ARM_CC) $(ARM_CFLAGS) $^ -o $@ $(ARM_LDFLAGS) $(ARM_TAIL_LIBS)
 
 arm: build_arm/test_shim_tables.arm build_arm/test_table_bundle.arm

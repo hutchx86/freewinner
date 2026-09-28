@@ -314,8 +314,9 @@ static void test_auto_stats(void)
     CHECK_EQ(res.pltm_old_strength, 32);
     CHECK_EQ(res.pltm_cal_en, 1);
     CHECK_EQ(res.pltm_frame_smoothing_en, 1);
-    /* preset 0 interpolated at low=32: oripic 0xEF (~239), order 5, last 15. */
-    CHECK_EQ(res.pltm_original_picture_ratio, 0xEF);
+    /* The pilot tables inject no presets, so the neutral row applies:
+     * full original blend, order 5, last 15. */
+    CHECK_EQ(res.pltm_original_picture_ratio, 0xFF);
     CHECK_EQ(res.pltm_tr_order, 5);
     CHECK_EQ(res.pltm_last_order_ratio, 15);
 

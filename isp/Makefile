@@ -22,12 +22,15 @@ TESTS := $(patsubst mk/%.mk,$(BUILD)/test_%,$(wildcard mk/*.mk))
 TESTS := $(patsubst $(BUILD)/test_reg,$(BUILD)/test_reg_writers,$(TESTS))
 
 # The runtime table locator: no SDK, no vendor material.
-TABLE_OBJ := $(BUILD)/rmm_tables.o
+TABLE_OBJ := $(BUILD)/rmm_tables.o $(BUILD)/pltm_presets.o
 
 .PHONY: all check clean
 all: $(TESTS) $(TABLE_OBJ)
 
-$(TABLE_OBJ): src/tables/rmm_tables.c | $(BUILD)
+$(BUILD)/rmm_tables.o: src/tables/rmm_tables.c | $(BUILD)
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+
+$(BUILD)/pltm_presets.o: src/tables/pltm_presets.c include/freeisp/pltm_presets.h | $(BUILD)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
 check: all

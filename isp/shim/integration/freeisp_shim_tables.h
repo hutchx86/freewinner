@@ -34,6 +34,15 @@ extern "C" {
 #define FREEISP_TABLE_BUNDLE_PATH "/tmp/sd/unifi/isp_cfg/freeisp_tables.bin"
 #endif
 
+/*
+ * PLTM preset text cache (freeisp/pltm_presets.h), next to the bundle.  The
+ * presets are read out of the device's own firmware on the first boot and
+ * cached here; without them the PLTM core runs neutral.
+ */
+#ifndef FREEISP_PLTM_PRESETS_PATH
+#define FREEISP_PLTM_PRESETS_PATH "/tmp/sd/unifi/isp_cfg/pltm_presets.txt"
+#endif
+
 typedef enum freeisp_shim_table_id {
     FREEISP_SHIM_TABLE_AE = 0,
     FREEISP_SHIM_TABLE_AWB,
@@ -88,6 +97,10 @@ int freeisp_shim_tables_from_rmm_or_cache(const char *rmm_path,
 /* Uninstall the tables (each shim falls back to its pilot defaults) and
  * release every owned copy.  Safe to call when nothing is loaded. */
 void freeisp_shim_tables_free(void);
+
+/* Where the PLTM presets came from for the last load ("from cache (ok)",
+ * "extracted from firmware (ok)", "neutral, ... (<reason>)"), for logging. */
+const char *freeisp_shim_pltm_presets_status(void);
 
 /* The mapped per-module block, or NULL when nothing is loaded.  For tests and
  * diagnostics; cast to the matching `<mod>_clean_tables_t` (or
