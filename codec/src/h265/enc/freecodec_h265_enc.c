@@ -387,7 +387,9 @@ static int enc_encode(void *h, fwm_venc_input_picture_t *in)
     fcfg.deblock_beta = (unsigned int)e->params.deblock.beta_offset_div2 & 0xfu;
     fcfg.lambda = lambda;
     fcfg.lambda_sqrt = (unsigned int)(2.0 * sqrt((double)lambda) + 0.5);
-    fcfg.lambda_c = lambda_chroma(FC_H265_LAMBDA_I, qp);
+    /* Chroma lambda uses the picture-type luma base (I vs P), not always the I
+     * constant (spec 10 s3 / 11 s3.12). */
+    fcfg.lambda_c = lambda_chroma(lambda, qp);
     fcfg.th_bright = e->params.th_bright;
     fcfg.th_dark = e->params.th_dark;
     fcfg.roi_disable_mask = 0xffu;                 /* ROI off on this device path */

@@ -233,24 +233,31 @@ static void bw_rps_sets(h265_bw *bw, unsigned int num_sets)
 
     for (i = 0; i < num_sets; i++) {
         if (i == 0u) {
+            /* stRpsIdx == 0: no inter_ref_pic_set_prediction_flag. */
             bw_ue(bw, 1u);               /* num_negative_pics               */
             bw_ue(bw, 0u);               /* num_positive_pics               */
             bw_ue(bw, 0u);               /* delta_poc_s0_minus1             */
             bw_bit(bw, 1u);              /* used_by_curr_pic_s0_flag        */
-        } else if (i + 1u == num_sets) {
-            bw_ue(bw, 0u);               /* num_negative_pics               */
-            bw_ue(bw, 0u);               /* num_positive_pics               */
         } else {
-            bw_bit(bw, 1u);              /* inter_ref_pic_set_prediction_flag */
-            /* delta_idx_minus1 never emitted: only at idx == num sets. */
-            bw_bit(bw, 1u);              /* delta_rps_sign                  */
-            bw_ue(bw, 0u);               /* abs_delta_rps_minus1            */
-            /* The reference set has one delta POC; H.265 7.3.2.2.2 loops
-             * inclusively, so two used flags are emitted: used[0]=0 (its
-             * use_delta_flag follows) and used[1]=1 (spec 13 section 7). */
-            bw_bit(bw, 0u);              /* used_by_curr_pic_flag[0]        */
-            bw_bit(bw, 1u);              /* use_delta_flag[0]               */
-            bw_bit(bw, 1u);              /* used_by_curr_pic_flag[1]        */
+            /* stRpsIdx != 0 always carries the 1-bit prediction flag,
+             * including the final set (spec 13 section 7). */
+            unsigned int predict = (i + 1u == num_sets) ? 0u : 1u;
+            bw_bit(bw, predict);         /* inter_ref_pic_set_prediction_flag */
+            if (!predict) {
+                bw_ue(bw, 0u);           /* num_negative_pics               */
+                bw_ue(bw, 0u);           /* num_positive_pics               */
+            } else {
+                /* delta_idx_minus1 never emitted: only at idx == num sets. */
+                bw_bit(bw, 1u);          /* delta_rps_sign                  */
+                bw_ue(bw, 0u);           /* abs_delta_rps_minus1            */
+                /* The reference set has one delta POC; H.265 7.3.2.2.2 loops
+                 * inclusively over NumDeltaPocs+1, so two used flags and one
+                 * use_delta flag are emitted: used[0]=0 with use_delta[0]=0,
+                 * then used[1]=1 (spec 13 section 7). */
+                bw_bit(bw, 0u);          /* used_by_curr_pic_flag[0]        */
+                bw_bit(bw, 0u);          /* use_delta_flag[0]               */
+                bw_bit(bw, 1u);          /* used_by_curr_pic_flag[1]        */
+            }
         }
     }
 }
@@ -295,13 +302,14 @@ int freecodec_h265_build_sps(const freecodec_h265_sps_cfg *cfg,
     bw_bit(&bw, cfg->sao_enabled);       /* sample_adaptive_offset_enabled_flag */
     bw_bit(&bw, 0u);                     /* pcm_enabled_flag                */
     bw_ue(&bw, cfg->num_short_term_ref_pic_sets);
+    /* st_ref_pic_set() sits immediately after num_short_term_ref_pic_sets,
+     * before long_term_ref_pics_present_flag (H.265 7.3.2.2.1; spec 13 s5/s7). */
+    bw_rps_sets(&bw, cfg->num_short_term_ref_pic_sets);
     bw_bit(&bw, 0u);                     /* long_term_ref_pics_present_flag */
     bw_bit(&bw, cfg->temporal_mvp_enabled);
     bw_bit(&bw, 0u);                     /* strong_intra_smoothing_enabled_flag */
     bw_bit(&bw, 0u);                     /* vui_parameters_present_flag     */
     bw_bit(&bw, 0u);                     /* sps_extension_present_flag      */
-
-    bw_rps_sets(&bw, cfg->num_short_term_ref_pic_sets);
     bw_trailing(&bw);
 
     if (bw.overflow)
@@ -403,7 +411,13 @@ int freecodec_h265_build_slice(const freecodec_h265_slice_cfg *cfg,
         if (cfg->num_ref_idx_active_override_flag)
             bw_ue(&bw, cfg->num_ref_idx_l0_active_minus1);
         bw_bit(&bw, cfg->cabac_init_flag);
-        if (cfg->temporal_mvp_enabled)
+        /* collocated_ref_idx is present only when the L0 list has more than
+         * one entry (H.265 7.3.6.1). The PPS default is one active ref
+         * (num_ref_idx_l0_default_active_minus1 = 0) and there is no
+         * override, so with temporal_mvp enabled the field is absent. */
+        if (cfg->temporal_mvp_enabled &&
+            cfg->num_ref_idx_active_override_flag &&
+            cfg->num_ref_idx_l0_active_minus1 > 0u)
             bw_ue(&bw, cfg->collocated_ref_idx);
         bw_ue(&bw, cfg->five_minus_max_num_merge_cand);
     }

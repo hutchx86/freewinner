@@ -184,12 +184,66 @@ static void test_emulation_prevention(void)
            "four emulation-prevention bytes removed from the VPS");
 }
 
+/* Golden parameter sets and slice headers (spec 13 sections 5-8, vectors).
+ * The SPS short-term-RPS placement/flags and the slice-header field order are
+ * exactly fixed by the spec, so pin the bytes to catch a syntax regression
+ * (e.g. the RPS loop position, use_delta_flag, or collocated_ref_idx presence). */
+static void test_golden_bytes(void)
+{
+    static const unsigned char vps[28] = {
+        0x00, 0x00, 0x00, 0x01, 0x40, 0x01, 0x0c, 0x01, 0xff, 0xff, 0x01, 0x60,
+        0x00, 0x00, 0x03, 0x00, 0x00, 0x03, 0x00, 0x00, 0x03, 0x00, 0x00, 0x03,
+        0x00, 0x7b, 0xac, 0x09
+    };
+    static const unsigned char sps[51] = {
+        0x00, 0x00, 0x00, 0x01, 0x42, 0x01, 0x01, 0x01, 0x60, 0x00, 0x00, 0x03,
+        0x00, 0x00, 0x03, 0x00, 0x00, 0x03, 0x00, 0x00, 0x03, 0x00, 0x7b, 0xa0,
+        0x02, 0x80, 0x80, 0x2d, 0x1f, 0xe5, 0xae, 0xe4, 0x48, 0x82, 0xcb, 0xf3,
+        0xcf, 0x3c, 0xf3, 0xcf, 0x3c, 0xf3, 0xcf, 0x3c, 0xf3, 0xcf, 0x3c, 0xf3,
+        0xcf, 0x2d, 0x10
+    };
+    static const unsigned char pps[11] = {
+        0x00, 0x00, 0x00, 0x01, 0x44, 0x01, 0xc0, 0xf6, 0xb0, 0x33, 0x24
+    };
+    static const unsigned char idr[9] = {
+        0x00, 0x00, 0x00, 0x01, 0x26, 0x01, 0xaf, 0x0b, 0x60
+    };
+    static const unsigned char p[11] = {
+        0x00, 0x00, 0x00, 0x01, 0x02, 0x01, 0xd0, 0x0c, 0x1c, 0x86, 0x30
+    };
+    unsigned char b[256];
+    freecodec_h265_slice_cfg c;
+    int n, bits;
+
+    n = build_vps(b, sizeof(b));
+    checkf(n == 28 && memcmp(b, vps, 28) == 0, "VPS matches the golden");
+    n = build_sps(b, sizeof(b), 1280, 720);
+    checkf(n == 51 && memcmp(b, sps, 51) == 0, "SPS matches the golden");
+    n = build_pps(b, sizeof(b));
+    checkf(n == 11 && memcmp(b, pps, 11) == 0, "PPS matches the golden");
+
+    memset(&c, 0, sizeof(c));
+    c.nal_unit_type = 19; c.is_i_picture = 1; c.sao_luma_flag = 1; c.sao_chroma_flag = 1;
+    c.temporal_mvp_enabled = 1; c.slice_qp = 37; c.loop_filter_across_slices_enabled = 1;
+    n = freecodec_h265_build_slice(&c, b, sizeof(b), &bits);
+    checkf(n == 9 && memcmp(b, idr, 9) == 0, "IDR slice header matches the golden");
+
+    memset(&c, 0, sizeof(c));
+    c.nal_unit_type = 1; c.is_i_picture = 0; c.pic_order_cnt_lsb = 1;
+    c.short_term_ref_pic_set_idx = 0; c.temporal_mvp_enabled = 1;
+    c.sao_luma_flag = 1; c.sao_chroma_flag = 1; c.slice_qp = 38;
+    c.loop_filter_across_slices_enabled = 1;
+    n = freecodec_h265_build_slice(&c, b, sizeof(b), &bits);
+    checkf(n == 11 && memcmp(b, p, 11) == 0, "P slice header matches the golden");
+}
+
 int main(void)
 {
     test_parameter_sets();
     test_slice_headers();
     test_exp_golomb();
     test_emulation_prevention();
+    test_golden_bytes();
 
     if (g_fail) {
         fprintf(stderr, "test_headers: FAILED\n");
