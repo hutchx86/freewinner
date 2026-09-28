@@ -147,6 +147,40 @@ publish guard as the rest of the repository (see the release-status note in
 `isp/docs/provenance.md`). The royalty position for H.264/AVC and AAC is in
 the root `CREDITS.md` and in "Third-party components" below.
 
+Encoder 3D (temporal noise) filter
+----------------------------------
+
+The per-picture 3D-filter programming (`src/h264/regs/h264_regs.c`, the
+`freecodec_h264_3d_*` helpers; plane handling in `src/h264/enc/`) was written
+by an implementation-role agent from a behaviour-only clean-room specification
+alone, with no binary access on the implementation side (2026-09-27). The
+specification and its separate evidence note were written by an analyst role
+and are kept in the private workspace, not shipped; the implementer never saw
+the evidence note. The code depends on these facts and values:
+
+- **Register `0x94`**: 9-bit threshold `T` at bits 31:23, written only while
+  the filter is enabled, else left 0. `T` is derived from the level and the
+  slice QP: `T = level` for QP 0..19 and 31..51, `T = 2 * level` for QP
+  20..30; QP >= 52 keeps the previous `T`.
+- **Register `0x08` bit 22**: filter enable, set only when the level is
+  non-zero and the picture is not the instance's first; it survives the
+  slice-header re-store of `0x08`.
+- **Registers `0xa8` / `0xac`**: the two scratch-plane addresses; `0xac`
+  (current slot) whenever the level is non-zero, `0xa8` (last slot) only
+  while enabled. The last-slot plane is refilled with a level-dependent byte
+  (0xFF, 0xEE, 0xDD, ... for levels 0, 1, 2, ...) and flushed every picture.
+- **Parameter range**: level 0..6 accepted, above 6 clamped to 3; dynamic
+  motion estimation is latched at init (on only when the level is 0).
+
+`FWM_VENC_PARAM_FILTER_3D_STRENGTH` (0x7f000003, `venc_ext.h`) is this
+project's own extension: a direct 9-bit `T` (1..511) that overrides the level
+rules, used by yi-mediad's strength setting. It is not a vendor control.
+
+Device results (r35gb, 2026-09-27): register readback matches the
+specification; `T = 511` gives a clearly visible filter effect, levels 1..3
+are subtle at the encoder's usual QP. The IDR picture now takes the latest P
+QP (a separate change) so keyframes do not visibly jump.
+
 Public prior art (independent implementations of the same VE block)
 -------------------------------------------------------------------
 
