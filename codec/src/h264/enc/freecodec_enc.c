@@ -1,16 +1,9 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
 
-/* H.264 encoder device (spec/12-encoder-device.md, r4): the video_encoder_h264
- * fwm_venc_device_t table. Lifecycle, memory and the per-picture engine envelope of
- * section 5.5, built against the kept register-shadow (h264_regs), header
- * (h264_headers), ISP (h264_isp) and rate-control (h264_rc, this pass's
- * companion unit) sources, and the kept support library (venc_base_abi) and
- * engine driver (ve_iface) ABIs.
- *
- * Every hardware register access goes through fc_enc_reg_{read,write,
- * write_block}() (freecodec_enc_regs.c), which are volatile-qualified and
- * kept in their own translation unit (spec section 5.7). */
+/* H.264 encoder device (spec 12): the video_encoder_h264 fwm_venc_device_t table,
+ * lifecycle, memory and the per-picture engine envelope (spec 5.5). Register access
+ * goes only through fc_enc_reg_*() (freecodec_enc_regs.c, volatile, spec 5.7). */
 
 #include "freecodec_enc_priv.h"
 
@@ -55,10 +48,8 @@ static uint32_t enc_read(fc_enc_instance *e, unsigned int off)
     return fc_enc_reg_read(e->enc_base, off / 4u);
 }
 
-/* Per-picture register script: write back only the offsets the config step
- * computes (spec 12 section 5.5 step 6). A blind whole-window write also
- * zeroes 0x18, the bit-writer control used by the slice-header feed and the
- * kick. The offset list is a register-map fact, kept as observed. */
+/* Offsets the config step computes (spec 12 5.5 step 6); a whole-window write
+ * would also zero 0x18, the bit-writer control. Register-map fact. */
 static const unsigned int ENC_SCRIPT_WRITE_OFFSETS[] = {
     0x04u, 0x08u, 0x14u, 0x1cu, 0x28u, 0x2cu, 0x30u, 0x34u, 0x38u, 0x3cu,
     0x40u, 0x44u, 0x48u, 0x4cu, 0x78u, 0x7cu, 0x80u, 0x84u, 0x88u, 0x8cu,
@@ -96,11 +87,8 @@ static int alloc_one(fc_enc_instance *e, fc_enc_buf *b, unsigned int size)
         return -1;
     b->size = size;
     b->phy = e->memops->ve_get_phyaddr(b->vir);
-    /* Section 3.3: flush before any encode() call can hand the address to
-     * hardware. All of our buffers qualify (either the engine reads them, or
-     * software wrote content the engine will read), so every buffer is
-     * flushed once here, right after allocation -- the r2-style approach the
-     * spec calls behaviourally equivalent to a single batch flush. */
+    /* Flush every buffer once after allocation, before encode() can hand it to
+     * hardware (spec 3.3; equivalent to one batch flush). */
     e->memops->flush_cache(b->vir, (int)size);
     return 0;
 }
@@ -135,9 +123,8 @@ static void free_buffers(fc_enc_instance *e)
     e->ovl.b_overlay = 0;
 }
 
-/* 3D-filter planes: dst-height-MB * 12 * align8(dst-width-MB), two of them,
- * memset 0xff (memory spec, allocation table 0x15d0). Also the defensive
- * encode-time path of 3D-filter spec §5; allocates only missing planes. */
+/* 3D-filter planes: two of dst-height-MB * 12 * align8(dst-width-MB), memset
+ * 0xff (3D-filter spec 5); allocates only missing planes. */
 static int alloc_filt3d(fc_enc_instance *e)
 {
     const fc_enc_geom *g = &e->geom;
@@ -158,12 +145,8 @@ static int alloc_filt3d(fc_enc_instance *e)
 static int alloc_buffers(fc_enc_instance *e)
 {
     const fc_enc_geom *g = &e->geom;
-    /* Luma rows are align64(h16 + 1), not the spec's align64(h16): when h16 is
-     * already a multiple of 64 (e.g. 1920x1088) the spec leaves no padding and
-     * the engine writes past the luma plane into the start of the reference
-     * chroma (top-left chroma drift that grows every P-frame, r35gb
-     * 2026-09-26). One 16-row band of padding was measured clean; other
-     * heights are unchanged. */
+    /* Luma rows are align64(h16 + 1), not align64(h16): at h16 % 64 == 0 (1088)
+     * the engine otherwise writes past luma into the reference chroma. */
     unsigned int luma = fc_enc_align_up(g->w16, 32u) * fc_enc_align_up(g->h16 + 1u, 64u);
     unsigned int chroma = fc_enc_align_up(g->w16, 32u) * fc_enc_align_up(g->h16, 128u) / 2u;
     unsigned int full_size = luma + chroma;
@@ -237,11 +220,8 @@ static void compute_geometry(fc_enc_instance *e, fwm_venc_base_config_t *cfg)
 
 static unsigned int effective_fps(const fc_enc_params *p)
 {
-    /* Section 8: framerate >= 1000 means milli-fps. The rate-control unit's
-     * own interface (spec 10 section 2) takes an integer frames/s figure, so
-     * a milli-fps configuration is truncated to whole frames/s for its bit-
-     * budget math -- a boundary choice forced by that unit's interface, not
-     * a bug. */
+    /* framerate >= 1000 means milli-fps (spec 8); the RC interface takes whole
+     * frames/s (spec 10 section 2), so milli-fps is truncated. */
     return (p->framerate >= 1000u) ? (p->framerate / 1000u) : p->framerate;
 }
 
@@ -315,12 +295,8 @@ static void build_sps_pps(fc_enc_instance *e)
     sps.frame_mbs_only_flag = 1u;
     sps.direct_8x8_inference_flag = 1u;
     {
-        /* The coded picture is the 16-aligned w16 x h16, so
-         * the SPS must always crop back to the shown window -- not only when
-         * a display size is set (640x360 went out as 640x368, eight extra
-         * rows). The shown window is the display size if set, else dst,
-         * centred within dst; everything past it up to the coded edge is
-         * cropped on the right/bottom. Crop units are 2 pixels (4:2:0). */
+        /* The coded picture is w16 x h16, so the SPS always crops to the shown
+         * window (display size or dst, centred), in 2-pixel units (4:2:0). */
         unsigned int show_w = e->geom.dst_w, show_h = e->geom.dst_h;
         unsigned int left, top, right, bottom;
 
@@ -374,9 +350,8 @@ static void build_sps_pps(fc_enc_instance *e)
 
 /* ----------------------------------------------------------- bit-writer -- */
 
-/* Spec section 5.6: wait for status bit 9 (bounded poll), else write the
- * value and the (length<<8)|1 command. On timeout, emit nothing for this
- * call -- the reference's own observed behaviour, carried forward as-is. */
+/* Spec 5.6: bounded poll for status bit 9, then write the value and the
+ * (length<<8)|1 command; on timeout nothing is emitted, as the reference does. */
 static void feed_bits(fc_enc_instance *e, unsigned int val, unsigned int n)
 {
     unsigned int tries;
@@ -548,26 +523,16 @@ static int enc_encode(void *h, fwm_venc_input_picture_t *in)
               (n % e->params.max_key_interval) == 0u);
     e->params.force_key = 0;
 
-    /* Section 5.2/5.3: fixed-QP mode uses the configured QP outright; a
-     * live IDR uses the fixed default of 37 (spec 10 section 7), and the
-     * rate-control unit's own start_picture(I) return value is discarded,
-     * though it is still called (with finish_picture afterwards) so its
-     * internal bookkeeping -- pictures-since-start-sequence, activity
-     * history -- stays continuous across the IDR (spec 10 section 7's
-     * recommendation when this default is adopted). */
+    /* Fixed-QP mode uses the configured QP (spec 5.2/5.3). start_picture(I) is
+     * still called so RC bookkeeping stays continuous across the IDR (spec 10 s7). */
     {
         int rc_qp = freecodec_rc_start_picture(&e->rc, is_idr ? FC_RC_PIC_I : FC_RC_PIC_P);
 
         if (e->params.fixed_qp_enable)
             qp = is_idr ? e->params.fixed_i_qp : e->params.fixed_p_qp;
         else if (is_idr && e->last_p_qp > 0)
-            /* Divergence from the fixed IDR QP 37: a fixed I-QP is far coarser
-             * than the P pictures whenever rate control runs P below 37 (dark
-             * or static scenes), so detail visibly "snaps" at every IDR - once
-             * a second on a 1 s GOP (r35gb 2026-09-26). Code the IDR at the
-             * latest P picture's QP instead: the same quantisation keeps detail
-             * steady across the IDR (QP-2 also worked but made 1080p IDRs
-             * ~210 KB, bursts a weak Wi-Fi link struggles with). */
+            /* IDR at the latest P QP rather than the fixed 37 (spec 10 s7): a
+             * coarser I picture makes detail visibly snap at every IDR. */
             qp = clampi(e->last_p_qp, e->params.qp_min, e->params.qp_max);
         else if (is_idr)
             qp = 37;                    /* first picture: no P history yet */
@@ -578,13 +543,11 @@ static int enc_encode(void *h, fwm_venc_input_picture_t *in)
     if (is_idr)
         i_budget = (long long)(5.0 * (double)e->params.bitrate / (double)effective_fps(&e->params));
 
-    /* Steps 1/19 (lock): not taken here. The framework (fenc.c) already
-     * holds the shared VE lock around encode(); taking the same
-     * non-recursive mutex again deadlocks on the first picture. */
+    /* Steps 1/19 (lock) are not taken: fenc.c already holds the shared,
+     * non-recursive VE lock around encode(). */
     e->ve_ops->reset(e->ve_self);                                  /* step 2 */
-    /* No BitStreamReset(): the consumer drains the ring on its own thread,
-     * so the ring's bookkeeping must not be wiped per picture. The engine
-     * side is handled at step 6 (offset 0). */
+    /* No BitStreamReset(): the consumer drains the ring on its own thread;
+     * the engine side is handled at step 6 (offset 0). */
     fc_ve_enc_on(e->ve_ops, e->ve_self);                           /* step 3 */
 
     if (!is_idr) {
@@ -594,9 +557,8 @@ static int enc_encode(void *h, fwm_venc_input_picture_t *in)
                                (int)fc_mbrc_buffer_bytes(e->geom.h_mb));
     }
 
-    /* step 6: register script. Confirmed-bug-1 (spec sections 9/5.5 item 6):
-     * seed 0x1c from the LIVE value read after the reset pulse just above --
-     * never a hardcoded constant, even though it reads 0 today. */
+    /* step 6: register script. Seed 0x1c from the live value read after the
+     * reset pulse, never a constant (spec 9 / 5.5 item 6). */
     seed_1c = enc_read(e, 0x1c);
     memset(regs, 0, sizeof(regs));
     regs[0x1c / 4] = seed_1c;
@@ -604,13 +566,8 @@ static int enc_encode(void *h, fwm_venc_input_picture_t *in)
     main_curr = n % 2u;
     main_last = (n == 0u) ? 0u : ((n - 1u) % 2u);
 
-    /* 3D-filter step (3D-filter spec): the level is read afresh every picture
-     * (§7). Enable = level != 0 and not the first picture of the instance
-     * (§3); T follows the slice QP, QP >= 52 keeping the previous T (§2.2);
-     * the last-slot plane is reset to F(level) and flushed on every picture
-     * with level != 0, the first included (§5). */
-    /* A direct strength (venc_ext.h) runs the filter as level 3 does, with
-     * its own T below; otherwise the level rules of the 3D-filter spec. */
+    /* 3D filter (3D-filter spec 2-7): level read every picture; a direct
+     * strength (venc_ext.h) runs as level 3 with its own T. */
     f3d_level = e->params.filter_3d_strength ? 3u : e->params.filter_3d_level;
     f3d_enabled = freecodec_h264_3d_enabled(f3d_level, n);
     if (f3d_level != 0u) {
@@ -631,12 +588,8 @@ static int enc_encode(void *h, fwm_venc_input_picture_t *in)
     }
 
     memset(&rcfg, 0, sizeof(rcfg));
-    /* The step-2 reset pulse returns the engine's own (shared,
-     * engine-internal) bitstream write position to 0, and 0x88 does not move
-     * it, so every picture lands at buffer offset 0 whatever the ring's
-     * running offset says. Encode against, and publish from, offset 0 with
-     * the whole buffer free (h264-two-channel.md section 3). The ring keeps
-     * its own bookkeeping; only the frame's recorded offset is 0. */
+    /* The step-2 reset returns the engine's bitstream write position to 0 and
+     * 0x88 does not move it, so encode and publish at offset 0 (h264-two-channel 3). */
     rcfg.out_buffer_offset = 0u;
     rcfg.valid_buffer_size = (unsigned int)BitStreamBufferSize(e->bufs.bs);
     rcfg.ic_version = e->ic_version;
@@ -655,9 +608,8 @@ static int enc_encode(void *h, fwm_venc_input_picture_t *in)
     rcfg.frame_count = n;
     rcfg.classify_engine_enable = e->params.fixed_qp_enable ? 0u : 1u;
     rcfg.mb_rc_enable = e->reg_info.mb_rc_enable;
-    /* The 3D filter level can change live; the dynamic-ME enable is the
-     * init-time latch (level == 0 at init), not re-evaluated per picture
-     * (3D-filter spec §6). */
+    /* The level can change live; dynamic ME stays the init-time latch
+     * (3D-filter spec 6). */
     rcfg.filter_3d_level = f3d_level;
     rcfg.filter_3d_threshold = e->filt3d_t;
     rcfg.dynamic_me_enable = e->reg_info.dynamic_me_enable;
@@ -785,15 +737,8 @@ static int enc_encode(void *h, fwm_venc_input_picture_t *in)
     }
     feed_header(e, slice_buf, slice_bits);
 
-    /* step 10: slice-time words. Confirmed-bug-2 (spec sections 9/5.5 item
-     * 10): 0x0c keeps its real computed value (already produced correctly by
-     * the kept register unit below); the whole top byte of 0x04 is cleared.
-     * That includes bit 31, eptbDisable: it is 1 while the software-built
-     * start code and slice header go through the bit-writer (the step-6
-     * script sets it) and must be 0 for the slice data, so the engine inserts
-     * emulation-prevention bytes. Left at 1, the occasional 00 00 0x run in
-     * the coded data breaks the picture (h264-idr-divergence.md; reference
-     * capture 0x04 = 0x00000100). */
+    /* step 10 (spec 9 / 5.5 item 10): clear the top byte of 0x04, including bit 31
+     * eptbDisable, so the engine inserts emulation-prevention bytes in slice data. */
     freecodec_h264_hw_slice_header(&scfg, 1 /* top_poc source */, 1 /* ver2 */, &sstate);
     freecodec_h264_set_reg_ver2(&sstate, e->dram_type, e->reg_info.over_time_mb_count,
                                 (uint32_t)((uintptr_t)e->bufs.mv.phy >> 8), slice_regs);
@@ -823,9 +768,8 @@ static int enc_encode(void *h, fwm_venc_input_picture_t *in)
         return FWM_VENC_RESULT_ERROR;
     }
 
-    /* A cached ring: every picture lands at offset 0, so lines the CPU read
-     * from the previous picture can still be cached there; drop them before
-     * the consumer reads this one (spec 12 section 3.3). */
+    /* Every picture lands at offset 0: drop cache lines read from the previous
+     * picture before the consumer reads this one (spec 12 3.3). */
     if (!e->params.vbv_no_cache)
         e->memops->flush_cache(BitStreamBaseAddress(e->bufs.bs), (int)length);
 
@@ -849,10 +793,8 @@ static int enc_encode(void *h, fwm_venc_input_picture_t *in)
     status = enc_read(e, 0x1c);
     enc_write(e, 0x1c, status);
 
-    /* step 15: activity. Bit 27 (MAD/SSE output) is never enabled by this
-     * device (spec section 16 item 4), so 0x50 reads back whatever the
-     * classification path alone leaves there; the rate-control unit applies
-     * its own zero-fallback (spec 10 section 5). */
+    /* step 15: activity. MAD/SSE output (bit 27) is never enabled (spec 16
+     * item 4); the RC unit applies its own zero-fallback (spec 10 section 5). */
     {
         unsigned int activity = enc_read(e, 0x50);
 
@@ -1065,23 +1007,8 @@ static int enc_get_parameter(void *h, int index, void *param)
     }
 }
 
-/* Overlay (OSD), h264-overlay.md: pack the caller's blocks with the kept ISP
- * unit's packer into grow-only header/data buffers, flush them, and latch the
- * engine addresses (>> 8, the width the ISP registers take) for every later
- * picture. NORMAL and LUMA_REVERSE blocks are supported; blk_num 0 disables. Runs under
- * the shared VE lock so an in-flight encode never reads a half-packed or
- * freed buffer (the framework takes that lock around encode() only). */
-/*
- * OSD luma-adaptive inversion (codec-spec/overlay-invert/spec.md).  Blocks of
- * type LUMA_REVERSE get header +8 bit 29: the hardware re-decides them every
- * frame (no hysteresis), encoder-wide mode 2 (invert where the video/overlay
- * luma difference is below the threshold) at threshold 96.  NORMAL blocks are
- * drawn as given.  The hardware needs a per-instance scratch buffer at reg
- * 0x54 whenever overlay is on (ceil(width/16) * 32 bytes, 256-byte aligned;
- * never touched by software).  FREECODEC_OVL_INVERT=0 disables bit 29 for all
- * blocks (the buffer is still set).  Called under the VE lock from
- * set_overlay, after the headers are packed.
- */
+/* OSD luma-adaptive inversion (overlay-invert spec): LUMA_REVERSE blocks get
+ * header +8 bit 29; needs the per-instance scratch buffer at reg 0x54. */
 #define FC_OVL_REVERSE_LUMA   (1u << 29)
 #define FC_OVL_INVERT_MODE    2
 #define FC_OVL_INVERT_THRESH  96
@@ -1117,6 +1044,8 @@ static void ovl_invert_setup(fc_enc_instance *e,
     }
 }
 
+/* Overlay (h264-overlay): packs blocks into grow-only buffers and latches their
+ * addresses (>> 8); runs under the shared VE lock. blk_num 0 disables. */
 static int set_overlay(fc_enc_instance *e, const fwm_venc_overlay_t *oi)
 {
     freecodec_h264_overlay_block blocks[FREECODEC_H264_OVERLAY_MAX_BLOCKS];
@@ -1189,10 +1118,8 @@ out:
     return rc;
 }
 
-/* Bit rate / frame rate changed after init: the consumer changes them live
- * (no re-init), so rebuild rate control now. Under the shared VE lock: the
- * encode thread uses the RC state while the caller's control thread lands
- * here. */
+/* Bit rate / frame rate changed live: rebuild rate control, under the shared
+ * VE lock because the encode thread uses the RC state. */
 static void reconfigure_rc_live(fc_enc_instance *e)
 {
     if (!e->initialised || e->params.fixed_qp_enable)
@@ -1414,12 +1341,8 @@ fwm_venc_device_t video_encoder_h264_ver2 = {
     enc_valid_count, enc_get_frame, enc_free_frame, enc_reset_frames
 };
 
-/* Section 12: ver1 is aliased to the same, exhaustively-verified ver2 table
- * -- V833 (the only IC this product ships on) always selects ver2 regardless
- * of which symbol a caller probes, so ver1's own behaviour is unreachable on
- * shipping hardware; aliasing exposes a working encoder rather than an
- * outright failure under that symbol. See spec section 12 for the owner
- * decision point if a future IC below the ver2 threshold is ever targeted. */
+/* ver1 aliases ver2 (spec 12): V833 always selects ver2, so this exposes a
+ * working encoder under either symbol. */
 fwm_venc_device_t video_encoder_h264_ver1 = {
     "video_encoder_h264_ver1",
     enc_open, enc_init, enc_uninit, enc_close, enc_encode,

@@ -243,9 +243,8 @@ void freecodec_h264_isp_set_register(freecodec_h264_isp *isp,
             isp_write(isp, 0x38, hor | (ver << 12));
         }
 
-        /* All 64 coefficients latch through the single 0xe4 port (no 0xe4 + 4i
-         * stride; spec h264-isp.md, ve-cold-bringup.md); 0xe0 is the port's
-         * zeroed base word. */
+        /* All 64 coefficients latch through the single 0xe4 port (no 4-byte
+         * stride); 0xe0 is the port's zeroed base word. */
         for (i = 0; i < 64u; i++)
             isp->scaler_coeff[i] = isp_scaler_pair(info->y_offset);
         isp_write(isp, 0xe0, 0);
@@ -345,17 +344,8 @@ int freecodec_h264_isp_update_overlay(freecodec_h264_isp_info *info,
         if (sz != 0u)
             memcpy(data_vir + offset, b->bitmap_vir, sz);
 
-        /* 16-byte header entry, the layout this ISP generation reads
-         * (ic_version > 0x2110f; sun8iw19 = 0x21110):
-         *   +0  overlay block rectangle: start_mb_x, end_mb_x, start_mb_y,
-         *       end_mb_y as four u8 (the macroblock coords, 16 px each)
-         *   +8  overlay control word: blk_data_offset[21:0] = data byte offset >> 8
-         *       (256-byte units), [22] force_reverse, [27:24] extra_alpha,
-         *       [28] extra_alpha_flag, [29] reverse_luma, [30] cover,
-         *       [31] last_blk_flag (set on the final block)
-         *   +12 fill_y, fill_u, fill_v, reverse-unit nibbles (0 for NORMAL)
-         * A FWM_VENC_OVERLAY_NORMAL block copies its bitmap and advances the data offset
-         * by its 256-byte-aligned size. */
+        /* 16-byte header entry (ic_version > 0x2110f), laid out as in
+         * docs/integration-h264.md "OSD header layout". */
         hdr[0] = (unsigned char)(b->start_mb_x & 0xffu);
         hdr[1] = (unsigned char)(b->end_mb_x & 0xffu);
         hdr[2] = (unsigned char)(b->start_mb_y & 0xffu);

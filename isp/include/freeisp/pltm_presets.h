@@ -1,18 +1,8 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
-/*
- * pltm_presets.h - read the local tone-mapping preset table (spec 7.8) out of
- * the device's own firmware at runtime.
- *
- * The stock media daemon holds the 19 x 4 presets as instruction immediates
- * in one small switch function, not as data.  The extractor finds that switch
- * by its prologue shape, decodes each case with a tiny ARM (A32) immediate
- * interpreter, and accepts the result only if it passes structural checks
- * (row count, field ranges, a neutral first row, monotone reachable rows).
- * No preset values are compiled in; on any failure the caller runs the PLTM
- * core with no presets (neutral).  The result is cached as a small text file
- * on the device so later boots do not read the firmware again.
- */
+/* pltm_presets.h - extract the 19 x 4 PLTM preset table (spec pltm.md 7.8) from the
+ * device's own firmware, where it is a switch of A32 immediates; accepted only if it
+ * passes structural checks, else neutral. The result is cached on the device. */
 #ifndef FREEISP_PLTM_PRESETS_H
 #define FREEISP_PLTM_PRESETS_H
 

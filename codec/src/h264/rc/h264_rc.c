@@ -1,52 +1,32 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
 
-/* Frame-level H.264 rate control, spec/10-rate-control.md (r4).
- *
- * Design (spec 10 section 4 offers a quadratic rate-quantiser model as a
- * suggestion, not a requirement; section 10 item 2 repeats that any model
- * meeting section 3's contract is acceptable). This unit uses a simpler
- * single-term model, `bits = K * A / Qstep(QP)`, with an EWMA estimator for
- * K and a bounded accumulator that trims the next picture's target bit
- * budget by whatever the running total has drifted from the ideal
- * `bit_rate/frame_rate` cadence (P pictures only, per section 3 item 8's
- * "budget bookkeeping is defined only for P pictures").
- *
- * Qstep(QP) here is the pure doubling exponential `2^((QP-30)/6)`, not the
- * "textbook" per-QP base table spec 10 section 4 mentions. Section 4 states
- * outright that the base table "is a textbook convention, not something the
- * standard itself names" and leaves Qstep's exact shape a free design
- * choice constrained only by STD 8.5.12's doubling-every-6-steps rule; the
- * pure exponential satisfies that rule and is simpler to invert in closed
- * form. This is purely an internal control-loop computation -- it never
- * reaches the bitstream or a register; only the resulting integer QP does. */
+/* Frame-level H.264 rate control (spec 10). Our own single-term model
+ * bits = K * A / Qstep(QP): EWMA estimate of K plus a bounded accumulator that
+ * trims P targets toward bit_rate/frame_rate (spec 3 item 8). Qstep is the pure
+ * doubling 2^((QP-30)/6), internal only (spec 4 leaves its shape free). */
 
 #include "freecodec/h264_rc.h"
 
 #include <math.h>
 #include <string.h>
 
-/* How many pictures' worth of accumulated bit surplus/deficit to repay per
- * picture (spec 10 section 3 item 7: "the exact shape of this transient is a
- * free design choice"). [DES] */
+/* Pictures over which accumulated bit surplus/deficit is repaid (spec 10 3
+ * item 7 leaves the transient free). [DES] */
 #define RC_REPAY_PICTURES   16.0
 
-/* Bound on the accumulator, in multiples of one picture's ideal bit budget,
- * so a long stretch where the target is unreachable (section 3 item 6,
- * clamp case) cannot leave an unbounded repayment debt once it ends. [DES] */
+/* Accumulator bound in ideal-picture budgets, so an unreachable target (spec 3
+ * item 6) cannot leave unbounded debt. [DES] */
 #define RC_ACCUM_CAP_PICS   40.0
 
-/* EWMA gain for the bits-per-activity-per-Qstep estimator, and the ratio
- * window outside which a sample is treated as an outlier and skipped
- * (mirrors spec 10 section 4's "with outlier rejection so one anomalous
- * picture doesn't wreck the model"). [DES] */
+/* EWMA gain for the K estimator, and the ratio window outside which a sample
+ * is rejected as an outlier (spec 10 section 4). [DES] */
 #define RC_K_ALPHA          0.35
 #define RC_K_OUTLIER_LOW    0.2
 #define RC_K_OUTLIER_HIGH   5.0
 
-/* Clamp on the target bit budget itself, so a large accumulated debt cannot
- * drive the requested budget to zero or to an absurd multiple of the ideal
- * rate. [DES] */
+/* Clamp on the target budget so accumulated debt cannot drive it to zero or
+ * an absurd multiple of the ideal rate. [DES] */
 #define RC_TARGET_MIN_FRAC  0.15
 #define RC_TARGET_MAX_FRAC  4.0
 
@@ -227,9 +207,8 @@ void freecodec_rc_finish_picture(freecodec_rc *rc, long long bits,
     double qstep = qp_to_qstep(rc->cur_qp);
     double a = (double)activity;
 
-    /* Section 5: substitute the neutral stand-in when the activity path
-     * reads 0 (before the engine has ever produced the figure, or when the
-     * statistics path is disabled). */
+    /* Section 5: neutral stand-in when the activity reads 0 (no figure yet, or
+     * statistics disabled). */
     if (a <= 0.0)
         a = (double)rc->width_mb * (double)rc->height_mb * 8.0;
 

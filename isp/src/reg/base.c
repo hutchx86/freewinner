@@ -1,19 +1,8 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
-/*
- * base.c - register-tier configuration and statistics layer.
- *
- * Clean-room re-production of the `isp_base.o` translation unit from
- * spec/reglayer2.md.  Written without access to the deployed object
- * (see reimplementation/README.md).
- *
- * Stage 1 implements the configuration/table-builder entry points:
- *   config_band_step, config_lens_center, config_dig_gain, config_gamma,
- *   config_wdr, config_lens_table, config_msc_table, isp_apply_colormatrix and
- *   __isp_stat_dynamic_judge.
- * The statistics handlers (isp_handle_stats / isp_handle_stats_sync) and the
- * settings dispatcher (isp_apply_settings) remain interface-only stubs.
- */
+/* base.c - register-tier configuration and statistics layer (spec/reglayer2.md §3):
+ * the config_* table builders, isp_apply_colormatrix, __isp_stat_dynamic_judge, the
+ * statistics handlers and the settings dispatcher isp_apply_settings. */
 
 #include <math.h>
 #include <string.h>
@@ -85,7 +74,7 @@ static const freeisp_tables_t *tables_get(void)
 /* 3.11 config_band_step                                               */
 /* ------------------------------------------------------------------ */
 
-void config_band_step(isp_lib_context_t *ctx)
+void config_band_step(fwi_base_ctx_t *ctx)
 {
     uint32_t inc;
 
@@ -99,8 +88,8 @@ void config_band_step(isp_lib_context_t *ctx)
         inc = 63;
     ctx->module_cfg.afs_cfg.inc_line = inc;
 
-    /* The deployment also programs the anti-flicker line increment here; the
-     * the differential cannot observe register side effects (see spec 3.11/6). */
+    /* The deployment also programs the anti-flicker line increment here
+     * (spec/reglayer2.md §3.11, §6). */
     isp_reg_set_afs_anti_flick(ctx->isp_dev_id, inc);
 }
 
@@ -108,7 +97,7 @@ void config_band_step(isp_lib_context_t *ctx)
 /* 3.9 config_lens_center                                              */
 /* ------------------------------------------------------------------ */
 
-void config_lens_center(isp_lib_context_t *ctx)
+void config_lens_center(fwi_base_ctx_t *ctx)
 {
     uint32_t pw, ph, m;
     int32_t cx, cy, dxw, dyh;
@@ -163,7 +152,7 @@ void config_lens_center(isp_lib_context_t *ctx)
 /* 3.5 config_dig_gain                                                 */
 /* ------------------------------------------------------------------ */
 
-void config_dig_gain(isp_lib_context_t *ctx, int32_t exp_digital_gain)
+void config_dig_gain(fwi_base_ctx_t *ctx, int32_t exp_digital_gain)
 {
     const freeisp_tables_t *ft;
     const base_tables_t *tb;
@@ -226,7 +215,7 @@ void config_dig_gain(isp_lib_context_t *ctx, int32_t exp_digital_gain)
 /* 3.7 config_gamma                                                    */
 /* ------------------------------------------------------------------ */
 
-void config_gamma(isp_lib_context_t *ctx)
+void config_gamma(fwi_base_ctx_t *ctx)
 {
     const freeisp_tables_t *ft;
     const base_tables_t *tb;
@@ -311,7 +300,7 @@ static int wdr_tuning_is_zero(const base_tables_t *tb)
             tb->wdr_table[0x1ffe] == 0);
 }
 
-void config_wdr(isp_lib_context_t *ctx, int32_t flag)
+void config_wdr(fwi_base_ctx_t *ctx, int32_t flag)
 {
     const freeisp_tables_t *ft;
     const base_tables_t *tb;
@@ -357,11 +346,8 @@ void config_wdr(isp_lib_context_t *ctx, int32_t flag)
         uint16_t exp_ratio;
         int k;
 
-        /* The deployed config_wdr guards each wdr_ratio field independently
-         * (zero -> 0x100) and divides by ae_wdr_ratio.isp_hardware alone; the
-         * earlier clean code folded the sensor/tmp guards onto isp_hw, which
-         * clobbered a valid nonzero isp_hardware whenever sensor (COMANDING
-         * WDR) or tmp was zero and produced wrong hi/lo thresholds. */
+        /* Guard each wdr_ratio field independently (zero -> 0x100) and divide by
+         * ae_wdr_ratio.isp_hardware alone; a zero sensor or tmp ratio must not clobber it. */
         if (ctx->ae_result.wdr_ratio_sensor == 0)
             ctx->ae_result.wdr_ratio_sensor = 0x100;
         if (ctx->ae_result.wdr_ratio_tmp == 0)
@@ -383,10 +369,8 @@ void config_wdr(isp_lib_context_t *ctx, int32_t flag)
         if (ctx->iso_cem_color2gray_th <= ctx->iso_lum_idx)
             ctx->module_cfg.wdr_cfg.hi_th = exp_ratio;
         ctx->module_cfg.wdr_cfg.lo_th = (uint16_t)lo;
-        /* The deployed arithmetic is an unguarded sdiv; the divisor is zero
-         * exactly when lo_th>>4 == (hi_th>>4)+1.  Keep the vendor result when
-         * nonzero, but do not fault: a zero divisor yields slope 0, which is
-         * unreachable on the vendor path only because its inputs differ. */
+        /* Deployed: an unguarded sdiv whose divisor is zero exactly when lo_th>>4 == (hi_th>>4)+1.
+         * Same result when nonzero; a zero divisor gives slope 0 instead of faulting. */
         {
             int32_t den = ((ctx->module_cfg.wdr_cfg.hi_th >> 4) + 1 -
                            (ctx->module_cfg.wdr_cfg.lo_th >> 4));
@@ -438,7 +422,7 @@ void config_wdr(isp_lib_context_t *ctx, int32_t flag)
 /* 3.4 isp_apply_colormatrix                                           */
 /* ------------------------------------------------------------------ */
 
-static void config_color_matrix(isp_lib_context_t *ctx)
+static void config_color_matrix(fwi_base_ctx_t *ctx)
 {
     const freeisp_tables_t *ft;
     const base_tables_t *tb;
@@ -502,7 +486,7 @@ static void config_color_matrix(isp_lib_context_t *ctx)
         ctx->module_cfg.rgb2rgb_cfg.color_offset[i] = slot[9 + i];
 }
 
-static void config_defog(isp_lib_context_t *ctx)
+static void config_defog(fwi_base_ctx_t *ctx)
 {
     int32_t dv, nz, pre, scale;
     int r, c;
@@ -562,7 +546,7 @@ static void config_defog(isp_lib_context_t *ctx)
     ctx->defog_ctx.defog_pre = pre;
 }
 
-void isp_apply_colormatrix(isp_lib_context_t *ctx)
+void isp_apply_colormatrix(fwi_base_ctx_t *ctx)
 {
     if (!ctx)
         return;
@@ -574,9 +558,9 @@ void isp_apply_colormatrix(isp_lib_context_t *ctx)
 /* 3.2 __isp_stat_dynamic_judge                                        */
 /* ------------------------------------------------------------------ */
 
-void __isp_stat_dynamic_judge(isp_lib_context_t *ctx)
+void __isp_stat_dynamic_judge(fwi_base_ctx_t *ctx)
 {
-    isp_dynamic_stats_t *d;
+    fwi_base_dynamic_stats_t *d;
     int32_t p1[ISP_AE_WIN_N], p2[ISP_AE_WIN_N], p3[ISP_AE_WIN_N];
     int32_t th[ISP_DYN_MOV_TH];
     int32_t f1, f2, f3, med, low, high, tm;
@@ -705,12 +689,8 @@ void __isp_stat_dynamic_judge(isp_lib_context_t *ctx)
 /* 3.8 config_lens_table                                               */
 /* ------------------------------------------------------------------ */
 
-/* Temperature-trigger selection.  The deployed object falls back to its
- * compiled-in lsc_trig_cfg_def / msc_trig_cfg_def defaults when the tuning
- * array is all zero; those defaults are injected through the table contract
- * (the runtime feed extracts them from the camera's own rmm image), so no
- * vendor bytes are compiled in.  If the injected default is absent, fall
- * back to the per-temperature tuning triggers so nothing dereferences NULL. */
+/* Temperature-trigger defaults (used when the tuning array is all zero) are injected from
+ * the camera's rmm image, not compiled in; if absent, use the per-temperature triggers. */
 static const uint16_t *temp_trig_cfg(const uint16_t *cfg, const uint16_t *def,
                                      const uint16_t *fallback)
 {
@@ -760,7 +740,7 @@ static void lens_temp_index(const uint16_t *trig, int32_t temp, int32_t *t_out,
     *j_out = idx ? idx - 1 : 0;
 }
 
-void config_lens_table(isp_lib_context_t *ctx, int32_t vcm_std_pos)
+void config_lens_table(fwi_base_ctx_t *ctx, int32_t vcm_std_pos)
 {
     const freeisp_tables_t *ft;
     const base_tables_t *tb;
@@ -872,7 +852,7 @@ void config_lens_table(isp_lib_context_t *ctx, int32_t vcm_std_pos)
 
 #define MSC_SRC_STRIDE 484
 
-static void msc_emit_corr(isp_lib_context_t *ctx, const double *cref, int i,
+static void msc_emit_corr(fwi_base_ctx_t *ctx, const double *cref, int i,
                           int L, float adj_or_less, int flag, int32_t v0,
                           int32_t v1, int32_t v2, uint16_t *out)
 {
@@ -895,7 +875,7 @@ static void msc_emit_corr(isp_lib_context_t *ctx, const double *cref, int i,
         (uint16_t)(uint32_t)((float)v2 * ctx->msc_golden_ratio[2 * L + i]);
 }
 
-static void msc_build_af(isp_lib_context_t *ctx, const base_tables_t *tb,
+static void msc_build_af(fwi_base_ctx_t *ctx, const base_tables_t *tb,
                          int32_t t, int32_t tlo, int32_t thi, int j, int L,
                          int32_t vcm, uint16_t *out)
 {
@@ -926,12 +906,8 @@ static void msc_build_af(isp_lib_context_t *ctx, const base_tables_t *tb,
                           ctx->msc_golden_flag[i] == 1, v0, v1, v2, out);
         }
     } else {
-        /*
-         * The deployed helper fills only the first 3*L entries of a
-         * translation-unit-scope scratch and reads stale entries past that
-         * (the spec's "scratch persists across calls"); reproduce the same
-         * storage so the out-of-range reads match.  Both sides start zeroed.
-         */
+        /* The deployed helper fills only the first 3*L entries of a file-scope scratch and reads
+         * stale entries past that; keep the same persistent, zero-initialised storage. */
         static uint16_t pos1[3 * MSC_SRC_STRIDE];
         static uint16_t pos2[3 * MSC_SRC_STRIDE];
         int p;
@@ -954,7 +930,7 @@ static void msc_build_af(isp_lib_context_t *ctx, const base_tables_t *tb,
     }
 }
 
-static void msc_build_ff(isp_lib_context_t *ctx, const base_tables_t *tb,
+static void msc_build_ff(fwi_base_ctx_t *ctx, const base_tables_t *tb,
                          int32_t t, int32_t tlo, int32_t thi, int j, int L,
                          uint16_t *out)
 {
@@ -993,7 +969,7 @@ static void msc_build_ff(isp_lib_context_t *ctx, const base_tables_t *tb,
     }
 }
 
-void config_msc_table(isp_lib_context_t *ctx, int32_t vcm_std_pos)
+void config_msc_table(fwi_base_ctx_t *ctx, int32_t vcm_std_pos)
 {
     const freeisp_tables_t *ft;
     const base_tables_t *tb;
@@ -1081,14 +1057,14 @@ static uint8_t clamp_u8(uint32_t v)
     return (v > 0xffu) ? (uint8_t)0xff : (uint8_t)v;
 }
 
-static void stats_rotate_accum(isp_dynamic_stats_t *d)
+static void stats_rotate_accum(fwi_base_dynamic_stats_t *d)
 {
     memcpy(d->accum_last3, d->accum_last2, sizeof(d->accum_last3));
     memcpy(d->accum_last2, d->accum_last1, sizeof(d->accum_last2));
     memcpy(d->accum_last1, d->accum, sizeof(d->accum_last1));
 }
 
-static uint32_t stats_ae_win_pix_n(isp_lib_context_t *ctx)
+static uint32_t stats_ae_win_pix_n(fwi_base_ctx_t *ctx)
 {
     uint32_t n = ctx->module_cfg.ae_cfg.ae_reg_win.height *
                  ctx->module_cfg.ae_cfg.ae_reg_win.width;
@@ -1097,9 +1073,9 @@ static uint32_t stats_ae_win_pix_n(isp_lib_context_t *ctx)
     return (n == 0) ? 0u : (n >> sh);
 }
 
-static void handle_ae(isp_lib_context_t *ctx, const uint8_t *buf)
+static void handle_ae(fwi_base_ctx_t *ctx, const uint8_t *buf)
 {
-    isp_ae_stats_t *ae = &ctx->stats_ctx.stats.ae;
+    fwi_base_ae_stats_t *ae = &ctx->stats_ctx.stats.ae;
     const uint8_t *win = buf + ISP_DMA_AE_OFF;
     const uint8_t *hist = buf + ISP_DMA_HIST_OFF;
     int32_t cmdout = ctx->ae_param.comanding_output_bits;
@@ -1160,7 +1136,7 @@ static void handle_ae(isp_lib_context_t *ctx, const uint8_t *buf)
     }
 }
 
-static void awb_wb_ratios(isp_lib_context_t *ctx, uint32_t *ratio_r,
+static void awb_wb_ratios(fwi_base_ctx_t *ctx, uint32_t *ratio_r,
                           uint32_t *ratio_b)
 {
     uint32_t gr = ctx->wb_gain[1];
@@ -1169,9 +1145,9 @@ static void awb_wb_ratios(isp_lib_context_t *ctx, uint32_t *ratio_r,
     *ratio_b = gr ? ((((uint32_t)ctx->wb_gain[3] << 8) + gr / 2) / gr) : 0u;
 }
 
-static void handle_awb(isp_lib_context_t *ctx, const uint8_t *buf)
+static void handle_awb(fwi_base_ctx_t *ctx, const uint8_t *buf)
 {
-    isp_awb_stats_t *awb = &ctx->stats_ctx.stats.awb;
+    fwi_base_awb_stats_t *awb = &ctx->stats_ctx.stats.awb;
     const uint8_t *base = buf + ISP_DMA_AWB_OFF;
     const uint8_t *cnt = base + ISP_DMA_AWB_CNT_OFF;
     uint32_t ratio_r, ratio_b;
@@ -1236,9 +1212,9 @@ static void handle_awb(isp_lib_context_t *ctx, const uint8_t *buf)
     }
 }
 
-static void handle_af(isp_lib_context_t *ctx, const uint8_t *buf)
+static void handle_af(fwi_base_ctx_t *ctx, const uint8_t *buf)
 {
-    isp_af_stats_t *af = &ctx->stats_ctx.stats.af;
+    fwi_base_af_stats_t *af = &ctx->stats_ctx.stats.af;
     const uint8_t *base = buf + ISP_DMA_AF_OFF;
     int i;
 
@@ -1265,9 +1241,9 @@ static void handle_af(isp_lib_context_t *ctx, const uint8_t *buf)
     }
 }
 
-static void handle_afs(isp_lib_context_t *ctx, const uint8_t *buf)
+static void handle_afs(fwi_base_ctx_t *ctx, const uint8_t *buf)
 {
-    isp_afs_stats_t *afs = &ctx->stats_ctx.stats.afs;
+    fwi_base_afs_stats_t *afs = &ctx->stats_ctx.stats.afs;
     const uint8_t *base = buf + ISP_DMA_AFS_OFF;
     int i;
 
@@ -1280,10 +1256,10 @@ static void handle_afs(isp_lib_context_t *ctx, const uint8_t *buf)
     afs->pic_h = ctx->stats_ctx.pic_h;
 }
 
-static void handle_pltm(isp_lib_context_t *ctx, const uint8_t *buf)
+static void handle_pltm(fwi_base_ctx_t *ctx, const uint8_t *buf)
 {
-    isp_pltm_stats_t *pltm = &ctx->stats_ctx.stats.pltm;
-    isp_awb_stats_t *awb = &ctx->stats_ctx.stats.awb;
+    fwi_base_pltm_stats_t *pltm = &ctx->stats_ctx.stats.pltm;
+    fwi_base_awb_stats_t *awb = &ctx->stats_ctx.stats.awb;
     const uint8_t *base = buf + ISP_DMA_PLTM_OFF;
     uint64_t sum_before = 0, sum_after = 0;
     uint32_t mn_before = 0xfff, mx_before = 0;
@@ -1324,7 +1300,7 @@ static void handle_pltm(isp_lib_context_t *ctx, const uint8_t *buf)
     pltm->max_after = mx_after;
 }
 
-static void stats_attach(isp_lib_context_t *ctx)
+static void stats_attach(fwi_base_ctx_t *ctx)
 {
     ctx->stats_attach.awb_stats = &ctx->stats_ctx.stats.awb;
     ctx->stats_attach.ae_stats = &ctx->stats_ctx.stats.ae;
@@ -1336,7 +1312,7 @@ static void stats_attach(isp_lib_context_t *ctx)
     ctx->stats_attach.rolloff_stats = &ctx->stats_ctx.stats;
 }
 
-void isp_handle_stats(isp_lib_context_t *ctx, const void *buffer)
+void isp_handle_stats(fwi_base_ctx_t *ctx, const void *buffer)
 {
     const uint8_t *buf = (const uint8_t *)buffer;
 
@@ -1351,10 +1327,10 @@ void isp_handle_stats(isp_lib_context_t *ctx, const void *buffer)
     stats_attach(ctx);
 }
 
-static void merge_ae(isp_lib_context_t *ctx, const uint8_t *b0,
+static void merge_ae(fwi_base_ctx_t *ctx, const uint8_t *b0,
                      const uint8_t *b1)
 {
-    isp_ae_stats_t *ae = &ctx->stats_ctx.stats.ae;
+    fwi_base_ae_stats_t *ae = &ctx->stats_ctx.stats.ae;
     const uint8_t *s0 = b0 + ISP_DMA_AE_OFF;
     const uint8_t *s1 = b1 + ISP_DMA_AE_OFF;
     const uint8_t *h0 = b0 + ISP_DMA_HIST_OFF;
@@ -1396,10 +1372,10 @@ static void merge_ae(isp_lib_context_t *ctx, const uint8_t *b0,
     }
 }
 
-static void merge_awb(isp_lib_context_t *ctx, const uint8_t *b0,
+static void merge_awb(fwi_base_ctx_t *ctx, const uint8_t *b0,
                       const uint8_t *b1)
 {
-    isp_awb_stats_t *awb = &ctx->stats_ctx.stats.awb;
+    fwi_base_awb_stats_t *awb = &ctx->stats_ctx.stats.awb;
     const uint8_t *p0 = b0 + ISP_DMA_AWB_OFF;
     const uint8_t *p1 = b1 + ISP_DMA_AWB_OFF;
     const uint8_t *c0 = p0 + ISP_DMA_AWB_CNT_OFF;
@@ -1447,10 +1423,10 @@ static void merge_awb(isp_lib_context_t *ctx, const uint8_t *b0,
     }
 }
 
-static void merge_afs(isp_lib_context_t *ctx, const uint8_t *b0,
+static void merge_afs(fwi_base_ctx_t *ctx, const uint8_t *b0,
                       const uint8_t *b1)
 {
-    isp_afs_stats_t *afs = &ctx->stats_ctx.stats.afs;
+    fwi_base_afs_stats_t *afs = &ctx->stats_ctx.stats.afs;
     const uint8_t *s0 = b0 + ISP_DMA_AFS_OFF;
     const uint8_t *s1 = b1 + ISP_DMA_AFS_OFF;
     int i;
@@ -1465,10 +1441,10 @@ static void merge_afs(isp_lib_context_t *ctx, const uint8_t *b0,
     afs->pic_h = ctx->stats_ctx.pic_h;
 }
 
-static void merge_pltm(isp_lib_context_t *ctx, const uint8_t *b0,
+static void merge_pltm(fwi_base_ctx_t *ctx, const uint8_t *b0,
                        const uint8_t *b1)
 {
-    isp_pltm_stats_t *pltm = &ctx->stats_ctx.stats.pltm;
+    fwi_base_pltm_stats_t *pltm = &ctx->stats_ctx.stats.pltm;
     const uint8_t *p0 = b0 + ISP_DMA_PLTM_OFF;
     const uint8_t *p1 = b1 + ISP_DMA_PLTM_OFF;
     int i;
@@ -1484,7 +1460,7 @@ static void merge_pltm(isp_lib_context_t *ctx, const uint8_t *b0,
     }
 }
 
-void isp_handle_stats_sync(isp_lib_context_t *ctx, const void *buf0,
+void isp_handle_stats_sync(fwi_base_ctx_t *ctx, const void *buf0,
                            const void *buf1)
 {
     const uint8_t *b0 = (const uint8_t *)buf0;
@@ -1504,9 +1480,9 @@ void isp_handle_stats_sync(isp_lib_context_t *ctx, const void *buf0,
 /* 3.3 isp_apply_settings                                              */
 /* ------------------------------------------------------------------ */
 
-static void set_awb_win(isp_lib_context_t *ctx)
+static void set_awb_win(fwi_base_ctx_t *ctx)
 {
-    isp_h3a_reg_win_t *w = &ctx->module_cfg.awb_cfg.awb_reg_win;
+    fwi_base_h3a_reg_win_t *w = &ctx->module_cfg.awb_cfg.awb_reg_win;
     int32_t pw = (int32_t)ctx->stats_ctx.pic_w;
     int32_t ph = (int32_t)ctx->stats_ctx.pic_h;
     int32_t x1, y1, x2, y2, nw, nh;
@@ -1539,10 +1515,10 @@ static void set_awb_win(isp_lib_context_t *ctx)
     w->ver_start = (uint32_t)((y1 < ph) ? y1 : ph);
 }
 
-static void set_ae_win(isp_lib_context_t *ctx)
+static void set_ae_win(fwi_base_ctx_t *ctx)
 {
-    isp_h3a_reg_win_t *ae = &ctx->module_cfg.ae_cfg.ae_reg_win;
-    isp_h3a_reg_win_t *hist = &ctx->module_cfg.hist_cfg.hist_reg_win;
+    fwi_base_h3a_reg_win_t *ae = &ctx->module_cfg.ae_cfg.ae_reg_win;
+    fwi_base_h3a_reg_win_t *hist = &ctx->module_cfg.hist_cfg.hist_reg_win;
     int32_t pw = (int32_t)ctx->stats_ctx.pic_w;
     int32_t ph = (int32_t)ctx->stats_ctx.pic_h;
 
@@ -1587,9 +1563,9 @@ static void set_ae_win(isp_lib_context_t *ctx)
     hist->ver_start = 0;
 }
 
-static void set_af_win(isp_lib_context_t *ctx)
+static void set_af_win(fwi_base_ctx_t *ctx)
 {
-    isp_h3a_reg_win_t *af = &ctx->module_cfg.af_cfg.af_reg_win;
+    fwi_base_h3a_reg_win_t *af = &ctx->module_cfg.af_cfg.af_reg_win;
     int32_t pw = (int32_t)ctx->stats_ctx.pic_w;
     int32_t ph = (int32_t)ctx->stats_ctx.pic_h;
 
@@ -1637,7 +1613,7 @@ static int16_t enc_offset(double v)
     return (int16_t)t;
 }
 
-static void load_rgb2yuv_base(isp_lib_context_t *ctx, double a[3][3],
+static void load_rgb2yuv_base(fwi_base_ctx_t *ctx, double a[3][3],
                               double b[3])
 {
     const freeisp_tables_t *ft = tables_get();
@@ -1660,7 +1636,7 @@ static void load_rgb2yuv_base(isp_lib_context_t *ctx, double a[3][3],
     }
 }
 
-static void build_rgb2yuv_effect(isp_lib_context_t *ctx)
+static void build_rgb2yuv_effect(fwi_base_ctx_t *ctx)
 {
     static const double c_none[3][3] = {
         { 1.0, 0.0, 0.0 }, { 0.0, 1.0, 0.0 }, { 0.0, 0.0, 1.0 }
@@ -1729,7 +1705,7 @@ static void build_rgb2yuv_effect(isp_lib_context_t *ctx)
             ctx->module_cfg.rgb2yuv.gain[i][j] = enc_matrix(m[i][j]);
 }
 
-static void build_rgb2yuv_hue(isp_lib_context_t *ctx)
+static void build_rgb2yuv_hue(fwi_base_ctx_t *ctx)
 {
     double a[3][3], b[3], m[3][3];
     double ang = (double)ctx->isp_ini_cfg.hue_level * 3.1415926 / 180.0;
@@ -1766,7 +1742,7 @@ static void build_rgb2yuv_hue(isp_lib_context_t *ctx)
             ctx->module_cfg.rgb2yuv.gain[i][k] = enc_matrix(m[i][k]);
 }
 
-static void set_ae_ini_from_gains(isp_lib_context_t *ctx)
+static void set_ae_ini_from_gains(fwi_base_ctx_t *ctx)
 {
     ctx->ae_param.ae_ini.gain_favour = ctx->isp_ini_cfg.gains.gain_favour;
     ctx->ae_param.ae_ini.analog_gain_min = ctx->isp_ini_cfg.gains.analog_gain_min;
@@ -1777,7 +1753,7 @@ static void set_ae_ini_from_gains(isp_lib_context_t *ctx)
         ctx->isp_ini_cfg.gains.digital_gain_max << 2;
 }
 
-void isp_apply_settings(isp_lib_context_t *ctx)
+void isp_apply_settings(fwi_base_ctx_t *ctx)
 {
     uint32_t flags;
     int bit;

@@ -1,15 +1,7 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
-/*
- * pltm_clean.c - clean-room local tone-mapping module.
- *
- * Implements the behaviour specified in spec/pltm.md.  All tables, including
- * the 19-step preset bank, are injected at runtime through
- * freeisp_get_tables(); this file compiles in no table data.  See
- * docs/provenance.md for the full provenance record (which lists every
- * compiled-in table in the library and how each was obtained).  Sections below
- * mirror the spec's numbered stages.
- */
+/* pltm_clean.c - local tone-mapping module (spec/pltm.md; sections mirror its stages).
+ * All tables, including the preset bank, are injected via freeisp_get_tables(). */
 #include "pltm_clean.h"
 
 #include <math.h>
@@ -99,9 +91,8 @@ static int shl_one(int s)
 /* Preset table (spec 7.8): 19 quantised parameter sets, injected.     */
 /* ------------------------------------------------------------------ */
 
-/* Row used for every step when no preset table was injected: full original
- * blend, lowest order, no clip, unity gain -- local tone mapping has no
- * visible effect. */
+/* Row for every step when no preset table was injected: full original blend, lowest
+ * order, no clip, unity gain, so local tone mapping has no visible effect. */
 static const int32_t k_neutral_preset[PLTM_PRESET_COLS] = {
     0xFF, 5, 0, PLTM_Q12_UNITY
 };
@@ -146,11 +137,8 @@ static double gauss_term(double i2, int32_t eta)
     return exp(-i2 / (2.0 * (double)eta));
 }
 
-/* Build one symmetric 3-tap kernel from a gaussian span n and pack the two
- * stored weights of each triple.  `count` entries are emitted.  The span and
- * the emitted count are independent: the geometry path emits
- * (block_width>>1)+2 entries from a span of block_width+1, while the direct
- * entry point emits (n>>1)+2 entries from a span of n. */
+/* Symmetric 3-tap kernel from gaussian span n, two stored weights per triple. `count` is
+ * independent of n: geometry path (bw>>1)+2 from span bw+1, direct path (n>>1)+2. */
 static void merge_axis_emit(uint16_t *dst, int n, int count)
 {
     int half, top, i;
@@ -225,9 +213,8 @@ static void merge_axis_emit(uint16_t *dst, int n, int count)
 /* Fill both merge halves for tile spans nw/nh (tile count = block length + 1). */
 static void merge_table_fill(uint16_t *tbl, int nw, int nh)
 {
-    /* nw/nh are the tile counts (block length + 1).  The geometry path emits
-     * from the block length, so the entry count is derived from the span
-     * argument, not from the saved block dimensions. */
+    /* nw/nh are tile counts (block length + 1); the geometry path emits from the block
+     * length, so the entry count comes from the span argument. */
     merge_axis_emit(&tbl[PLTM_MERGE_H_BASE], nw, ((nw - 1) >> 1) + 2);
     merge_axis_emit(&tbl[PLTM_MERGE_V_BASE], nh, ((nh - 1) >> 1) + 2);
 }
@@ -341,9 +328,8 @@ static void strength_curve_build(pltm_entity_t *e)
     int row, frac;
     int k;
 
-    /* The selector addresses a (rows x 64) grid.  Pin it inside the bank
-     * before splitting it, so a value past the last row can never index the
-     * bank out of range (spec 13); in-domain selectors are untouched. */
+    /* Pin the selector inside the (rows x 64) bank before splitting it, so it can never
+     * index out of range (spec 13); in-domain selectors are untouched. */
     selector = e->p.config.auto_strength;
     selector = PLTM_CLAMP(selector, 0, PLTM_STRENGTH_ROWS * 64 - 1);
     row  = selector >> 6;
@@ -379,10 +365,8 @@ static int32_t strength_judge(pltm_entity_t *e, uint16_t x)
     int i = x >> 4;
     int32_t v;
 
-    /* The coarse index has no successor once it reaches the last curve slot.
-     * Any statistic at or beyond it -- including values above the 12-bit
-     * statistics domain -- collapses to the top-of-curve contribution
-     * (spec 13). */
+    /* No successor at the last curve slot: any statistic there or beyond (even above the
+     * 12-bit domain) collapses to the top-of-curve contribution (spec 13). */
     if (i >= top)
         return asr(e->strength_curve[top] << 1, off);
 
@@ -570,9 +554,8 @@ static void strength_control(pltm_entity_t *e, const pltm_clean_stats_t *st)
 /* Tile geometry update (spec 6.1).                                    */
 /* ------------------------------------------------------------------ */
 
-/* Tile count along one axis.  The grid divisor is the block count plus one,
- * which a degenerate configuration can drive to zero; that yields no tiles
- * rather than a division (spec 13). */
+/* Tile count per axis. The divisor (blocks + 1) can be zero in a degenerate
+ * configuration, which yields no tiles rather than a division (spec 13). */
 static int tile_axis_count(int pixels, int grid_blocks)
 {
     return (grid_blocks != 0) ? pixels / grid_blocks : 0;

@@ -1,18 +1,7 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
-/*
- * test_msgqueue.c - host tests for the clean-room msgqueue unit.
- *
- * Behaviour source: spec/media_utils/msgqueue.md sections 3-5.  The
- * suite is deterministic: the two blocking cases are released by a helper
- * thread after a bounded sleep, and the timed-expiry case uses a bounded
- * millisecond timeout.  malloc/calloc/free are wrapped so the create-failure unwind
- * and the destroy path can be checked for leaks.
- *
- * The timed wait goes through the systime seam; this test supplies its own
- * deterministic definition of pthread_cond_wait_timeout (mirroring the systime
- * spec) so the msgqueue unit can be tested without the systime unit.
- */
+/* test_msgqueue.c - host tests for msgqueue (spec media_utils/msgqueue.md 3-5);
+ * deterministic, own pthread_cond_wait_timeout, heap wrapped for leak checks. */
 #define _GNU_SOURCE
 #include "utils/msgqueue.h"
 

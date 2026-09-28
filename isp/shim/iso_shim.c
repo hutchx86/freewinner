@@ -1,22 +1,14 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
-/*
- * iso_shim.c - ISO pilot shim.
- *
- * Presents the clean-room ISO core (src/iso/iso_clean.c) to the Yi/mediad ISP
- * framework through the SDK isp_iso_core_ops_t contract.  Integration glue
- * only: no algorithm is implemented here.  See DESIGN.md.
- */
+/* iso_shim.c - presents the clean ISO core to the framework's
+ * fwi_iso_cfg_core_ops_t. Field mapping: docs/shim-mappings.md#iso */
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-/*
- * Clean-room side.  The clean entry points share names with the SDK ones
- * (iso_init/iso_exit/get/set/run) and the clean iso_result_t collides with the
- * SDK typedef, so rename the clean spellings for this translation unit only.
- */
+/* Clean entry points and iso_result_t collide with the SDK names; renamed for
+ * this TU only. */
 #define iso_result_t   clean_iso_result_t
 #define iso_init       clean_iso_init
 #define iso_exit       clean_iso_exit
@@ -31,20 +23,13 @@
 #undef iso_set_params
 #undef iso_run
 
-/*
- * Framework side: the generated fwi_* ABI.  The shim exports iso_init/iso_exit
- * and a fwi_iso_cfg_core_ops_t vtable; the framework calls it directly.
- */
+/* Framework side: the generated fwi_* ABI. */
 #include "fwi_isp_api.h"
 #include "freeisp/isp_dims.h"
 
 #include "iso_shim.h"
 
-/*
- * The clean dynamic record (union of int32_t[148]) and the SDK per-index
- * dynamic config (v521, all HW_S32) must have the same size for the byte copy
- * in map_params().
- */
+/* map_params() byte-copies the per-index dynamic config; sizes must match. */
 typedef char iso_dyn_size_check[
     (sizeof(iso_dyn_t) == sizeof(struct fwi_dynamic_cfg)) ? 1 : -1];
 
@@ -56,13 +41,8 @@ static uint32_t g_gain_index[ISO_CURVE_N];
 static int32_t  g_gain_default[ISO_BP_N];
 static int32_t  g_lum_default[ISO_BP_N];
 static uint8_t  g_af_square[16];
-/*
- * No vendor table carries the AF IIR feedback coefficients, so the built-in
- * pilot default is neutral.  On the located path this field is left unset (no
- * setter is exported for it); it is used only when no external tables are
- * installed.  Real tuning must be installed with iso_shim_set_tables() before
- * iso_init().
- */
+/* No vendor table carries the AF IIR feedback coefficients: neutral default,
+ * used only when no tables are installed via iso_shim_set_tables(). */
 static int32_t  g_af_iir_s[4] = { 0, 0, 0, 0 };
 static int      g_defaults_ready;
 
@@ -81,11 +61,8 @@ static void ensure_defaults(void)
     if (g_defaults_ready)
         return;
 
-    /*
-     * Pilot placeholder data only.  Monotone so the clean array builders stay
-     * inside their loops; real tuning must be installed with
-     * iso_shim_set_tables() before iso_init().
-     */
+    /* Placeholder data (monotone, keeps the clean builders in range); real
+     * tuning must be installed with iso_shim_set_tables() before iso_init(). */
     for (i = 0; i < ISO_CURVE_N; i++)
         g_gain_index[i] = (uint32_t)i;
     for (i = 0; i < ISO_BP_N; i++) {
@@ -128,12 +105,8 @@ typedef struct iso_shim_entity {
 /* Parameter mapping: iso_param_t -> iso_params_t                      */
 /* ------------------------------------------------------------------ */
 
-/*
- * The per-frame fields the framework mutates in the stored parameter block in
- * place between set-parameters calls (see shim_run).  Kept separate from
- * map_params so the per-frame path can refresh exactly these without copying
- * the configured dynamic records or rebuilding the interpolation arrays.
- */
+/* Fields the framework mutates in the stored block between set_params calls;
+ * refreshed per run without rebuilding the interpolation arrays. */
 static void map_live_params(iso_params_t *p, const fwi_iso_param_t *s)
 {
     p->frame_id = s->iso_frame_id;
@@ -183,54 +156,17 @@ static void map_params(iso_params_t *p, const fwi_iso_param_t *s,
         for (i = 0; i < ISO_BP_N; i++) {
             p->gain_point[i] = (int32_t)iso->gain_mapping_point[i];
             p->lum_point[i] = (int32_t)iso->luminance_mapping_point[i];
-            /* fwi_dynamic_cfg_t is field-for-field identical (same order,
-             * same 19 members) to the old struct isp_dynamic_config, so the
-             * bulk byte copy is still valid; only the container path and the
-             * element type name changed. */
+            /* fwi_dynamic_cfg_t matches iso_dyn_t layout (19 s32 members). */
             memcpy(&p->cfg[i], &iso->dynamic_cfg[i], sizeof(p->cfg[i]));
         }
     }
 }
 
 /* ------------------------------------------------------------------ */
-/* Live tuning corpus: SDK isp_tunning_param -> clean iso_ctx_t curves */
+/* Live tuning corpus: SDK tuning.modules -> clean iso_ctx_t curves    */
 /* ------------------------------------------------------------------ */
-/*
- * The clean core reads its tuning corpus from iso_ctx_t; the vendor object
- * reads the same data directly from `isp_gen->isp_ini_cfg.isp_tunning_settings`
- * at run time.  The SDK shapes differ from the clean ones, so the mapping is
- * not a plain struct copy.  The offsets below are the deployed on-camera
- * layout.
- *
- *   clean iso_ctx_t field        SDK isp_tunning_param source     shape change
- *   ---------------------------  ------------------------------  -----------------
- *   k3d_incre_curve[256] i32     isp_d3d_k3d_incre_curve[256]    u8  -> i32
- *   tdnf_diff[256] i32           isp_tdnf_diff[256]              u8  -> i32
- *   sharp_edge_lum[33] u16       isp_sharp_edge_lum[33]          identical
- *   sharp_hfrq_lum[33] u16       isp_sharp_hfrq_lum[33]          identical
- *   sharp_hsv[46] u16            isp_sharp_hsv[46]               identical
- *   sharp_s_map[33] u8           isp_sharp_s_map[33]             identical
- *   sharp_val[66] i32            isp_sharp_val[33]               u16 -> i32
- *                                ++ isp_sharp_lum[33]           (two halves; the
- *                                                               SDK arrays are
- *                                                               adjacent, the
- *                                                               object reads
- *                                                               66 contiguous
- *                                                               u16 from
- *                                                               isp_sharp_val)
- *   bdnf_th[33] i32              isp_bdnf_th[33]                 u16 -> i32
- *   tdnf_th[66] i32              isp_tdnf_th[33]                u16 -> i32
- *                                ++ isp_tdnf_ref_noise[33]      (ditto)
- *   tdnf_k[32] i32               isp_tdnf_k[32]                 u8  -> i32
- *   cem_table_a[5888] u8         isp_cem_table[5888]            identical
- *   cem_table_b[5888] u8         isp_cem_table1[5888]           identical
- *
- * The two-half merges are the hot spots: the object's source pointer is the
- * first array and it indexes `[0x21 + k]` (33+k), which lands in the following
- * array of the same element type.  For tdnf_th the second half is the
- * reference-noise table, whose clean counterpart is the upper half of the
- * clean `tdnf_th[66]` (spec 6.13).
- */
+/* Shapes differ (u8/u16 -> i32, two-half merges for sharp_val and tdnf_th,
+ * spec iso.md 6.13). Table: docs/shim-mappings.md#iso */
 static void map_tuning(iso_ctx_t *g, const struct fwi_isp_ctx *c)
 {
     const fwi_tuning_modules_t *t = &c->tuning.modules;
@@ -260,7 +196,7 @@ static void map_tuning(iso_ctx_t *g, const struct fwi_isp_ctx *c)
 }
 
 /* ------------------------------------------------------------------ */
-/* Context mapping: isp_lib_context -> iso_ctx_t (inputs only)         */
+/* Context mapping: fwi_isp_ctx -> iso_ctx_t (inputs only)             */
 /* ------------------------------------------------------------------ */
 
 static void map_ctx_inputs(iso_ctx_t *g, const struct fwi_isp_ctx *c)
@@ -277,16 +213,8 @@ static void map_ctx_inputs(iso_ctx_t *g, const struct fwi_isp_ctx *c)
 
     test = &c->tuning.enables;
     dyn = &c->stats.dynamic_stats;
-    /*
-     * fwi_tuning_by_iso_t.trigger_selectors[17] replaces the old named
-     * isp_param_triger struct (H "no enum type inside any record" rule,
-     * 31-abi-headers.md §3.4/§4.2): a raw uint8_t[17], not named fields.
-     * The index order is pinned by that spec section and matches the old
-     * struct's field order exactly: sharpen, contrast, denoise, sensor
-     * offset, black level, DPC, dehaze, PLTM dynamic, brightness, global
-     * contrast, saturation, CEM ratio, 3D denoise, chroma denoise, AE cfg,
-     * GTM cfg, LCA cfg.
-     */
+    /* trigger_selectors[17] is a raw u8 array; index order is listed in
+     * docs/shim-mappings.md#iso. */
     trig = c->tuning.by_iso.trigger_selectors;
 
     g->total_gain = (int32_t)c->sensor.total_gain;
@@ -319,8 +247,7 @@ static void map_ctx_inputs(iso_ctx_t *g, const struct fwi_isp_ctx *c)
     g->trig_defog = trig[6];
     g->trig_pltm_dynamic = trig[7];
     g->trig_brightness = trig[8];
-    /* index 9 (gcontrast_triger, "global contrast") has no consumer in this
-     * shim today (no g->trig_gcontrast field) -- not read, so not mapped. */
+    /* index 9 (global contrast) has no clean consumer, so is not mapped. */
     g->trig_saturation = trig[10];
     g->trig_cem_ratio = trig[11];
     g->trig_tdf = trig[12];
@@ -372,18 +299,8 @@ static void map_ctx_inputs(iso_ctx_t *g, const struct fwi_isp_ctx *c)
 /* ------------------------------------------------------------------ */
 /* Result writeback: clean result/ctx -> SDK module_cfg + friends      */
 /* ------------------------------------------------------------------ */
-/*
- * Each SDK block is written only when its own `*_adjust` flag is set, exactly
- * as the vendor object gates its writes; a disabled block leaves the framework
- * value untouched.  Clean-owned shared state (adjust.*, ae_settings.*,
- * dynamic_stats.*, tune.sharpness_level, module_enable_flag, table_update) is
- * copied from the clean context, where the clean core stored it during run.
- *
- * tdnf_table is a framework-supplied buffer, not a member: write the 256-byte
- * increment curve followed by the 256-byte clamped diff curve, matching the
- * two vendor memcpys (the clean result stores each byte in a u16 slot, so the
- * low byte is the data).
- */
+/* Each SDK block is written only when its *_adjust gate is set, as the vendor
+ * does; clean-owned shared state comes from the clean context. */
 static void map_result_to_sdk(struct fwi_isp_ctx *c, const iso_ctx_t *g,
                               const clean_iso_result_t *r,
                               const fwi_iso_param_t *p)
@@ -550,9 +467,8 @@ static void map_result_to_sdk(struct fwi_isp_ctx *c, const iso_ctx_t *g,
                sizeof(r->af_square_lut));
     }
 
-    /* The blended CEM image is 6656 bytes but cem_table is 5888 bytes: the
-     * vendor's per-cell pass intentionally runs into the following lut_cfg
-     * member, so the whole span is copied. */
+    /* 6656-byte CEM image into the 5888-byte table: the vendor pass also runs
+     * into the following lut_cfg member, so the whole span is copied. */
     if (p->colour_enhance_ratio_adjust)
         memcpy(m->colour_enhance_cfg.colour_enhance_table, r->out_cem, ISO_CEM_BYTES);
 
@@ -692,22 +608,8 @@ static int32_t shim_set(void *obj, fwi_iso_param_t *param, fwi_iso_result_t *res
     return 0;
 }
 
-/*
- * On-camera real-input capture: FREEISP_ISO_DUMP=<path>.
- *
- * Inert unless the env var is set.  The path is opened once, lazily, on the
- * first run(); one fixed-size record is appended per run():
- *
- *   [iso_param_t]              offset 0       sizeof(iso_param_t)              112
- *   [struct isp_lib_context]   offset 112     sizeof(struct isp_lib_context)  273600
- *
- * total 273712 bytes.  The ISO run entry reads its inputs from the whole
- * isp_lib_context (isp_gen: tuning corpus, sensor/ae state, tune levels,
- * awb/pltm results, module_cfg inputs), so the context is captured verbatim.
- * A NULL isp_gen is recorded as a zeroed context.  The context's module_cfg
- * table pointers are camera addresses; the replay overwrites them.  A value of
- * "1" selects /tmp/freeisp_iso_dump.bin.
- */
+/* Input capture, inert unless FREEISP_ISO_DUMP=<path>: iso_param_t + the whole
+ * framework context per run(). Format: docs/shim-mappings.md#iso */
 static void iso_fwrite_zeros(FILE *f, size_t n)
 {
     static const unsigned char z[256];
@@ -746,13 +648,8 @@ static void iso_dump_record(const iso_shim_entity_t *e)
     fflush(dump);
 }
 
-/*
- * On-camera saturation probe: FREEISP_ISO_TRACE=<path>, or "1" for stdout.
- * Inert unless the variable is set.  One line per run() with the live gate in
- * the framework mirror, the dynamic record the clean core picked, the clean
- * result block and the module_cfg values the framework will read.  Comparing
- * them localises a stale-gate / skipped-block divergence on the device.
- */
+/* Saturation probe, inert unless FREEISP_ISO_TRACE=<path> ("1" = stdout): gate,
+ * picked dynamic record, clean result and module_cfg values per run(). */
 static void iso_trace_saturation(const iso_shim_entity_t *e,
                                  const clean_iso_result_t *r)
 {
@@ -811,18 +708,8 @@ static int32_t shim_run(void *obj, fwi_iso_result_t *result)
      * scalar inputs while leaving clean-owned output state untouched. */
     map_ctx_inputs(&e->gen, e->config.gen);
 
-    /*
-     * The framework also mutates the stored parameter block in place each
-     * frame without re-entering set-parameters.  In __isp_ctx_update_iso_cfg
-     * it calls set-parameters *before* it raises the per-block adjust gates,
-     * and the per-frame path (__isp_iso_set_params/__isp_iso_run) only
-     * refreshes the frame id and the colour-to-gray thresholds; the deployed
-     * core reads the live mirror on every run.  Forward those live fields so
-     * the clean core does not keep the all-clear snapshot latched at
-     * set-parameters time, which would skip every gated block and leave e.g.
-     * module_cfg.satu_cfg zero (the framework then drops the hardware
-     * saturation programming and the image goes green).
-     */
+    /* set_params runs before the framework raises the adjust gates; forward the
+     * live mirror or every gated block is skipped (green image). */
     map_live_params(&live, &e->config);
     iso_set_live_params(e->clean, &live);
 

@@ -14,9 +14,8 @@
 
 H264_ENC_HDRS   := $(wildcard include/freecodec/*.h)
 
-# Cross build (armhf musl): make arm-h264 TC=<prefix>. The prefix is the
-# toolchain bin path without the trailing `-gcc`, e.g.
-#   TC=repos/lindenis-v833-prebuilt/gcc/linux-x86/arm/toolchain-sunxi-musl/toolchain/bin/arm-openwrt-linux-muslgnueabi
+# Cross build (armhf musl): make arm-h264 TC=<toolchain bin path without the
+# trailing -gcc>, e.g. .../toolchain/bin/arm-openwrt-linux-muslgnueabi
 TC              ?=
 ARM_H264_OUT    ?= build_arm_h264
 ARM_H264_CFLAGS ?= -march=armv7ve -mfloat-abi=hard -fPIC -O2 -std=gnu99 \
@@ -41,16 +40,18 @@ $(ARM_H264_OUT)/%.o: src/h264/%.c $(H264_ENC_HDRS)
 .PHONY: arm-h264
 arm-h264: $(H264_ARM_OBJS)
 
-# Host tests of the device's vector-driven parts (no goldens needed):
-#   test_mbrc    per-row MB-RC budget table vs tests/h264/data/mbrc_table.csv
-#   test_bufsize auxiliary-plane size vs tests/h264/data/subpic_size.csv
+# Vector-driven host tests: test_mbrc (MB-RC table vs $(MBRC_VECTORS), skips if
+# absent) and test_bufsize (aux-plane size vs tests/h264/data/subpic_size.csv).
 H264_UNIT_OBJS := $(BUILD)/h264/regs/h264_regs.o $(BUILD)/h264/headers/h264_headers.o \
     $(BUILD)/h264/isp/h264_isp.o $(BUILD)/h264/gop/h264_gop.o
+
+# Black-box vectors: private, not in this repository (test skips without them).
+MBRC_VECTORS ?= $(CURDIR)/tests/h264/data/mbrc_table.csv
 
 $(BUILD)/h264/test_mbrc: tests/h264/test_mbrc.c $(H264_ENC_HDRS) | $(BUILD)
 	@mkdir -p $(dir $@)
 	$(CC) $(CPPFLAGS) $(CFLAGS) \
-	    -DMBRC_VECTORS='"$(CURDIR)/tests/h264/data/mbrc_table.csv"' $< -o $@
+	    -DMBRC_VECTORS='"$(MBRC_VECTORS)"' $< -o $@
 
 $(BUILD)/h264/test_bufsize: tests/h264/test_bufsize.c $(BUILD)/h264/regs/h264_regs.o \
 		$(H264_ENC_HDRS) | $(BUILD)

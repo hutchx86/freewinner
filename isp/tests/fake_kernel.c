@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-/* fake_kernel.c - host fake for the isp_uapi_sys seam (23 §1) */
+/* fake_kernel.c - host fake for the isp_uapi_sys seam */
 #include "fake_kernel.h"
 #include <fcntl.h>
 #include <stdio.h>
@@ -17,15 +17,15 @@ static size_t req_size(unsigned long req)
     case MEDIA_IOC_DEVICE_INFO:    return sizeof(struct media_device_info);
     case MEDIA_IOC_ENUM_ENTITIES:  return sizeof(struct media_entity_desc);
     case MEDIA_IOC_ENUM_LINKS:     return sizeof(struct media_links_enum);
-    case VIDIOC_VIN_ISP_H3A_CFG:   return sizeof(struct isp_h3a_cfg);
-    case VIDIOC_VIN_ISP_STAT_REQ:  return sizeof(struct isp_stat_req);
+    case VIDIOC_VIN_ISP_H3A_CFG:   return sizeof(struct fwi_h3a_cfg);
+    case VIDIOC_VIN_ISP_STAT_REQ:  return sizeof(struct fwi_stat_req);
     case VIDIOC_VIN_SENSOR_CFG_REQ:return sizeof(struct sensor_config);
     case VIDIOC_VIN_SENSOR_EXP_GAIN:return sizeof(struct sensor_exp_gain);
     case VIDIOC_VIN_SENSOR_SET_FPS:return sizeof(struct sensor_fps);
     case VIDIOC_VIN_SENSOR_GET_TEMP:return sizeof(struct sensor_temp);
-    case VIDIOC_VIN_ACT_SET_CODE:  return sizeof(struct isp_act_code);
-    case VIDIOC_VIN_ACT_INIT:      return sizeof(struct isp_act_init);
-    case VIDIOC_VIN_ISP_LOAD_REG:  return sizeof(struct isp_table_reg_map);
+    case VIDIOC_VIN_ACT_SET_CODE:  return sizeof(struct fwi_act_code);
+    case VIDIOC_VIN_ACT_INIT:      return sizeof(struct fwi_act_init);
+    case VIDIOC_VIN_ISP_LOAD_REG:  return sizeof(struct fwi_table_reg_map);
     case VIDIOC_S_INPUT:           return sizeof(struct v4l2_input);
     case VIDIOC_S_PARM:
     case VIDIOC_G_PARM:            return sizeof(struct v4l2_streamparm);
@@ -39,7 +39,7 @@ static size_t req_size(unsigned long req)
     case VIDIOC_G_CTRL:            return sizeof(struct v4l2_control);
     case VIDIOC_STREAMON:
     case VIDIOC_STREAMOFF:         return sizeof(int);
-    case VIDIOC_SET_TOP_CLK:       return sizeof(struct isp_top_clk);
+    case VIDIOC_SET_TOP_CLK:       return sizeof(struct fwi_top_clk);
     default:                       return 0;
     }
 }
@@ -329,7 +329,7 @@ static int fk_ioctl(int fd, unsigned long req, void *arg)
     }
     if (fd == fk.fd_h3a) {
         if (req == VIDIOC_VIN_ISP_H3A_CFG && arg != NULL) {
-            struct isp_h3a_cfg *cfg = arg;
+            struct fwi_h3a_cfg *cfg = arg;
             cfg->buf_size = fk.h3a_buf_size;
         }
         push_call(fd, req, arg, 0);
@@ -355,7 +355,7 @@ static int fk_ioctl(int fd, unsigned long req, void *arg)
     }
     if (fd == fk.fd_isp) {
         if (req == VIDIOC_VIN_ISP_LOAD_REG && arg != NULL) {
-            struct isp_table_reg_map *r = arg;
+            struct fwi_table_reg_map *r = arg;
             fk.load_addr = (unsigned)(unsigned long)r->addr;
             fk.load_size = r->size;
             fk.load_calls++;
@@ -502,7 +502,7 @@ static int fk_stat(const char *path, struct stat *st)
     return 0;
 }
 
-const struct isp_uapi_sys fake_sys = {
+const struct fwi_uapi_sys fake_sys = {
     fk_open, fk_close, fk_ioctl, fk_mmap, fk_munmap,
     fk_select, fk_access, fk_system, fk_readlink, fk_stat,
 };

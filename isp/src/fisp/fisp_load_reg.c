@@ -1,17 +1,10 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
 
-/* Load-register hook companion (package B, `fisp_`), SPEC section 4.
- *
- * The deploy build links mediad with `-Wl,--wrap=isp_set_load_reg`. The wrapper
- * receives the live register-program buffer once at isp_init and once per frame,
- * before the framework's VIDIOC_VIN_ISP_LOAD_REG ioctl, and may mutate it. The
- * specific edit mediad needs is to force 3DNR off by clearing bit 5 of the
- * 32-bit module-enable word at byte offset 0x1a0.
- *
- * This unit provides that edit as a plain, testable helper. The `--wrap` shim
- * itself (buffer overlay, snapshot) belongs to the consumer, not this package;
- * see NOT-IMPLEMENTED.md. */
+/* fisp_load_reg.c - load-register hook helper (fisp_). mediad wraps isp_set_load_reg
+ * (-Wl,--wrap) and may edit the register-program buffer before each LOAD_REG ioctl; the
+ * edit it needs, forcing 3DNR off (bit 5 of the word at 0x1a0), is this testable helper.
+ * The wrapper itself belongs to the consumer (NOT-IMPLEMENTED.md). */
 
 #define _GNU_SOURCE
 
@@ -28,7 +21,7 @@
 /* One past the word: a shorter buffer cannot hold the edit. */
 #define FISP_LOAD_REG_BYPASS0_END  (FISP_LOAD_REG_BYPASS0_OFF + 4u)
 
-int fisp_load_reg_set_3dnr(struct isp_table_reg_map *reg, int on)
+int fisp_load_reg_set_3dnr(struct fwi_table_reg_map *reg, int on)
 {
 	unsigned char *base;
 	unsigned int word;

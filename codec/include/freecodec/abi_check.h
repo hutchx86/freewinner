@@ -1,15 +1,9 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
 
-/* Helpers for the compile-time layout checks of the binary interfaces
- * (spec r2/04 section 6, spec r2/05 part D). The interfaces are defined for
- * the 32-bit ARM EABI target; the host test build only re-checks what does
- * not depend on the data model:
- *
- *   FC_ABI_CHECK_ALL     records made of 4-byte integers and enums only
- *   FC_ABI_CHECK_PTR32   records holding pointers: any ILP32 target
- *   FC_ABI_CHECK_EABI    records holding 64-bit integers, whose alignment
- *                        (8 bytes) is an ARM EABI property */
+/* Compile-time layout checks (spec r2/04 s6, r2/05 part D) for the 32-bit ARM
+ * EABI target. FC_ABI_CHECK_ALL: 4-byte integers/enums only; _PTR32: records
+ * with pointers (any ILP32); _EABI: records with 64-bit integers (8-byte align). */
 
 #ifndef FREECODEC_ABI_CHECK_H
 #define FREECODEC_ABI_CHECK_H

@@ -2,8 +2,8 @@
 /* Copyright (C) 2026 freewinner contributors */
 #include "utils/bitmap.h"
 
-/* Numeric pixel-format values handled here (24 §2); enumerator names are
- * deliberately not spelled (24 §0 R-1). */
+/* Numeric pixel-format values handled here; enumerator names are
+ * deliberately not spelled. */
 #define BMP_FMT_RGB1555 8u
 #define BMP_FMT_RGB8888 10u
 #define BMP_BYTES_RGB1555 2u
@@ -36,7 +36,7 @@ int BITMAP_S_GetdataSize(const BITMAP_S *pBitmap)
 		return 0;
 	}
 
-	/* Unsigned 32-bit, left to right, wrap allowed (24 §1). */
+	/* Unsigned 32-bit, left to right, wrap allowed. */
 	size = pBitmap->mWidth * pBitmap->mHeight;
 	size = size * bpp;
 	return (int)size;

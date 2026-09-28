@@ -45,24 +45,28 @@ the camera.
 
 ## How it works
 
-The camera's stock `mediad` links four proprietary archives
-(`libisp_algo_rtos.a`, `libaacenc.a`, `libvenc_codec.a` and `libVE.a`). This
-project replaces them:
+The camera's stock media daemon, `rmm`, is built on proprietary archives
+(`libisp_algo_rtos.a`, `libaacenc.a`, `libvenc_codec.a`, `libVE.a` and the
+encoder support library). A replacement daemon (`mediad`) is linked against
+this project instead:
 
 - `isp/` reproduces the 3A algorithms, the register/config tier, the framework
   tier and the runtime table locator.
-- `codec/` reproduces the H.264 encoder and the VE driver that talks to
-  `/dev/cedar_dev`.
+- `codec/` reproduces the H.264 encoder, the VE driver that talks to
+  `/dev/cedar_dev`, the encoder support library and API framework, and the
+  AAC-LC wrapper.
 
 Both are brought in through an SDK-boundary shim layer that presents the vendor
 entry points, so the rest of `mediad` is unchanged. Neither component ships the
-camera's larger tuning tables: those are located at runtime inside the camera's
-own stock `rmm` image and cached to the SD card, so only the first boot reads
-the vendor image. The ISP library does carry a small set of compiled-in tables —
-the platform default configuration seed, two observed platform-default tables
-(the PLTM presets and the AF filter defaults), a vendor-recovered constant (the
-CM colour-temperature interpolation knots), plus the interface, dispatch and
-re-derived tables itemised in
+camera's tuning data: the tables are located at runtime inside the camera's
+own stock `rmm` image, and the PLTM preset bank and the AE backlight-network
+output biases are extracted from the same image; all are cached to the SD
+card, so only the first boot reads the vendor image (without presets, PLTM runs
+neutral; without the biases, the backlight network is off). The ISP library does carry a small
+set of compiled-in tables — the platform default configuration seed, one
+observed platform-default table (the AF filter defaults), a vendor-recovered
+constant (the CM colour-temperature interpolation knots), plus the interface,
+dispatch and re-derived tables itemised in
 [`isp/docs/provenance.md`](isp/docs/provenance.md); the codec's own compiled-in
 literals are recorded in [`codec/docs/provenance.md`](codec/docs/provenance.md).
 
@@ -90,9 +94,9 @@ rest still runs.
 
 - `make -C isp check` — the ISP unit tests (the `mk/*.mk` host binaries; no
   differential suites exist in the ISP tree). `make -C codec check` — the codec
-  unit **and differential** tests; the differential goldens are not shipped, so
-  without them they report `SKIP`, and `ALLOW_GOLDENS=1` turns a missing
-  vector back into a hard failure.
+  host tests. Tests that need vectors which are not shipped (rate control,
+  MB-RC table, the private differential suites) report `SKIP` without them;
+  `codec/README.md` shows how to point them at a private copy.
 - On camera: the vendor-free `mediad` streamed both channels and both decoded
   with zero macroblock errors.
 
@@ -109,14 +113,16 @@ rest still runs.
 - **Documented exceptions:** the two libraries carry a small set of compiled-in
   tables, itemised with their recovery basis in `isp/docs/provenance.md` and
   `codec/docs/provenance.md`: the platform default configuration seed (the 3A
-  control values and the 9-entry AWB illuminant roster), two observed
-  platform-default tables (the PLTM presets and the AF filter defaults), a
-  vendor-recovered constant (the CM colour-temperature interpolation knots), and
-  interface, dispatch and re-derived tables. No vendor *tuning* table is compiled
-  in — the device's tuning (lens, msc, PLTM and AF banks) is located at runtime in
-  the camera's own `rmm` image and cached. The OTP golden-ratio path
-  (`otp_enable` / `pmsc_table` / `pwb_table`) is dead in the deployed image and no
-  path here populates it either, so those fields keep their initial values.
+  control values), one observed platform-default table (the AF filter
+  defaults), a vendor-recovered constant (the CM colour-temperature
+  interpolation knots), two small observed rate-control tables in the codec,
+  and interface, dispatch and re-derived tables. No vendor *tuning* table is
+  compiled in — the device's tuning (lens, msc, PLTM and AF banks, the AWB
+  illuminant roster, the PLTM presets and the AE network output biases) is
+  read at runtime from the camera's own `rmm` image and cached. The OTP
+  golden-ratio path (`otp_enable` / `pmsc_table` / `pwb_table`) is dead in the
+  deployed image and no path here populates it either, so those fields keep
+  their initial values.
 
 ## Credits
 
@@ -135,7 +141,8 @@ See [CREDITS.md](CREDITS.md), and each subproject's own `CREDITS.md`.
   owner's own stock `rmm` image, plus whatever SDK tree the builder supplies.
 - **Interoperability reimplementation**, written for hardware the authors own.
 - **AI-assisted.** Parts of this codebase were produced with large language
-  models under a documented reimplementation process.
+  models under a documented reimplementation process (see isp/docs/provenance.md
+  and codec/docs/provenance.md).
 
 </details>
 

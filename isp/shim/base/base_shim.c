@@ -1,39 +1,10 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
-/*
- * base_shim.c - SDK-ABI adapter for the clean-room isp_base tier.
- *
- * The deployed framework hands `struct isp_lib_context *` (SDK ABI,
- * `libisp/include/isp_manage.h`) to the isp_base entry points.  The clean-room
- * core (src/reg/base.c) speaks its own `isp_lib_context_t`, a
- * completely different aggregate: different sizes, different member
- * decomposition, different table shapes (embedded arrays vs. void* buffers),
- * different frame-counter widths and a different statistics layout.  Handing
- * the SDK context straight to the clean core would corrupt every field.
- *
- * This file is the only translation layer.  For each SDK entry point it
- * translates the SDK context into a clean context (only the fields the clean
- * routine reads), calls the renamed clean entry point, then copies the clean
- * outputs back into the SDK context and the pointed-to module_cfg table
- * buffers.  No algorithm lives here and neither core is modified.
- *
- * Field correspondence was established with the private differential harness,
- * which is the interface fact for how the SDK layout maps onto the clean
- * layout.  The translation is grouped per entry point where it differs from
- * the common input mapping.
- *
- * ------------------------------------------------------------------ */
-/* Header collisions                                                   */
-/* ------------------------------------------------------------------ */
-/*
- * The framework side (the generated fwi_* ABI) and `base.h` + `reg_writers.h` share struct tags, enum tags and
- * macros with different meanings.  Include the SDK side first, capture the SDK
- * constants this file needs, drop the colliding macros, rename the colliding
- * clean tags for this TU only, then include the clean header.  The clean entry
- * points are renamed too, so this TU can define the SDK entry points without a
- * duplicate-symbol clash; the clean TU is compiled separately with the same
- * entry-point renames (see the Makefile).
- */
+/* base_shim.c - SDK-ABI adapter for the clean isp_base tier: per entry point,
+ * translate fwi_isp_ctx -> fwi_base_ctx_t, call the clean_* core, copy back.
+ * Field mapping: docs/shim-mappings.md#base */
+/* SDK and clean headers share ISP_* macros and entry-point names; the clean
+ * ones are renamed for this TU only (the clean TU builds with the same renames). */
 #include <string.h>
 
 #include "fwi_isp_api.h"
@@ -52,33 +23,6 @@ enum {
 #undef ISP_MSC_TBL_SIZE
 #undef ISP_MSC_TEMP_NUM
 
-/*
- * Every identifier declared both by the SDK surface and by base.h /
- * reg_writers.h, renamed for this TU so both headers can coexist.  The list is
- * the exact tag+typedef intersection; the clean TU is compiled separately
- * without these renames, so the type layouts (and therefore the ABI) are
- * unchanged.  Only the clean typedefs this file uses (isp_lib_context_t,
- * isp_ae_param_t, isp_ae_entity_ctx_t) are non-colliding and keep their names.
- */
-#define isp_ae_param        clean_isp_ae_param
-#define isp_ae_result       clean_isp_ae_result
-#define isp_ae_settings     clean_isp_ae_settings
-#define isp_ae_settings_t   clean_isp_ae_settings_t
-#define isp_ae_stats        clean_isp_ae_stats
-#define isp_af_param        clean_isp_af_param
-#define isp_af_result       clean_isp_af_result
-#define isp_af_stats        clean_isp_af_stats
-#define isp_afs_param       clean_isp_afs_param
-#define isp_afs_stats       clean_isp_afs_stats
-#define isp_awb_stats       clean_isp_awb_stats
-#define isp_gca_cfg         clean_isp_gca_cfg
-#define isp_h3a_reg_win     clean_isp_h3a_reg_win
-#define isp_lca_cfg         clean_isp_lca_cfg
-#define isp_pltm_stats      clean_isp_pltm_stats
-#define isp_sensor_info     clean_isp_sensor_info
-#define isp_sensor_info_t   clean_isp_sensor_info_t
-#define isp_sharp_cfg       clean_isp_sharp_cfg
-
 /* entry points: base.h's prototypes become the clean_* ones this file calls */
 #define config_band_step         clean_config_band_step
 #define config_lens_center       clean_config_lens_center
@@ -93,24 +37,6 @@ enum {
 #define config_lens_table        clean_config_lens_table
 #define config_msc_table         clean_config_msc_table
 #include "base.h"
-#undef isp_ae_param
-#undef isp_ae_result
-#undef isp_ae_settings
-#undef isp_ae_settings_t
-#undef isp_ae_stats
-#undef isp_af_param
-#undef isp_af_result
-#undef isp_af_stats
-#undef isp_afs_param
-#undef isp_afs_stats
-#undef isp_awb_stats
-#undef isp_gca_cfg
-#undef isp_h3a_reg_win
-#undef isp_lca_cfg
-#undef isp_pltm_stats
-#undef isp_sensor_info
-#undef isp_sensor_info_t
-#undef isp_sharp_cfg
 #undef config_band_step
 #undef config_lens_center
 #undef config_dig_gain
@@ -126,26 +52,16 @@ enum {
 
 #include "base_shim.h"
 
-/*
- * The framework AE helper lives in the deployed framework and is not part of
- * the fwi_* ABI surface.  The clean base tier
- * calls freeisp_ae_set_params (base.h); this TU is the SDK-side provider and
- * forwards to the framework helper with the real entity context.
- *
- * Post-swap, isp_ae_set_params_helper is unit F's own (isp.c), against the
- * fwi_ae_entity_t/fwi_ae_param_type_e shapes -- declared here to match (this
- * TU does not otherwise pull in framework_isp.h).
- */
+/* Framework AE helper (isp.c), not in the fwi_* ABI headers; declared here so
+ * freeisp_ae_set_params can forward to it with the real entity context. */
 void isp_ae_set_params_helper(fwi_ae_entity_t *ae_ctx,
                               fwi_ae_param_type_e cmd_type);
 
-/* SDK context of the entry point currently running (set around the clean call
- * in isp_apply_settings).  The clean tier has no entity context of its own, so
- * freeisp_ae_set_params needs the current SDK context to reach ops/ae_entity. */
+/* SDK context during clean_isp_apply_settings; freeisp_ae_set_params needs it
+ * to reach ops/ae_entity (the clean tier has no entity context). */
 static struct fwi_isp_ctx *g_cur_sdk;
 
-/* Internal op tags for the per-entry write-back selector (the harness carries
- * its own equivalent enum; these are private to this TU). */
+/* Per-entry write-back selector for store_sdk(); private to this TU. */
 enum base_shim_op {
     SHIM_OP_BAND_STEP = 0,
     SHIM_OP_LENS_CENTER,
@@ -161,41 +77,8 @@ enum base_shim_op {
     SHIM_OP_MSC_TABLE
 };
 
-/* ------------------------------------------------------------------ */
-/* Table provider                                                      */
-/* ------------------------------------------------------------------ */
-/*
- * The clean core reads its tables from freeisp_get_tables()->base.  This shim
- * is that provider: it rebuilds a `base_tables_t` from the SDK context's
- * runtime tuning every time an entry point runs, and points the five compiled-
- * in defaults at the located vendor table set installed by the caller.
- *
- * Clean source                  SDK source (runtime tuning unless noted)
- * ------------------------------------------------------------------------
- * gamma_base                    gamma_tbl_ini[0]
- * gamma_sub[0..3]               gamma_tbl_ini[1..4]
- * gamma_trig                    gamma_trig_cfg (converted to int32; see note)
- * lsc[0..11]                    lsc_tbl[0..11]
- * lsc_trig                      lsc_trig_cfg
- * lsc_trig_def                  locator lsc_trig_cfg_def
- * msc[0..11]                    msc_tbl[0..11]
- * msc_trig                      msc_trig_cfg
- * msc_trig_def                  locator msc_trig_cfg_def
- * linear                        linear_tbl
- * wdr_table                     isp_wdr_table (LE bytes, copied to a u16 view)
- * wdr_front                     (unused by base.c; left NULL)
- * anti_gamma                    locator anti_gamma_table
- * rgb2yuv_base[0..5]            locator rgb2yuv_matrix (six 12-entry spaces)
- * color_matrix                  color_matrix_ini
- * color_temp                    locator isp_cm_color_temp
- *
- * Note on gamma_trig: the deployed object falls back to a compiled-in
- * `gamma_trig_cfg_def` when the tuning trigger array is all-zero.  That table
- * is not part of the locator set and has no runtime source, so the provider
- * uses the tuning array for both the primary and fallback paths (base.c
- * consumes the tuning array directly whenever gamma_trig_cfg[0] != 0, which is
- * the deployed case).  Documented in the report as the one unmapped default.
- */
+/* Table provider: freeisp_get_tables()->base is rebuilt from the SDK tuning on
+ * every entry. Table sources: docs/shim-mappings.md#base */
 static int32_t  g_gamma_trig[ISP_GAMMA_TRIG_N];
 static uint16_t g_wdr_words[ISP_WDR_TBL_WORDS];
 static base_tables_t  g_bt;
@@ -203,7 +86,7 @@ static freeisp_tables_t g_ft = { &g_bt };
 
 /* The clean context is ~137 KB; keep it off the stack and reuse it (the
  * framework drives one ISP instance at a time). */
-static isp_lib_context_t g_clean;
+static fwi_base_ctx_t g_clean;
 
 static const base_tables_t *g_override;
 static const uint16_t *g_loc_anti_gamma;
@@ -212,17 +95,8 @@ static const uint16_t *g_loc_lsc_trig_def;
 static const uint16_t *g_loc_msc_trig_def;
 static const int32_t  *g_loc_color_temp;
 
-/*
- * Fixed CM colour-temperature interpolation knots (the CCM blend breakpoints:
- * warm / neutral / daylight).  The deployed base object carries them as a
- * compiled-in 3-int const (the 12-byte sequence is present in `isp_base.o`); the
- * runtime feed supplies this pair from the located table set where it can, and
- * falls back to this recovered literal otherwise.  A NULL `color_temp` makes
- * config_color_matrix skip the interpolation and zero the whole RGB2RGB matrix,
- * which collapses the colour (the on-camera green frame).  This is a
- * compiled-in constant of the clean base tier; see docs/provenance.md for the
- * full provenance picture.
- */
+/* CCM blend knots (warm/neutral/daylight), used when the locator has none; a
+ * NULL color_temp zeroes the RGB2RGB matrix (green frame). */
 static const int32_t g_cm_color_temp_default[3] = { 2700, 4000, 6500 };
 
 const freeisp_tables_t *freeisp_get_tables(void)
@@ -277,9 +151,7 @@ static void build_tables(const struct fwi_isp_ctx *s)
         g_bt.msc[i] = t->mesh_shading_tbl[i];
     g_bt.msc_trig = t->mesh_shading_trig_cfg;
     g_bt.msc_trig_def = g_loc_msc_trig_def;
-    /* Injected OTP MSC golden reference; the runtime tuning blob's first MSC
-     * temperature row is the same source the framework previously read
-     * directly.  NULL would disable the OTP MSC path. */
+    /* OTP MSC golden reference = first MSC temperature row; NULL disables it. */
     g_bt.otp_msc_golden = t->mesh_shading_tbl[0];
 
     g_bt.linear = t->linearize_tbl;
@@ -301,15 +173,8 @@ static void build_tables(const struct fwi_isp_ctx *s)
                                        : g_cm_color_temp_default;
 }
 
-/* ------------------------------------------------------------------ */
-/* Shared SDK -> clean input mapping                                   */
-/* ------------------------------------------------------------------ */
-/*
- * Every entry point binds the same base context; the only per-op additions are
- * noted in the entry points below.  Fields the clean core never reads are left
- * zero.  Frame counters: the SDK stores HW_U64, the clean model uint32_t, so
- * the low words are carried (the deployed counters do not wrap in practice).
- */
+/* Shared SDK -> clean input mapping; unread fields stay zero. Frame counters
+ * are u64 in the SDK, u32 in the clean model: low words carried. */
 static void bind_sdk(const struct fwi_isp_ctx *s)
 {
     const fwi_tuning_modules_t *t = &s->tuning.modules;
@@ -343,10 +208,8 @@ static void bind_sdk(const struct fwi_isp_ctx *s)
     g_clean.isp_test_settings.wb_en        = (uint32_t)ts->wb_gain_en;
     g_clean.isp_test_settings.isp_test_mode  = ts->bench_mode;
     g_clean.isp_test_settings.isp_color_temp = ts->fixed_cct_k;
-    /* fwi_tuning_enables_t has no isp_test_focus slot (AF stats read gate) --
-     * genuinely dropped in the frozen ABI set, not carried over from any
-     * renamed field; not exercised on y623 (no AF entity), so 0 is the same
-     * behaviour the reference build already had on this platform. */
+    /* fwi_tuning_enables_t has no isp_test_focus slot (AF stats read gate);
+     * 0 matches the vendor behaviour without an AF entity. */
     g_clean.isp_test_settings.isp_test_focus = 0;
 
     /* tuning corpus the clean model keeps in its own isp_ini_cfg */
@@ -396,12 +259,8 @@ static void bind_sdk(const struct fwi_isp_ctx *s)
     g_clean.ae_settings.awb_coor[2] = s->awb_ctl.awb_coord.x2;
     g_clean.ae_settings.awb_coor[3] = s->awb_ctl.awb_coord.y2;
 
-    /* AE parameter block: the clean context embeds the parameter block and the
-     * entity handle the settings dispatcher hands to the AE hook.  The clean
-     * tier reads the handle as a clean `isp_ae_param_t` (e.g. config_wdr /
-     * config_lens_table read nor_cmd_mode), so point it at the clean embedded
-     * copy; freeisp_ae_set_params translates that copy onto the SDK ae_param
-     * and dispatches through the real entity context. */
+    /* The clean tier reads ae_entity_ctx.ae_param as a clean fwi_base_ae_param_t, so
+     * point it at the embedded copy; freeisp_ae_set_params maps it back. */
     if (p) {
         g_clean.ae_param.nor_cmd_mode = p->nor_cmd_mode;
         g_clean.ae_param.comanding_input_bits = p->commanding_input_bits;
@@ -494,18 +353,8 @@ static void bind_sdk(const struct fwi_isp_ctx *s)
     g_clean.module_cfg.lens_cfg.ct_x = s->hw_cfg.lens_cfg.lens_shading_cfg.ct_x;
     g_clean.module_cfg.lens_cfg.ct_y = s->hw_cfg.lens_cfg.lens_shading_cfg.ct_y;
     g_clean.module_cfg.lens_cfg.rs_val = s->hw_cfg.lens_cfg.lens_shading_cfg.rs_val;
-    /*
-     * Seed all four 3A statistic windows from the SDK context.  bind_sdk
-     * memsets g_clean at the top of every entry point and set_{ae,af,awb,hist}_win
-     * only run under an isp_apply_settings change flag, while
-     * store_sdk(SHIM_OP_APPLY_SETTINGS) unconditionally copies the windows back.
-     * Unseeded, the first flag-less apply_settings frame writes the zeroed
-     * windows to the SDK: the AWB window register then packs width=0 as
-     * ((0>>1)-1) = 0xffffffff, i.e. every width field set (a degenerate region)
-     * and the histogram window likewise
-     * zeroes, so the 3A measures the wrong area and the AWB colour temperature
-     * (hence the CCM and WB gain) diverges from the vendor build.
-     */
+    /* Seed the 3A windows: store_sdk(APPLY_SETTINGS) always copies them back, and
+     * zeroed windows mis-place 3A stats (AWB width 0 packs as 0xffffffff). */
     g_clean.module_cfg.ae_cfg.ae_reg_win.hor_num =
         s->hw_cfg.ae_cfg.ae_reg_window.horizontal_count;
     g_clean.module_cfg.ae_cfg.ae_reg_win.ver_num =
@@ -580,9 +429,8 @@ static void bind_sdk(const struct fwi_isp_ctx *s)
     }
     g_clean.msc_r_ratio = s->shading_r_ratio;
 
-    /* module_cfg pointer targets: seed the clean embedded buffers with the
-     * current target contents so words the builder does not overwrite (and the
-     * harness's sentinel lane) are preserved on write-back. */
+    /* Seed table buffers so words the builder does not overwrite survive the
+     * write-back. */
     if (s->hw_cfg.linearize_table)
         memcpy(g_clean.module_cfg.linear_table, s->hw_cfg.linearize_table,
                ISP_LINEAR_TBL_N * sizeof(uint16_t));
@@ -592,26 +440,13 @@ static void bind_sdk(const struct fwi_isp_ctx *s)
     if (s->hw_cfg.mesh_shading_table)
         memcpy(g_clean.module_cfg.msc_table, s->hw_cfg.mesh_shading_table,
                ISP_MSC_TBL_SIZE * sizeof(uint16_t));
-    /*
-     * Seed the WDR table too (same rationale as lens/msc above).  config_wdr
-     * regenerates the table only on a flag!=0 call and returns before the table
-     * copy otherwise, while store_sdk(SHIM_OP_WDR) always copies the whole
-     * table back.  Since the clean context is memset at the top of this
-     * function, an unseeded table means every steady-state flag==0 call zeroes
-     * the SDK WDR table: the on-camera WDR block goes all-zero (dark/green
-     * image) once the initial regenerate window ends.
-     */
+    /* Seed WDR: config_wdr regenerates only when flag!=0 but store_sdk(WDR)
+     * always copies back; unseeded, steady state zeroes the WDR table. */
     memcpy(g_clean.module_cfg.wdr_cfg.table,
            s->hw_cfg.wdr_cfg.wdr_table,
            sizeof(g_clean.module_cfg.wdr_cfg.table));
-    /*
-     * Seed the RGB2YUV matrix/offset (same rationale).  isp_apply_settings
-     * rebuilds rgb2yuv only when the effect (bit 6) or hue (bit 10) change flag
-     * is set, but store_sdk(SHIM_OP_APPLY_SETTINGS) always copies it back;
-     * unseeded, the steady-state (no effect/hue) call zeroes the SDK RGB2YUV
-     * matrix, i.e. register block 0x520..0x538 goes all-zero and the picture
-     * collapses to a flat green field.
-     */
+    /* Seed RGB2YUV: rebuilt only on effect (bit 6)/hue (bit 10) flags but always
+     * copied back; unseeded, regs 0x520..0x538 zero (flat green picture). */
     for (i = 0; i < 3; i++) {
         unsigned j;
         for (j = 0; j < 3; j++)
@@ -667,17 +502,8 @@ static void bind_sdk(const struct fwi_isp_ctx *s)
     build_tables(s);
 }
 
-/* ------------------------------------------------------------------ */
-/* Shared clean -> SDK output mapping                                  */
-/* ------------------------------------------------------------------ */
-/*
- * Only the fields a routine can mutate are written back, and only for that
- * routine: copying a clean field the routine never touched would clobber an
- * SDK field that was not losslessly carried on the way in (e.g. the 16-bit
- * clean colour matrix vs. the 16-bit SDK one is fine, but table shapes and
- * stat widths differ).  Each entry point therefore calls store_sdk() with the
- * same op, and store_sdk selects the write set.
- */
+/* Clean -> SDK write-back: only fields the op can mutate, since other SDK
+ * fields were not carried losslessly (table shapes, stat widths differ). */
 static void store_sdk(int op, struct fwi_isp_ctx *s)
 {
     const fwi_ae_param_t *p = s->ae_entity.ae_param;
@@ -907,18 +733,8 @@ static void store_sdk(int op, struct fwi_isp_ctx *s)
         memcpy(&s->stats.dynamic_stats.accum[0][0],
                g_clean.stats_ctx.dynamic_stats.accum,
                sizeof(s->stats.dynamic_stats.accum));
-        /*
-         * The deployed base object's tail of isp_handle_stats[_sync]: point
-         * every entity's statistics handle at
-         * the freshly parsed block.  The framework reads statistics through
-         * these handles (e.g. isp_ae_run receives &ae_entity_ctx.ae_stats), not
-         * through stats_ctx directly, and nothing else sets them.  Without this
-         * translation the clean tier leaves them NULL, every 3A core runs on
-         * "no statistics" and the image collapses to green with the AE pinned
-         * at minimum exposure.  The clean core's own stats_attach bookkeeping
-         * is the clean-side equivalent; the SDK handles must point at the SDK
-         * stats block that the copies above just filled.
-         */
+        /* Point every entity's stats handle at the parsed SDK block (as the vendor
+         * does); left NULL, the 3A cores see no stats and the image goes green. */
         s->awb_entity.awb_stats.awb_stats = &s->stats.stats.awb_stats;
         s->ae_entity.ae_stats.ae_stats = &s->stats.stats.ae_stats;
         s->af_entity.af_stats.af_stats = &s->stats.stats.af_stats;
@@ -1117,18 +933,12 @@ void isp_handle_stats_sync(struct fwi_isp_ctx *isp_gen, const void *buffer0,
     store_sdk(SHIM_OP_STATS_SYNC, isp_gen);
 }
 
-/*
- * SDK-side provider for base.h's freeisp_ae_set_params hook.  The clean
- * dispatcher (base.c isp_apply_settings) records the parameter update on its
- * embedded clean ae_param, then calls this.  Translate that update onto the
- * current SDK ae_param and invoke the framework helper, which null-checks
- * ae_entity/ops/ae_param, sets ae_param->type and dispatches through
- * ops->isp_ae_set_params(ae_entity, ae_param, &ae_result).
- */
-void freeisp_ae_set_params(isp_ae_entity_ctx_t *ae_ctx, int32_t cmd_type)
+/* SDK-side provider of base.h's freeisp_ae_set_params: map the clean ae_param
+ * update onto the SDK ae_param and dispatch via the framework helper. */
+void freeisp_ae_set_params(fwi_base_ae_entity_ctx_t *ae_ctx, int32_t cmd_type)
 {
     struct fwi_isp_ctx *s = g_cur_sdk;
-    const isp_ae_param_t *c;
+    const fwi_base_ae_param_t *c;
     fwi_ae_param_t *p;
 
     if (!s || !ae_ctx || !(c = ae_ctx->ae_param))
@@ -1182,15 +992,8 @@ void config_msc_table(struct fwi_isp_ctx *isp_gen, int vcm_std_pos)
     store_sdk(SHIM_OP_MSC_TABLE, isp_gen);
 }
 
-/*
- * config_blc: declared by the SDK isp_base.h but NOT defined by the deployed
- * base object (which exports only the twelve entry points above) and not
- * called anywhere in isp_manage.c.  It has no clean-room counterpart in
- * base.c.  The shim therefore exports a documented no-op so a stray link
- * reference to the SDK declaration still resolves; if the framework ever
- * starts calling it, a clean implementation must be added to base.c first
- * (see the report).
- */
+/* config_blc: declared by the SDK but absent from the vendor object and never
+ * called; no-op so stray references link. */
 void config_blc(struct fwi_isp_ctx *isp_gen)
 {
     (void)isp_gen;

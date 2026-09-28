@@ -1,15 +1,8 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
 
-/*
- * test_fcap.c - host black-box tests for the capture runtime (package A).
- *
- * Replays the SPEC section 7 vectors against the recorder seam in fcap_seam.c:
- * the SYS state machine, the vipp lifecycle and its bring-up order, the
- * attribute round-trip and its clamps, the virtual-channel state machine, the
- * capture worker's frame accounting, GetFrame/ReleaseFrame, the orientation
- * controls and the shutter-time path.  No device, no ISP tier, no camera.
- */
+/* test_fcap.c - black-box tests for the capture runtime: replays the vectors
+ * below against the fcap_seam.c recorder. No device, ISP tier or camera. */
 
 #include "fcap_abi.h"
 #include "fcap_seam.h"
@@ -137,7 +130,7 @@ static void sleep_ms(unsigned int ms)
 }
 
 /* ------------------------------------------------------------------ */
-/* SPEC vector 1-3: SYS                                                */
+/* Vector 1-3: SYS                                                     */
 /* ------------------------------------------------------------------ */
 
 static void test_sys(void)
@@ -185,7 +178,7 @@ static void test_sys(void)
 }
 
 /* ------------------------------------------------------------------ */
-/* SPEC vector 4: CreateVipp                                           */
+/* Vector 4: CreateVipp                                                */
 /* ------------------------------------------------------------------ */
 
 static void test_create_vipp(void)
@@ -215,7 +208,7 @@ static void test_create_vipp(void)
 }
 
 /* ------------------------------------------------------------------ */
-/* SPEC vector 5-6: attribute round-trip and clamps                    */
+/* Vector 5-6: attribute round-trip and clamps                         */
 /* ------------------------------------------------------------------ */
 
 static void test_vipp_attr(void)
@@ -271,7 +264,7 @@ static void test_vipp_attr(void)
 }
 
 /* ------------------------------------------------------------------ */
-/* SPEC vector 8: EnableVipp bring-up order                            */
+/* Vector 8: EnableVipp bring-up order                                 */
 /* ------------------------------------------------------------------ */
 
 static void test_enable_vipp(void)
@@ -323,7 +316,7 @@ static void test_enable_vipp(void)
 }
 
 /* ------------------------------------------------------------------ */
-/* SPEC vector 9-12: GetFrame / ReleaseFrame                           */
+/* Vector 9-12: GetFrame / ReleaseFrame                                */
 /* ------------------------------------------------------------------ */
 
 static void test_frames(void)
@@ -397,7 +390,7 @@ static void test_frames(void)
 }
 
 /* ------------------------------------------------------------------ */
-/* SPEC vector 14: DisableVipp with a surviving channel                */
+/* Vector 14: DisableVipp with a surviving channel                     */
 /* ------------------------------------------------------------------ */
 
 static void test_disable_vipp_with_channel(void)
@@ -415,7 +408,7 @@ static void test_disable_vipp_with_channel(void)
 }
 
 /* ------------------------------------------------------------------ */
-/* SPEC vector 15: mirror / flip                                       */
+/* Vector 15: mirror / flip                                            */
 /* ------------------------------------------------------------------ */
 
 static void test_orientation(void)
@@ -445,7 +438,7 @@ static void test_orientation(void)
 }
 
 /* ------------------------------------------------------------------ */
-/* SPEC vector 16: shutter time                                        */
+/* Vector 16: shutter time                                             */
 /* ------------------------------------------------------------------ */
 
 static void test_shutter(void)
@@ -503,7 +496,7 @@ static void test_shutter(void)
 }
 
 /* ------------------------------------------------------------------ */
-/* SPEC vector 7 / 17: virtual-channel state machine                   */
+/* Vector 7 / 17: virtual-channel state machine                        */
 /* ------------------------------------------------------------------ */
 
 static void test_virchn_states(void)
@@ -540,7 +533,7 @@ static void test_virchn_states(void)
 }
 
 /* ------------------------------------------------------------------ */
-/* SPEC vector 18: FIFO depth and order                                */
+/* Vector 18: FIFO depth and order                                     */
 /* ------------------------------------------------------------------ */
 
 static void test_fifo_depth(void)

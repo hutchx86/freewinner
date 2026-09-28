@@ -1,13 +1,7 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
-/*
- * test_ae.c - host-side tests for the clean-room AE module.
- *
- * This file owns the runtime table provider.  The module under test contains
- * no table data of its own; every table below is injected through
- * freeisp_get_tables().  The values are synthetic test fixtures, not vendor
- * tuning data.
- */
+/* test_ae.c - host tests for the AE module. This file is the runtime table
+ * provider (freeisp_get_tables()); all tables are synthetic fixtures. */
 #include "ae_clean.h"
 
 #include <stdio.h>
@@ -42,6 +36,7 @@ static int32_t  t_wunder[AE_NGRID];
 static int32_t  t_net_in[10 * 64];
 static int32_t  t_net_bias[10];
 static int32_t  t_net_out[20];
+static int32_t  t_net_out_bias[2] = { 2345, 7777 };   /* synthetic B0 < B1 */
 /* Arbitrary monotone fixture (not a tuning table): x1.25 steps from 140. */
 static int32_t  t_fno_ladder[16] = {
     140, 175, 219, 273, 342, 427, 534, 668,
@@ -97,16 +92,17 @@ static void init_tables(void)
         for (k = 0; k < 256; k++)
             t_auxprob[r * 256 + k] = (uint8_t)(k < 200 ? 200 - k : 0);
 
+    /* Synthetic descriptor (not a tuning table): 1/4000..1/60 s at 1x, then 1x..8x. */
     memset(&t_default, 0, sizeof(t_default));
     t_default.length = 2;
     t_default.ev_step = 40;
     t_default.shutter_shift = 0;
-    t_default.seg[0].min_exp = 8000; t_default.seg[0].max_exp = 30;
+    t_default.seg[0].min_exp = 4000; t_default.seg[0].max_exp = 60;
     t_default.seg[0].min_gain = 256; t_default.seg[0].max_gain = 256;
-    t_default.seg[0].min_iris = 266; t_default.seg[0].max_iris = 266;
-    t_default.seg[1].min_exp = 30; t_default.seg[1].max_exp = 30;
-    t_default.seg[1].min_gain = 256; t_default.seg[1].max_gain = 6000;
-    t_default.seg[1].min_iris = 266; t_default.seg[1].max_iris = 266;
+    t_default.seg[0].min_iris = 180; t_default.seg[0].max_iris = 180;
+    t_default.seg[1].min_exp = 60; t_default.seg[1].max_exp = 60;
+    t_default.seg[1].min_gain = 256; t_default.seg[1].max_gain = 2048;
+    t_default.seg[1].min_iris = 180; t_default.seg[1].max_iris = 180;
 
     memset(&g_tab, 0, sizeof(g_tab));
     g_tab.log2 = t_log2;
@@ -124,6 +120,7 @@ static void init_tables(void)
     g_tab.net_in = t_net_in;
     g_tab.net_bias = t_net_bias;
     g_tab.net_out = t_net_out;
+    g_tab.net_out_bias = t_net_out_bias;
     g_tab.fno_ladder = t_fno_ladder;
     g_tab.fno_def = t_fno_ladder;
     g_tab.table_default = &t_default;
@@ -383,6 +380,52 @@ static void test_backlight(void)
     ae_exit(e);
 }
 
+/* Peak spread >= 101 takes the network; zero weights leave s0 = B0, s1 = B1 (8.5). */
+static int32_t network_backlight(const int32_t *bias)
+{
+    ae_params_t par;
+    ae_entity_t *e;
+    ae_param_req_t req;
+    ae_result_t res;
+    ae_stats_t st;
+    const int32_t *saved = g_tab.net_out_bias;
+    int i;
+
+    g_tab.net_out_bias = bias;
+    base_params(&par);
+    par.hist_metering_en = 1;
+    e = ae_init(NULL);
+    req.kind = AE_PARAM_INIT;
+    req.params = &par;
+    ae_set_params(e, &req, NULL);
+    req.kind = AE_PARAM_TABLES;
+    ae_set_params(e, &req, NULL);
+    /* Two histogram blocks further apart than the kernel: two clean peaks. */
+    fill_bimodal_stats(&st);
+    memset(st.hist, 0, sizeof(st.hist));
+    st.hist[2] = 20000;
+    st.hist[250] = 20000;
+    memset(&res, 0, sizeof(res));
+    for (i = 0; i < 6; i++)
+        ae_run(e, &st, &res);
+    CHECK(res.bright_pos - res.dark_pos >= 101, "split scene reaches the network");
+    ae_exit(e);
+    g_tab.net_out_bias = saved;
+    return res.backlight;
+}
+
+static void test_backlight_network(void)
+{
+    static const int32_t lo_hi[2] = { 2345, 7777 };
+    static const int32_t hi_lo[2] = { 20000, 1000 };
+    static const int32_t deep[2]  = { 1000, 30000 };
+
+    CHECK(network_backlight(lo_hi) == 40 - 7777 / 800, "s0 < s1: 40 - s1/800");
+    CHECK(network_backlight(hi_lo) == 20 + 20000 / 800, "s0 >= s1: 20 + s0/800");
+    CHECK(network_backlight(deep) == 3, "s0 < s1 branch clamps at 0..32");
+    CHECK(network_backlight(NULL) == 32, "absent biases: network off, backlight 32");
+}
+
 static void test_touch_grid(void)
 {
     ae_params_t par;
@@ -460,17 +503,8 @@ static void test_wdr(void)
     ae_exit(e);
 }
 
-/*
- * Regression: the WDR-ratio step must hold the incoming ratio on the
- * no-adjust paths (|ratio - target| below the threshold, or the change
- * counter still inside its initial window).  Only the adjust path (counter
- * past its initial window) applies a convergence step toward the target.
- *
- * Incoming ratio 256, computed target 160.  The first step has
- * wdr_change_cnt == 0, so it is a no-adjust step: tmp must remain 256, not
- * jump to 160.  Continuing to run drives the adjust path, which must move
- * tmp strictly between the incoming ratio and the target.
- */
+/* WDR-ratio step holds the incoming ratio (256) on no-adjust paths (counter
+ * still 0); only the adjust path steps it toward the target (160). */
 static void test_wdr_ratio_step(void)
 {
     ae_params_t par;
@@ -513,15 +547,8 @@ static void test_wdr_ratio_step(void)
     ae_exit(e);
 }
 
-/*
- * Regression: a bright flat scene drives the index down to the table floor.
- * Two SDK-boundary edges must agree with the deployed object:
- *   - the reported expected index uses a saturating unsigned clamp, so an
- *     ideal index below zero reports the top index rather than a negative
- *     value;
- *   - the LV probe index `delta/3 + index` is below the table, and the
- *     deployed object's out-of-table read yields zero.
- */
+/* Bright flat scene at the table floor: the expected index clamps unsigned
+ * (reports the top index) and the out-of-table LV probe reads zero. */
 static void test_auto_bright_low_saturation(void)
 {
     ae_params_t par;
@@ -554,13 +581,8 @@ static void test_auto_bright_low_saturation(void)
     ae_exit(e);
 }
 
-/*
- * Regression: WDR quantises the long shutter to a multiple of
- * `wdr_cfg[0]*16` lines but must not extend the sensor-latency delay to that
- * same multiple.  With 30 frames from frame 80 the HDR ratio has to converge
- * (rather than being frozen at its initial value) and the committed
- * sensor/hardware ratios have to follow the tracked ratio.
- */
+/* WDR quantises the long shutter to wdr_cfg[0]*16 lines but not the latency
+ * delay, so the HDR ratio must converge and the committed ratios follow it. */
 static void test_wdr_shutter_quantisation(void)
 {
     ae_params_t par;
@@ -687,6 +709,7 @@ int main(void)
     test_line_table();
     test_metering_error_convergence();
     test_backlight();
+    test_backlight_network();
     test_touch_grid();
     test_wdr();
     test_wdr_ratio_step();

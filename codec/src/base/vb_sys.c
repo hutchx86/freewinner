@@ -37,7 +37,7 @@ static int sys_munmap(void *addr, size_t length)
     return munmap(addr, length);
 }
 
-/* Provided by the executable that loads the library (SPEC §0). */
+/* Provided by the executable that loads the library. */
 static fc_ve_ops *sys_get_ve_ops(int type)
 {
     return GetVeOpsS(type);

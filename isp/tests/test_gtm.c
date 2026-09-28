@@ -1,12 +1,7 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
-/*
- * test_gtm.c - host unit tests for the clean-room GTM module.
- *
- * The test owns the runtime table provider.  Every table the module consumes
- * is injected through freeisp_get_tables(); the fixtures below are synthetic,
- * not vendor tuning data.
- */
+/* test_gtm.c - host tests for the GTM module. This file is the runtime table
+ * provider (freeisp_get_tables()); all tables are synthetic fixtures. */
 #include "gtm_clean.h"
 
 #include <math.h>
@@ -375,10 +370,8 @@ static void test_dynamic_range(void)
 
     gtm_exit(e);
 
-    /* All-zero histogram: equalisation builds no curve (fix_sum == 0), but
-     * the run must still fall through to the curve refresh and the
-     * brightness/contrast blend (audit A5a: a blank frame still refreshes
-     * the curve). */
+    /* All-zero histogram builds no curve (fix_sum == 0) but must still refresh
+     * the curve and run the brightness/contrast blend. */
     fill_stats(&st, 4);
     e = make_entity(&p);
     if (e == NULL) {
@@ -547,9 +540,8 @@ static void test_blend_normalises_index_255(void)
 
     fill_stats(&st, 3);
 
-    /* In fixed mode the blend overwrites curve[255] with the fully
-     * normalised projection (blend_curve[255] -> 0x1000), so the top of
-     * the curve must be the same for every brightness/contrast pair. */
+    /* Fixed mode: the blend sets curve[255] to the normalised 0x1000, so the top
+     * is identical for every brightness/contrast pair. */
     for (i = 0; i < n; i++) {
         e = make_entity(&p);
         if (e == NULL) {
@@ -581,13 +573,8 @@ static void test_blend_normalises_index_255(void)
 }
 
 
-/*
- * Zero-divisor regression (on-camera SIGFPE, 2026-09-20 (7)): the GTM curve
- * interpolator and the otsu histogram pass both divide by a value that can be
- * zero on real data -- a flat gamma LUT (hi == lo) and an all-zero histogram
- * (cnt stays 0).  Pre-fix these trapped; the deployed object's hardware sdiv
- * yields 0.
- */
+/* Zero divisors: a flat gamma LUT (hi == lo) and an all-zero histogram both
+ * divide by zero; ARM hardware sdiv yields 0 and so must we. */
 static void test_zero_divisor_paths(void)
 {
     gtm_clean_stats_t st;

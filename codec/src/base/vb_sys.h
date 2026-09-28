@@ -2,9 +2,9 @@
 /* Copyright (C) 2026 freewinner contributors */
 
 /* Internal seam of the encoder support library: every kernel and video-engine
- * call made by the allocator (SPEC §1) and the ION helpers (SPEC §3) goes through
- * the table below, so host tests can install fakes. Not exported from the shared
- * library (the version script keeps it local). */
+ * call made by the allocator and the ION helpers goes through the table below,
+ * so host tests can install fakes. Not exported from the shared library (the
+ * version script keeps it local). */
 
 #ifndef FREECODEC_VB_SYS_H
 #define FREECODEC_VB_SYS_H

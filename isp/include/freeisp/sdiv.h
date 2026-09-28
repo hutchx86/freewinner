@@ -5,28 +5,8 @@
 
 #include <stdint.h>
 
-/*
- * Integer divide semantics for the register/config tier.
- *
- * GCC lowers a data-dependent C division to the ABI helpers
- * `__aeabi_idiv`/`__aeabi_uidiv`, which raise SIGFPE when the divisor is zero
- * and, for the signed form, when the quotient is INT32_MIN / -1.
- *
- * The deployed pipeline does not fault on those inputs: its divisions
- * saturate, which is the behaviour the target architecture specifies for its
- * integer divide instructions --
- *
- *   divisor 0        ->  0
- *   INT32_MIN / -1   ->  INT32_MIN
- *
- * On camera the all-clean `mediad` crashed with SIGFPE on real statistics data
- * because the clean tier used the trapping helpers (2026-09-18): the inputs
- * that fault are reachable, and no caller upstream rejects them.
- *
- * Every division in the clean tier whose divisor is not provably nonzero must
- * go through one of these, so the clean code has the deployed pipeline's
- * arithmetic behaviour rather than the helper's trap.
- */
+/* ARM SDIV/UDIV saturating division (x/0 = 0, INT32_MIN/-1 = INT32_MIN) instead of the
+ * trapping __aeabi helpers; use for any divisor not provably nonzero (isp/spec/divide-semantics.md). */
 
 static inline int32_t freeisp_sdiv(int32_t n, int32_t d)
 {

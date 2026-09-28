@@ -1,15 +1,9 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
 
-/* Engine-side work buffers of the H.264 encoder whose size or contents are
- * pure arithmetic on the picture geometry:
- *
- *   - the macroblock-level rate-control (MB-RC) buffer and the per-row budget
- *     table software writes into it before each P picture (spec r2/01);
- *   - the compressed reference-plane ("auxiliary plane") size (spec r2/03).
- *
- * Header-only (static inline) so the host unit tests can exercise the exact
- * code the encoder runs without linking the encoder device. */
+/* H.264 engine work buffers whose size or contents are pure geometry: the
+ * MB-RC buffer and its per-row budget table (spec r2/01) and the auxiliary
+ * plane size (spec r2/03). Header-only so host tests run the exact code. */
 
 #ifndef FREECODEC_H264_BUFS_H
 #define FREECODEC_H264_BUFS_H
@@ -50,17 +44,8 @@ static inline void fc_mbrc_put16(uint8_t *p, unsigned int v)
     p[1] = (uint8_t)((v >> 8) & 0xffu);
 }
 
-/* Rebuild the per-row budget table in an MB-RC buffer of `rows` rows
- * (spec r2/01 section 4). The engine left one activity figure per row at the
- * start of the buffer while coding the previous picture; each record r
- * (0 <= r < rows - 1) receives the cumulative share of rows 0..r scaled by the
- * six weights. The last row only contributes to the total.
- *
- * `sync` (may be NULL) is called exactly twice over the whole buffer: once
- * before the activity figures are read, so the CPU sees the engine's writes,
- * and once after the table is written, so the engine sees ours. Bytes outside
- * the table region are never written. Returns 0, or -1 for a row count the
- * buffer layout cannot hold (nothing is touched then). */
+/* Rebuild the per-row budget table from the engine's per-row activity (spec r2/01
+ * s4); `sync` (may be NULL) runs before reading and after writing. -1 = bad rows. */
 static inline int fc_mbrc_build_table(uint8_t *buf, unsigned int rows,
                                       fc_mbrc_sync_fn sync, void *opaque)
 {
@@ -112,18 +97,15 @@ static inline int fc_mbrc_build_table(uint8_t *buf, unsigned int rows,
  * beside every reference picture (spec r2/03 section 1). */
 #define FC_AUX_PLANE_MIN_IC       0x1667u
 
-/* Number of 48-macroblock column groups of a picture `width_mb` macroblocks
- * wide. The same count goes into the stride-group field of encoder register
+/* 48-MB column groups of a picture; also the stride-group field of register
  * 0x08 (bits 10-13). */
 static inline unsigned int fc_aux_plane_groups(unsigned int width_mb)
 {
     return (width_mb + 47u) / 48u;
 }
 
-/* Bytes of one auxiliary plane for a coded picture of width_px x height_px
- * (spec r2/03 section 2): N rows of (32 bytes per column group + 2 bytes per
- * macroblock column, the columns padded to a multiple of 32), with
- * N = H16 / 8 + 9 for the 16-aligned height H16. */
+/* Auxiliary plane bytes (spec r2/03 s2): N = H16 / 8 + 9 rows of (32 B per
+ * column group + 2 B per MB column, padded to 32). */
 static inline unsigned int fc_aux_plane_bytes(unsigned int width_px,
                                               unsigned int height_px)
 {

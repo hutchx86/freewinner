@@ -1,17 +1,7 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
-/*
- * test_pltm_shim.c - host test for the PLTM pilot shim.
- *
- * Includes the SDK ABI header and the shim, drives the full
- * init/get/set/run cycle with a synthetic pltm_param_t, pltm_stats_t and
- * pltm_result_t, and checks the SDK <-> clean translation.
- *
- * Uses the shim's built-in pilot tables (pltm_shim_set_tables(NULL)); the
- * expected values below are derived from those documented placeholders:
- *   strength_bank[r][k] = k        (identity ramp per row)
- *   converge_bank[r][d] = d        (adaptive step == requested change)
- */
+/* test_pltm_shim.c - host test for the PLTM shim: init/get/set/run with the
+ * built-in tables (strength_bank[r][k] = k, converge_bank[r][d] = d). */
 #include <stdio.h>
 #include <string.h>
 
@@ -19,18 +9,13 @@
 #include "freeisp/isp_dims.h"
 #include "pltm_shim.h"
 
-/* The shim's exported 3A entry points (fwi vtable shape; the framework
- * declares them in framework_isp.h).  Not in pltm_shim.h: TUs that also see
- * pltm_clean.h have a clean-core pltm_init of a different type. */
+/* Declared here, not in pltm_shim.h: TUs that also see pltm_clean.h have a
+ * clean-core pltm_init of a different type. */
 void *pltm_init(fwi_pltm_core_ops_t **core_ops);
 void  pltm_exit(void *core_obj);
 
-/*
- * musl's math objects (pulled in by the clean core's exp use) reference the
- * ARM EH personality routines.  This test never unwinds; weak definitions
- * close the static link under the OpenWrt toolchain (a real libgcc_eh, if ever
- * linked, would override them).
- */
+/* musl libm references the ARM EH personality routines; this test never
+ * unwinds, so weak stubs close the static link. */
 #if defined(__arm__)
 #define SHIM_WEAK __attribute__((weak))
 SHIM_WEAK int __aeabi_unwind_cpp_pr0(void) { return 0; }
@@ -38,10 +23,8 @@ SHIM_WEAK int __aeabi_unwind_cpp_pr1(void) { return 0; }
 SHIM_WEAK int __aeabi_unwind_cpp_pr2(void) { return 0; }
 #endif
 
-/*
- * Result-table layout facts (clean spec 9.1).  Defined locally: including
- * pltm_clean.h here would collide with the SDK pltm_* entry points.
- */
+/* Result-table layout (clean spec 9.1); local because pltm_clean.h would
+ * collide with the SDK pltm_* entry points. */
 #define TONE_BASE  0x0100
 #define GAIN_BASE  0x0200
 #define GAIN_UNITY 0x0400
@@ -226,23 +209,11 @@ static void test_disabled(void)
     pltm_exit(h);
 }
 
-/*
- * Automatic path.  auto_strength=64 -> strength_curve[k]=k (bank row 0).
- * With every lst entry at 0x10 the judge returns 2 per tile:
- *   cal_strength = sat12((768*2)*16/768) = 32.
- * min_threshold=3 forces the target to 48; measured_min=15 gives d=33,
- * which the confirmation gate releases on the second qualifying frame and the
- * converge bank then steps by 32.  A different lst (0x20) halves/…doubles the
- * judge to cal 64 and a 64 step, proving the stats list is mapped; a
- * measured_min of 48 instead of 15 lands in the deadband and holds at 0,
- * proving the measured minimum is mapped.
- */
-/*
- * Automatic run with the result's carried old/next strength seeded before the
- * first frame.  The shim must inject those into the clean core (the vendor
- * object reads them from the result), so a nonzero seed changes the first
- * qualifying frame's step-limited result.
- */
+/* Auto path: lst 0x10 -> cal_strength 32, min_threshold 3 + measured_min 15 ->
+ * step 32 on the 2nd frame; lst 0x20 doubles it, measured_min 48 holds at 0. */
+
+/* Seeds the result's carried old/next strength; the shim must inject them
+ * into the clean core, so a nonzero seed changes the first step. */
 static void run_auto_seeded(uint16_t measured_min, uint16_t lst, int frames,
                             uint16_t seed_old, uint16_t seed_next,
                             fwi_pltm_result_t *last)
@@ -283,15 +254,8 @@ static void run_auto(uint16_t measured_min, uint16_t lst, int frames,
     run_auto_seeded(measured_min, lst, frames, 0, 0, last);
 }
 
-/*
- * The SDK carries the applied strength across frames in the result; the shim
- * seeds it into the clean core.  On the first qualifying frame the minimum
- * change is still suppressed, so the deadband holds a positive direction but
- * steps down a negative one: with the result seeded old=0 the strength holds
- * at 0, while old=0x400 makes delta negative and steps down by the fixed step
- * (1024-2).  Without the shim's seed the clean core would see old=0 in both
- * runs and the two results would be identical.
- */
+/* Seed old=0 holds at 0 while old=0x400 steps down by 1024-2 on the first
+ * frame; without the shim's seed both runs would match. */
 static void test_seeded_strength(void)
 {
     fwi_pltm_result_t a, b;
@@ -314,7 +278,7 @@ static void test_auto_stats(void)
     CHECK_EQ(res.pltm_old_strength, 32);
     CHECK_EQ(res.pltm_cal_en, 1);
     CHECK_EQ(res.pltm_frame_smoothing_en, 1);
-    /* The pilot tables inject no presets, so the neutral row applies:
+    /* The built-in tables inject no presets, so the neutral row applies:
      * full original blend, order 5, last 15. */
     CHECK_EQ(res.pltm_original_picture_ratio, 0xFF);
     CHECK_EQ(res.pltm_tr_order, 5);
@@ -339,7 +303,7 @@ int main(void)
 {
     int i;
 
-    /* Table provider: NULL selects the built-in pilot defaults. */
+    /* Table provider: NULL selects the built-in defaults. */
     pltm_shim_set_tables(NULL);
 
     for (i = 0; i < 0x300; i++)

@@ -602,13 +602,15 @@ if (unsigned)(bright_pos - dark_pos) < 101:
         if dist[hi] <= comp: picked = dist[hi]
         picked -= night_mode_weight()
         backlight = max(picked, 0)
+else if NET_OUT_BIAS not injected:
+    backlight = 32                              # network disabled (15.9)
 else:
     # two-layer integer network
     x[i] = (grid[i] < mid) ? -1 : 1            # 64 inputs
     for j in 0..9:
         h[j] = (sum_i x[i]*NET_IN[j*64+i] + NET_BIAS[j]) / 100
-    s0 = (sum_j h[j]*NET_OUT[j])      / 100 + 3561
-    s1 = (sum_j h[j]*NET_OUT[10+j])   / 100 + 6438
+    s0 = (sum_j h[j]*NET_OUT[j])      / 100 + B0
+    s1 = (sum_j h[j]*NET_OUT[10+j])   / 100 + B1
     if s0 < s1:
         backlight = clamp(40 - s1/800, 0, 32)
     else:
@@ -619,7 +621,11 @@ result.backlight = backlight
 ```
 
 Note the pattern-match distance loop starts at cell 1 (cell 0 is excluded).
-Division truncates toward zero.
+Division truncates toward zero. `B0`/`B1` are the network output biases
+(`NET_OUT_BIAS`, section 15.9). Without them the network is skipped and the
+result is 32, the same value as the flat-scene branch, the early-frame reset
+(`0x20`) and the network itself when every hidden output is 0; section 8.6 then
+weights each class at its midpoint. The pattern-match branch does not use them.
 
 ### 8.6 Class bin weights
 
@@ -1295,7 +1301,7 @@ matrix grid may be replaced at init by `window_weight_seed`. `WGHT_OVER` and
 `WGHT_UNDER` (also 64 each) are additional isolation grids applied to
 highlight/shadow windows (section 7.1). All are row-major `row*8+col`.
 
-### 15.9 Backlight network weights (`NET_IN`, `NET_BIAS`, `NET_OUT`)
+### 15.9 Backlight network weights (`NET_IN`, `NET_BIAS`, `NET_OUT`, `NET_OUT_BIAS`)
 
 A two-layer integer network with 64 inputs, 10 hidden units and 2 output
 scores:
@@ -1305,25 +1311,60 @@ scores:
 | `NET_IN` | 10 x 64 signed int | input weights, hidden unit `j` at `j*64 + i`. |
 | `NET_BIAS` | 10 signed int | hidden biases, added before the `/100`. |
 | `NET_OUT` | 20 signed int | output weights: `[0..9]` score 0, `[10..19]` score 1. |
+| `NET_OUT_BIAS` | 2 signed int, optional | output biases `B0` (score 0), `B1` (score 1). |
 
-Exact use in section 8.5. The output biases 3561 and 6438 are folded into the
-score constants, not stored in the tables.
+Exact use in section 8.5. The output biases are not stored with the other
+tables: the stock daemon compiles them into its code as immediates, each split
+over two `add` instructions that directly follow a signed `/100`. They are
+camera data, extracted at runtime from the device's own firmware
+(`../src/tables/ae_out_bias.c`; `../docs/provenance.md` records how) and
+cached on the device. Structurally, in the executable segment:
+
+- a site is `rsb Rq, .., .., asr #5` (the tail of a `/100` by reciprocal
+  multiply), then `add Rd, Rq, #hi` and `add Rd, Rd, #lo`; the bias is
+  `hi + lo`;
+- exactly two sites exist, each preceded by the `/100` multiplier load
+  (`movw`/`movt` into one register);
+- `B1` is the site followed by `cmp Rd(B0), Rd(B1); bge`; its fall-through has
+  the `/800` shift and `+40`, the branch target the `+20`; the `B0` site
+  follows it within 4 KiB;
+- an accepted pair has `1000 <= B0 < B1 <= 20000`, and neither value fits a
+  single A32 immediate (else the compiler would not have split it).
+
+Anything else leaves `NET_OUT_BIAS` absent (network disabled, section 8.5).
 
 ### 15.10 Default aperture ladder (`FNOLADDER`, 16 signed int)
 
-A monotonically increasing ladder of aperture codes (observed values
-`141,145,152,163,175,190,209,233,266,311,379,487,657,971,1825,3794`). Used to
-snap a continuous aperture to the largest ladder value not exceeding it, and to
+A strictly increasing ladder of 16 positive aperture codes. Used to snap a
+continuous aperture to the largest ladder value not exceeding it, and to
 produce the squared aperture value `fno2`. Copied into configuration only when
-`aperture_ladder[0] == 0`.
+`aperture_ladder[0] == 0`. The values are camera data injected at runtime; no
+default ladder is part of this specification.
 
 ### 15.11 Default exposure descriptor (`TABLEDEF`)
 
-An exposure descriptor used when no valid scene table is configured. Observed
-content: `length=2`, `ev_step=40`, `shutter_shift=0`, two segments
-(`{min_exp=8000,max_exp=30,min_gain=max_gain=256,min_iris=max_iris=266}` and
-`{min_exp=30,max_exp=30,min_gain=256,max_gain=6000,min_iris=max_iris=266}`),
-the remaining segments zero. These values are injected data; do not hardcode.
+An exposure descriptor (the `ae_desc` shape of section 3.3.1) used when no
+valid scene table is configured. Structure: `length` valid segments (1..10),
+`ev_step` and `shutter_shift`, preprocessed like any scene descriptor (section
+13.1). Each valid segment has `min_gain <= max_gain`; exposure fields are
+non-zero reciprocal seconds, so `min_exp >= max_exp`. Segments beyond `length` are
+zero. The observed default has two segments: a shutter ramp at a fixed gain,
+then a gain ramp at the longest exposure. The values are camera data injected
+at runtime; do not hardcode them.
+
+Fallback when the camera's descriptor cannot be located (implementation
+choice, not observed data): two segments of our own, a shutter ramp from
+1/10000 s to 1/50 s at unity gain (256), then a gain ramp from 1x to 16x
+(256..4096) at 1/50 s, with a fixed aperture code of 200 (f/2.0). Rationale:
+1/50 s is flicker-safe for 50 Hz lighting and shorter than a 30 fps frame; 16x
+is a conservative upper bound for small CMOS sensors; f/2.0 is typical of the
+fixed lenses on these cameras, and the aperture cancels out of the exposure
+solve (section 13.3) so its exact value only affects the reported f-number.
+Two segments are needed because a segment whose shutter varies holds gain at
+its `min_gain`. `ev_step = 40` is the 0.04 EV index step (section 16).
+
+Likewise no aperture ladder is compiled in: without an injected ladder
+`fno_ladder`/`fno_def` stay NULL and `aperture_ladder` is left as configured.
 
 ### 15.12 Auxiliary probability table (`AUXPROB`, 96 x 256 unsigned char)
 
@@ -1353,7 +1394,7 @@ histogram centroid (section 8.7). Not to be confused with `TOUCHPROB`.
 | night-mode weight | 64 at <=25, 0 at >=50, linear between | section 8.5. |
 | neutral histogram bin | 253 | section 8.3. |
 | classification scale | /800 | network output (section 8.5). |
-| network scores bases | 3561, 6438 | section 8.5. |
+| network score bases | runtime `B0`, `B1` (15.9) | section 8.5; absent: backlight 32. |
 | output offsets | 0x14=20, 0x28=40 | section 8.5. |
 | backlight clamps | 0x20=32, 0x40=64 | sections 8.5/8.6. |
 | HDR ratio range | 160..304 (0xa0..0x130) | section 9. |

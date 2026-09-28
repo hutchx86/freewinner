@@ -2,8 +2,8 @@
 /* Copyright (C) 2026 freewinner contributors */
 #include "utils/media_helpers.h"
 
-/* Field-by-field copy: no libc call, no diagnostic hook, no NULL guard
- * (24 §0, §4, Q-U2-2). Safe when pDst == pSrc. */
+/* Field-by-field copy: no libc call, no diagnostic hook, no NULL guard;
+ * safe when pDst == pSrc. */
 ERRORTYPE copy_MPP_CHN_S(MPP_CHN_S *pDst, MPP_CHN_S *pSrc)
 {
 	pDst->mModId = pSrc->mModId;

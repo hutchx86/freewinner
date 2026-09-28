@@ -1,10 +1,9 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
 
-/* Input picture queues of the encoder support library (cleanroom/venc-base SPEC
- * §5): a fixed set of slots for caller-supplied pictures moving through
- * empty -> input -> used -> empty FIFOs, and an optional pool of pictures
- * allocated by the library. */
+/* Input picture queues of the encoder support library (support-library spec
+ * s5): fixed slots moving through empty -> input -> used -> empty FIFOs, plus
+ * an optional pool of library-allocated pictures. */
 
 #include <pthread.h>
 #include <stdint.h>

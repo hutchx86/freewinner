@@ -1,11 +1,9 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
 
-/* Host test for the frame-level rate-control unit (spec/10-rate-control.md,
- * r4, section 8's acceptance): the ladder vectors are checked as exact
- * equalities; the six "run" configs of section 6 are driven through the
- * unit in closed loop (this file's own plant, matching section 6's
- * formulas exactly) and checked against section 3 items 1-6 and 8. */
+/* Host test for frame-level rate control (spec 10 section 8): ladder vectors as
+ * exact equalities; the six section-6 run configs in closed loop against this
+ * file's own plant, checked against section 3 items 1-6 and 8. */
 
 #include <math.h>
 #include <stdarg.h>
@@ -56,11 +54,8 @@ static int first_qp_ladder_ref(double bpp)
     return 15;
 }
 
-/* rc_first_qp.csv / rc_first_qp_edges.csv: width,height,fps,bitrate,bpp,
- * qp_first_I,qp_first_P -- items 1 and 2 as exact equalities. qp bounds are
- * kept loose (10-51) so the ladder's own range (15-40) is never clipped,
- * matching section 6's six run configs and the open item in section 10 item
- * 4 about the clamp not being vector-evidenced at this boundary. */
+/* rc_first_qp*.csv: width,height,fps,bitrate,bpp,qp_first_I,qp_first_P (items 1-2,
+ * exact). QP bounds 10-51 so the ladder's own 15-40 range is never clipped. */
 static int run_ladder_file(const char *name)
 {
     char path[512];
@@ -141,10 +136,8 @@ static double sched_ramp(int k)
     return 0.5 + 2.5 * (double)(k % 120) / 119.0;
 }
 
-/* Count non-header data rows of a vector file, as a sanity cross-check that
- * this test's own frame count (driven by section 6's formulas, not by
- * reading the vendor QP/bit columns -- byte-for-byte reproduction is not
- * required, section 8) matches the vector's row count. */
+/* Row count of a vector file, cross-checked against the plant's own frame
+ * count (vendor QP/bit columns are not read, spec 8). */
 static int count_csv_rows(const char *name)
 {
     char path[512];
@@ -216,9 +209,8 @@ static void check_window(const int *qp, const long long *bits, int n,
     }
 }
 
-/* Drives the section-6 plant for one run config, checks items 1-4 (exact),
- * item 5 (long-run rate, last >=200 P pictures), item 6 (per-segment
- * windows) and item 8 (target reporting). */
+/* One run config through the section-6 plant: items 1-4 exact, 5 (last >=200
+ * P pictures), 6 (per-segment windows), 8 (target reporting). */
 static void run_plant(const char *csv_name, unsigned int width, unsigned int height,
                       unsigned int fps, double bitrate, int qp_min, int qp_max,
                       int max_step, schedule_fn sched,
@@ -327,9 +319,7 @@ static void run_plant(const char *csv_name, unsigned int width, unsigned int hei
             check_window(qp, bits, n, &windows[i], b0, csv_name);
     }
 
-    /* Item 8: target reporting for P pictures over the last 40, +/-6%
-     * (the ripple carve-out is generous enough that a well-behaved
-     * implementation need not special-case it). */
+    /* Item 8: P target reporting over the last 40 pictures, +/-6%. */
     if (n >= 40) {
         long long sum = 0;
         int i, count = 0;
@@ -363,6 +353,19 @@ int main(void)
         { 40,  80,  34.80 },
         { 160, 200, 34.80 }
     };
+
+    /* The black-box vectors are private; without them there is nothing to check. */
+    {
+        char probe[512];
+        FILE *pf;
+
+        snprintf(probe, sizeof(probe), "%s/rc_first_qp.csv", RC_VECTOR_DIR);
+        if ((pf = fopen(probe, "r")) == NULL) {
+            printf("rc: SKIP, no vectors in %s (set RC_VECTOR_DIR)\n", RC_VECTOR_DIR);
+            return 0;
+        }
+        fclose(pf);
+    }
 
     n1 = run_ladder_file("rc_first_qp.csv");
     checkf(n1 == 88, "rc_first_qp.csv: expected 88 rows, read %d", n1);

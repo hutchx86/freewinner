@@ -1,15 +1,7 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
-/*
- * component/mm_component.h - clean-room interface declarations for the
- * eyesee-mpp middleware ABI (component handles).  Declarations only;
- * re-authored from cleanroom/middleware/headers/SPEC.md section 2.11.  Nothing
- * here is copied from a vendor header.  See NOT-IMPLEMENTED.md.
- *
- * Only the two opaque handle types and the ComponentInit factory shape are
- * carried; the whole component framework (states, ports, messages) is out of
- * scope.
- */
+/* Middleware component handles: only the opaque handle types and the
+ * ComponentInit factory shape; the component framework itself is out of scope. */
 #ifndef FMW_COMPONENT_MM_COMPONENT_H
 #define FMW_COMPONENT_MM_COMPONENT_H
 

@@ -1,20 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-/* framework_isp.h - framework public declarations and imports (kept file name,
- * owner Q2).  Consumers fisp_/fcap_/mediad include this; declarations mirror
- * 22-public-api.md §2/§4 against the frozen fwi_* ABI set.
- */
+/* framework_isp.h - ISP framework public declarations and imports, on top of
+ * the generated fwi_* ABI set. Included by fisp_/fcap_/mediad. */
 #ifndef FRAMEWORK_ISP_H
 #define FRAMEWORK_ISP_H
 
 #include "fwi_isp_api.h"
 #include "framework_events.h"
 
-/* legacy tag used by consumers, resolved to the generated context record */
-#define isp_lib_context fwi_isp_ctx
-#define isp_param_config fwi_tuning_image
-#define isp_module_config fwi_hw_module_cfg
-
-/* attribute ids (20 §11.1) */
+/* attribute ids */
 enum isp_ctrl_id {
     ISP_CTRL_MODULE_EN = 0,
     ISP_CTRL_DIGITAL_GAIN,
@@ -34,16 +27,13 @@ enum isp_ctrl_id {
 };
 
 /* ------------------------------------------------------------------ */
-/* imports: implemented by mediad / the kept tiers (22 §4)             */
+/* imports: implemented by mediad / the kept tiers                     */
 /* ------------------------------------------------------------------ */
 int parser_ini_info(fwi_tuning_image_t *param, char *sensor_name, int w, int h,
                     int fps, int wdr, int ir, int sync_mode, int isp_id);
 
-/*
- * 3A entry points, implemented by isp/shim/{ae,awb,afs,iso,gtm,pltm}/*_shim.c.
- * Each *_init hands back the module's fwi_*_core_ops_t vtable, which the
- * framework uses directly (ctx->*_entity.ops); there is no translation layer.
- */
+/* 3A entry points (isp/shim/<module>/<module>_shim.c); each *_init returns the
+ * module's fwi_*_core_ops_t vtable, used directly as ctx->*_entity.ops. */
 void *ae_init(fwi_ae_core_ops_t **ae_core_ops);
 void *iso_init(fwi_iso_cfg_core_ops_t **iso_core_ops);
 void *pltm_init(fwi_pltm_core_ops_t **pltm_core_ops);
@@ -72,7 +62,7 @@ void config_msc_table(fwi_isp_ctx_t *ctx, int code);
 void isp_hardware_update(fwi_hw_module_cfg_t *cfg);
 void isp_map_addr(fwi_hw_module_cfg_t *cfg, unsigned long base);
 
-/* owner Q9: optional consumer hook, called immediately before the per-frame
+/* Optional consumer hook, called immediately before the per-frame
  * isp_hardware_update; the framework supplies a weak no-op default. */
 void isp_control_hook(fwi_hw_module_cfg_t *cfg);
 

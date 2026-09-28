@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
 
-/* Encoder adapter functions (SPEC §2): thin forwarding onto a vb_mem_ops table
+/* Encoder adapter functions: thin forwarding onto a vb_mem_ops table
  * and the IC-version probe on the mapped video-engine top registers. */
 
 #include <stdint.h>

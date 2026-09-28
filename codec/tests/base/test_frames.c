@@ -2,7 +2,7 @@
 /* Copyright (C) 2026 freewinner contributors */
 
 /* Behavioural test for the encoder support library's input picture queues against
- * a fake memory-ops table (cleanroom/venc-base SPEC §5, §7). */
+ * a fake memory-ops table (support-library spec s5, s7). */
 
 #include <stdint.h>
 #include <stdio.h>

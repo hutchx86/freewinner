@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-/* pixel_format.c - unit U fourcc <-> fwm_pixel_format_e maps (21-utils.md §5) */
+/* pixel_format.c - fourcc <-> fwm_pixel_format_e maps */
 #include "utils/pixel_format.h"
 #include "utils/frame_pool.h"
 
@@ -58,7 +58,7 @@ int map_PIXEL_FORMAT_E_to_V4L2_PIX_FMT(fwm_pixel_format_e format)
     case FWM_MM_PIXEL_FORMAT_RAW_SGBRG8:          return V4L2_PIX_FMT_SGBRG8;
     case FWM_MM_PIXEL_FORMAT_RAW_SGRBG8:          return V4L2_PIX_FMT_SGRBG8;
     case FWM_MM_PIXEL_FORMAT_RAW_SRGGB8:          return V4L2_PIX_FMT_SRGGB8;
-    /* two reference quirks, reproduced (21 §5) */
+    /* two reference quirks, kept */
     case FWM_MM_PIXEL_FORMAT_RAW_SBGGR10:         return V4L2_PIX_FMT_SBGGR8;
     case FWM_MM_PIXEL_FORMAT_RAW_SBGGR12:         return V4L2_PIX_FMT_SBGGR10;
     case FWM_MM_PIXEL_FORMAT_RAW_SGBRG10:         return V4L2_PIX_FMT_SGBRG10;

@@ -27,7 +27,7 @@ int fisp_seam_s_ctrl_rc;
 int fisp_seam_g_ctrl_rc;
 int fisp_seam_g_ctrl_value;
 
-struct isp_video_device fisp_seam_video0;
+struct fwi_video_device fisp_seam_video0;
 
 /* The clean framework's device-layer global; the default resolver scans it. The
  * tests install their own resolver, so the slots stay empty. */
@@ -159,7 +159,7 @@ int32_t isp_get_attr_cfg(int dev_id, uint32_t ctrl_id, void *value)
 /* Device layer                                                        */
 /* ------------------------------------------------------------------ */
 
-struct isp_video_device *fisp_seam_resolver(int isp_dev)
+struct fwi_video_device *fisp_seam_resolver(int isp_dev)
 {
 	seam_log(FISP_OP_RESOLVE, isp_dev, 0, 0);
 	if (isp_dev == 0)
@@ -167,13 +167,13 @@ struct isp_video_device *fisp_seam_resolver(int isp_dev)
 	return NULL;
 }
 
-int video_set_control(struct isp_video_device *video, int cmd, int value)
+int video_set_control(struct fwi_video_device *video, int cmd, int value)
 {
 	seam_log(FISP_OP_S_CTRL, cmd, value, video == NULL ? 0 : 1);
 	return fisp_seam_s_ctrl_rc;
 }
 
-int video_get_control(struct isp_video_device *video, int cmd, int *value)
+int video_get_control(struct fwi_video_device *video, int cmd, int *value)
 {
 	seam_log(FISP_OP_G_CTRL, cmd, 0, video == NULL ? 0 : 1);
 	if (value != NULL)
@@ -181,7 +181,7 @@ int video_get_control(struct isp_video_device *video, int cmd, int *value)
 	return fisp_seam_g_ctrl_rc;
 }
 
-int video_to_isp_id(struct isp_video_device *video)
+int video_to_isp_id(struct fwi_video_device *video)
 {
 	if (video == NULL)
 		return -1;

@@ -1,14 +1,9 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
 
-/* Encoder support library interface (spec r2/05 part C).
- *
- * The library owns contiguous engine memory, a bitstream ring and the input
- * picture queues; its memory-operations table and every allocator/queue call
- * keep the fixed link names of the specification. Records that part B also
- * defines (the input picture and the allocation request) are re-stated here
- * with only the offsets this library touches named, and the rest carried as
- * opaque bytes. The engine operations table is ve_iface.h. */
+/* Encoder support library interface (spec r2/05 part C): engine memory, the
+ * bitstream ring and input queues, with the spec's fixed link names. Part-B
+ * records carry only the offsets touched here; the engine ops are ve_iface.h. */
 
 #ifndef FREECODEC_VENC_BASE_ABI_H
 #define FREECODEC_VENC_BASE_ABI_H
@@ -53,9 +48,8 @@ typedef struct vb_stream_info {
     unsigned int nThumbPreExifDataLen;
 } vb_stream_info;
 
-/* Input picture (the part-B record, 344 bytes). Only the fields this library
- * reads or writes are named; the gaps are the part-B fields it copies
- * opaquely. */
+/* Input picture (part-B record, 344 bytes); only the fields this library
+ * touches are named, the gaps are copied opaquely. */
 typedef struct vb_input_buffer {
     unsigned long  nID;
     unsigned char  _opaque0[16];           /* pts, flags, crop enable, crop   */

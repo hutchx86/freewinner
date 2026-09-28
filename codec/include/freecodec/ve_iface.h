@@ -1,13 +1,9 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
 
-/* Video-engine driver interface (spec r2/05 part A).
- *
- * The engine is shared by every codec library of the process. Access goes
- * through one table of operations obtained with GetVeOpsS(); each operation
- * takes the instance returned by the table's `open` slot. The table layout,
- * the kernel control codes and the device-node names are binary facts; all
- * C identifiers here except GetVeOpsS are local to this project. */
+/* Video-engine driver interface (spec r2/05 part A): one ops table per process
+ * from GetVeOpsS(). Table layout, ioctl codes and node names are binary facts;
+ * all identifiers except GetVeOpsS are local. */
 
 #ifndef FREECODEC_VE_IFACE_H
 #define FREECODEC_VE_IFACE_H

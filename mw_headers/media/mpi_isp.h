@@ -1,16 +1,7 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
-/*
- * media/mpi_isp.h - clean-room interface declarations for the eyesee-mpp
- * middleware ABI (ISP MPI entry points).  Declarations only; re-authored from
- * cleanroom/middleware/headers/SPEC.md sections 2.5 and 3.2.  These are the 24
- * AW_MPI_ISP_* symbols the daemon calls; their implementations belong to the
- * ISP runtime package.  Nothing here is copied from a vendor header.
- *
- * The lifetime entry points AW_MPI_ISP_Init/Exit are not part of the daemon's
- * called surface (SPEC section 2.5) and are deliberately absent; see
- * NOT-IMPLEMENTED.md.
- */
+/* The AW_MPI_ISP_* entry points the daemon calls; implemented by the ISP runtime.
+ * AW_MPI_ISP_Init is not on the daemon's call surface (see NOT-IMPLEMENTED.md). */
 #ifndef FMW_MEDIA_MPI_ISP_H
 #define FMW_MEDIA_MPI_ISP_H
 

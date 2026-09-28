@@ -98,7 +98,7 @@ confirmed against the deployed object and justified by the spec:
   committed `sensor_exp_line` (33536 vs 33552) in the last/current slots and
   hence a short-companion difference; `wdr_ratio.sensor/tmp/last` also diverge.
 
-These are the paths the private run plan §6 deferred (the expected-luminance and
+These are the deferred paths (the expected-luminance and
 exposure-compensation reads, full WDR and short-setting modelling); closing them
 is an implementation-team task, not shim glue.
 

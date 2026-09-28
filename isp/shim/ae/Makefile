@@ -1,16 +1,8 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 # Copyright (C) 2026 freewinner contributors
-# AE shim build.
-#
-#   make          host test  -> build/test_ae_shim
-#   make check    build + run the host test
-#   make arm      static ARM build -> build_arm/test_ae_shim.arm
-#   make run-arm  run the ARM build under the extracted qemu-arm
-#   make clean
-#
-# The clean core is compiled separately with its entry points and colliding
-# typedefs renamed so that ae_init/ae_exit can coexist with the SDK names
-# exported by the shim.
+# AE shim build. Targets: all (host test), check, arm, run-arm, clean.
+# The clean core is built with entry points/colliding typedefs renamed so the
+# shim can export the SDK ae_init/ae_exit.
 
 CC       ?= gcc
 CLEAN_DIR := $(abspath $(CURDIR)/../..)

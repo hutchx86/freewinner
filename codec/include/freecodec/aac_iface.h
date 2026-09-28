@@ -1,17 +1,10 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
 
-/* AAC-LC encoder binary interface (spec r2/04).
- *
- * The consumer (the media daemon) creates an encoder object, points it at
- * three records it owns - a PCM ring, the stream parameters and a shared
- * control block - and then calls the object's operations. PCM is pulled
- * through two functions the consumer provides.
- *
- * Name rules: identifiers the daemon spells in its own source or the linker
- * resolves are kept exactly as they must be (marked "fixed" below); every
- * other name here is local to this project. Layout, sizes and numeric values
- * are fixed for the 32-bit ARM EABI target and checked at the end. */
+/* AAC-LC encoder binary interface (spec r2/04). The consumer owns the PCM ring,
+ * stream parameters and control block and supplies the two PCM pull functions.
+ * Names marked "fixed" are link/ABI facts; layouts (32-bit ARM EABI) are
+ * checked at the end. */
 
 #ifndef FREECODEC_AAC_IFACE_H
 #define FREECODEC_AAC_IFACE_H
@@ -43,9 +36,8 @@ typedef enum fc_aac_result {
 
 /* --------------------------------------------------------------- records */
 
-/* PCM ring descriptor, owned and maintained by the consumer (32 bytes). The
- * encoder hands it back to the two PCM functions below and only ever writes
- * the status word. Type and first six member names are fixed. */
+/* PCM ring descriptor, consumer-owned (32 bytes); the encoder writes only the
+ * status word. Type and first six member names are fixed. */
 typedef struct __pcm_buf_manager {
     unsigned char *pBufStart;     /* ring storage                        */
     int            uBufTotalLen;  /* ring capacity, bytes                */

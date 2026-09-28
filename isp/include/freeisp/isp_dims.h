@@ -1,12 +1,7 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
-/*
- * isp_dims.h - ISP statistics-grid and table dimensions used by the shim tier.
- *
- * Hardware facts for the V833 ISP (register/DMA layout), matching the array
- * extents in the generated fwi_isp_abi.h (e.g. fwi_ae_stats.accum_r[16][24],
- * fwi_awb_stats.awb_sum_r[32][32], fwi_afs_stats.afs_sum[128]).
- */
+/* isp_dims.h - V833 ISP statistics-grid and table dimensions used by the shim tier;
+ * must match the array extents in the generated fwi_isp_abi.h. */
 #ifndef FREEISP_ISP_DIMS_H
 #define FREEISP_ISP_DIMS_H
 

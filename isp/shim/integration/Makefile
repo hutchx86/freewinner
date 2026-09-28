@@ -20,6 +20,7 @@ ROOT     := $(abspath $(CURDIR)/../..)
 INC      := $(ROOT)/include
 FW_SRC   := $(ROOT)/src/tables/rmm_tables.c
 PP_SRC   := $(ROOT)/src/tables/pltm_presets.c
+AB_SRC   := $(ROOT)/src/tables/ae_out_bias.c
 
 HOST_CFLAGS := -std=gnu99 -O2 -Wall -Wextra -fwrapv \
                -I$(INC) -I.
@@ -33,9 +34,8 @@ ARM_CFLAGS := -march=armv7ve -mfloat-abi=hard -fshort-enums \
               -O2 -std=gnu99 -Wall -Wextra -fwrapv \
               -I$(INC) -I.
 ARM_LDFLAGS := -static
-# This musl libc is built with dynamic unwind tables, so strcmp()/memcmp()
-# reference __aeabi_unwind_cpp_pr0, which only libgcc_eh provides.  Wrap the
-# tail libraries in a group so that reference resolves.
+# musl's strcmp()/memcmp() reference __aeabi_unwind_cpp_pr0 (libgcc_eh only);
+# the group lets that resolve.
 ARM_TAIL_LIBS := -lm -Wl,--start-group,-lgcc_eh,-lc,--end-group
 
 QEMU ?= qemu-arm
@@ -60,16 +60,19 @@ build/rmm_tables.o: $(FW_SRC) | build
 build/pltm_presets.o: $(PP_SRC) | build
 	$(CC) $(HOST_CFLAGS) -c $< -o $@
 
+build/ae_out_bias.o: $(AB_SRC) | build
+	$(CC) $(HOST_CFLAGS) -c $< -o $@
+
 build/test_shim_tables.o: test_shim_tables.c freeisp_shim_tables.h | build
 	$(CC) $(HOST_CFLAGS) -c $< -o $@
 
 build/test_table_bundle.o: test_table_bundle.c freeisp_shim_tables.h | build
 	$(CC) $(HOST_CFLAGS) -c $< -o $@
 
-build/test_shim_tables: build/freeisp_shim_tables.o build/rmm_tables.o build/pltm_presets.o build/test_shim_tables.o
+build/test_shim_tables: build/freeisp_shim_tables.o build/rmm_tables.o build/pltm_presets.o build/ae_out_bias.o build/test_shim_tables.o
 	$(CC) $^ -o $@ -lm
 
-build/test_table_bundle: build/freeisp_shim_tables.o build/rmm_tables.o build/pltm_presets.o build/test_table_bundle.o
+build/test_table_bundle: build/freeisp_shim_tables.o build/rmm_tables.o build/pltm_presets.o build/ae_out_bias.o build/test_table_bundle.o
 	$(CC) $^ -o $@ -lm
 
 build_arm/freeisp_shim_tables.o: freeisp_shim_tables.c freeisp_shim_tables.h | build_arm
@@ -81,16 +84,19 @@ build_arm/rmm_tables.o: $(FW_SRC) | build_arm
 build_arm/pltm_presets.o: $(PP_SRC) | build_arm
 	$(ARM_CC) $(ARM_CFLAGS) -c $< -o $@
 
+build_arm/ae_out_bias.o: $(AB_SRC) | build_arm
+	$(ARM_CC) $(ARM_CFLAGS) -c $< -o $@
+
 build_arm/test_shim_tables.o: test_shim_tables.c freeisp_shim_tables.h | build_arm
 	$(ARM_CC) $(ARM_CFLAGS) -c $< -o $@
 
 build_arm/test_table_bundle.o: test_table_bundle.c freeisp_shim_tables.h | build_arm
 	$(ARM_CC) $(ARM_CFLAGS) -c $< -o $@
 
-build_arm/test_shim_tables.arm: build_arm/freeisp_shim_tables.o build_arm/rmm_tables.o build_arm/pltm_presets.o build_arm/test_shim_tables.o
+build_arm/test_shim_tables.arm: build_arm/freeisp_shim_tables.o build_arm/rmm_tables.o build_arm/pltm_presets.o build_arm/ae_out_bias.o build_arm/test_shim_tables.o
 	$(ARM_CC) $(ARM_CFLAGS) $^ -o $@ $(ARM_LDFLAGS) $(ARM_TAIL_LIBS)
 
-build_arm/test_table_bundle.arm: build_arm/freeisp_shim_tables.o build_arm/rmm_tables.o build_arm/pltm_presets.o build_arm/test_table_bundle.o
+build_arm/test_table_bundle.arm: build_arm/freeisp_shim_tables.o build_arm/rmm_tables.o build_arm/pltm_presets.o build_arm/ae_out_bias.o build_arm/test_table_bundle.o
 	$(ARM_CC) $(ARM_CFLAGS) $^ -o $@ $(ARM_LDFLAGS) $(ARM_TAIL_LIBS)
 
 arm: build_arm/test_shim_tables.arm build_arm/test_table_bundle.arm

@@ -1,12 +1,7 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
-/*
- * awb_clean.c - clean-room auto white-balance module.
- *
- * Implements the behaviour specified in spec/awb.md.  Every tuning
- * table is injected at runtime through freeisp_get_tables(); this file
- * contains no table data.  Section numbers below refer to the spec.
- */
+/* awb_clean.c - auto white-balance module (spec/awb.md; section numbers refer to it).
+ * Every tuning table is injected via freeisp_get_tables(); no table data here. */
 #include "awb_clean.h"
 
 #include <math.h>
@@ -16,12 +11,8 @@
 #define IMIN(a, b)        ((a) < (b) ? (a) : (b))
 #define ICLAMP(x, lo, hi) ((x) < (lo) ? (lo) : ((x) > (hi) ? (hi) : (x)))
 
-/*
- * When the run entry point is called without statistics and any output
- * channel is still zero it installs a fixed fallback gain quadruple.  The
- * quadruple is not unity and is sensor-specific tuning, so it is injected
- * through the table contract (safe_gain) rather than compiled in.
- */
+/* Without statistics, a zero output channel installs a fallback gain quadruple; it is
+ * sensor tuning (not unity), so it is injected as safe_gain rather than compiled in. */
 
 /* ------------------------------------------------------------------ */
 /* Internal state (spec 5).                                            */
@@ -116,12 +107,8 @@ static void parse_ref(awb_ref_t *r, const int32_t *src)
     derive_ref(r);
 }
 
-/*
- * Full reference load (spec 5.2): parse the ten configured integers, then
- * apply the two defaults the preset record carries.  The skin and special
- * adjusters read the built records, so they must see the same defaults the
- * light-preset path applies.
- */
+/* Full reference load (spec 5.2): parse the ten integers, then apply the preset record's
+ * two defaults; the skin and special adjusters must see the same defaults. */
 static void parse_ref_full(const awb_entity_t *e, awb_ref_t *r,
                            const int32_t *src, int index)
 {
@@ -402,13 +389,8 @@ static void classify(awb_entity_t *e)
         for (c = 0; c < AWB_NREF; c++)
             have[c] = 0;
         for (c = 0; c < AWB_NPAL; c++) {
-            /*
-             * The per-class minimum is accumulated in a 16-bit quantity
-             * seeded to 65535, so any anchor distance above 65535
-             * saturates rather than propagating as a 32-bit value
-             * (spec 6.3 step 1).  Squared distances shrank to 16 bits
-             * here is a behaviour fact, not a storage optimisation.
-             */
+            /* The per-class minimum is 16-bit, seeded to 65535: larger anchor distances saturate
+             * (spec 6.3 step 1). A behaviour fact, not a storage optimisation. */
             int32_t dmin = 65535;
             if (e->pal_count[c] <= 0)
                 continue;
@@ -429,13 +411,8 @@ static void classify(awb_entity_t *e)
                 min_idx = c;
             }
         }
-        /*
-         * Second-nearest selection (spec 6.3 step 2).  The reference search
-         * seeds its candidate with the last searched index when the nearest
-         * class is index 0, and with the first index otherwise, then keeps
-         * strictly smaller candidates.  Exact ties therefore resolve to the
-         * last index in the first case and to the first index otherwise.
-         */
+        /* Second-nearest (spec 6.3 step 2): seed with the last index when the nearest is 0, else
+         * the first, and keep strictly smaller candidates, so exact ties resolve to the seed. */
         second_idx = (min_idx == 0) ? (AWB_NPAL - 1) : 0;
         if (!have[second_idx] || second_idx == min_idx)
             second_idx = -1;
@@ -807,10 +784,8 @@ static void skin_adjust(awb_entity_t *e)
         }
     }
 
-    /*
-     * Deployed guard: the red source is only used when green exceeds 16;
-     * otherwise the green sum itself is the sanity check.
-     */
+    /* Deployed guard: the red source is used only when green exceeds 16; otherwise the
+     * green sum itself is the sanity check. */
     {
         int32_t gsel = (sum_g > 0x10) ? (int32_t)sum_r : (int32_t)sum_g;
 
@@ -1017,12 +992,8 @@ static void smooth_gain(awb_entity_t *e, uint16_t out[4])
     for (c = 0; c < 4; c++)
         e->gain_hist[e->frame_count % AWB_NGHIST][c] = e->gain_new[c];
 
-    /*
-     * Warm-up: average only the taps that hold real history.  The ring is
-     * seeded to unity but those entries are not yet "available"; until 48
-     * frames have been pushed the sum runs over frame_count + 1 taps
-     * (spec 6.10).
-     */
+    /* Warm-up: the ring is seeded to unity, but until 48 frames have been pushed only the
+     * frame_count + 1 taps holding real history are averaged (spec 6.10). */
     taps = e->frame_count + 1;
     if (taps > AWB_NGHIST)
         taps = AWB_NGHIST;
@@ -1116,12 +1087,8 @@ static void preset_scene(awb_entity_t *e, uint16_t g[4])
         return;
 
     if (mode > 9) {
-        /*
-         * The `7 < ((mode - 2) & 0xff)` branch of the preset-scene
-         * correction: any mode outside the preset range (e.g. WB_TUNGSTEN =
-         * 10) applies unity ratios, which normalises red and blue onto the
-         * green gain.
-         */
+        /* `7 < ((mode - 2) & 0xff)`: a mode outside the preset range (e.g. WB_TUNGSTEN = 10)
+         * applies unity ratios, normalising red and blue onto the green gain. */
         p_r = 256;
         p_b = 256;
     } else {
@@ -1199,14 +1166,8 @@ static int adaptive_estimate(awb_entity_t *e, const awb_stats_t *stats)
     if (!fresh_estimate_needed(e))
         return 0;
 
-    /*
-     * Pipeline order: statistics, classification
-     * and trust, then the neighbour filter (daytime only), then the colour
-     * adjusters (blue sky, special, green zone, skin), then the scene weights,
-     * then the outlier abort, and only then the grey-world estimate.  The
-     * scene weights must follow the adjusters: blue sky can revive a window
-     * that was invalid at classification time.
-     */
+    /* Order: stats, classify/trust, neighbour filter (day only), adjusters (blue sky, special,
+     * green zone, skin), scene weights (blue sky may revive a window), outlier abort, grey world. */
     extract_stats(e, stats);
     detect_night(e);
     classify(e);
@@ -1250,12 +1211,8 @@ int awb_isr(awb_entity_t *e, const awb_stats_t *stats, awb_result_t *result)
         return 0;
     }
 
-    /*
-     * Run gate: run when the frame is in the
-     * start-up window, when no re-estimate interval is configured, or when the
-     * frame lands on the interval boundary; the lock flag then suppresses it.
-     * The interval is masked to 16 bits, exactly as the object does.
-     */
+    /* Run in the start-up window, with no interval configured, or on an interval boundary
+     * (interval masked to 16 bits, as deployed); the lock flag then suppresses the run. */
     {
         uint32_t interval = (uint32_t)p->interval & 0xffffu;
         uint32_t fid = (uint32_t)p->frame_id;
@@ -1277,23 +1234,16 @@ int awb_isr(awb_entity_t *e, const awb_stats_t *stats, awb_result_t *result)
         return 0;
     }
 
-    /*
-     * The deployed object abandons the adaptive estimate on an outlier
-     * imbalance *before* touching the result.  On abort the gains and colour
-     * temperature are left exactly as the caller supplied them.
-     */
+    /* On an outlier imbalance the adaptive estimate is abandoned before the result is
+     * touched: gains and colour temperature stay as the caller supplied them. */
     if (adaptive_estimate(e, stats) == 0) {
         smooth_gain(e, g);
 
-        /*
-         * The colour temperature is sampled from the *smoothed* gains, before
-         * the preference blend and the constraint.  Those two steps then
-         * change the gains without changing the published temperature.
-         */
+        /* Colour temperature is sampled from the smoothed gains, before the preference blend
+         * and constraint, which change the gains but not the published temperature. */
         result->color_temp_out = curve_lookup(e, g);
-        /* The preference/curve lookup is indexed by the temperature derived
-         * from the smoothed output gains, recomputed every frame, not by the
-         * pre-smoothing grey-world target held in color_temp_target. */
+        /* The preference/curve lookup uses the temperature of the smoothed output gains,
+         * recomputed every frame, not the pre-smoothing target in color_temp_target. */
         e->color_temp_target = result->color_temp_out;
         preference_blend(e, g);
         constrain_gain(g);
@@ -1308,12 +1258,8 @@ int awb_isr(awb_entity_t *e, const awb_stats_t *stats, awb_result_t *result)
             e->gain_saved[i] = e->gain_target[i];
     }
 
-    /*
-     * Modes other than adaptive (WB_AUTO) run the preset-scene correction on
-     * the result gains, including when the adaptive estimate aborted and the
-     * gains were left untouched (the preset branch applies it
-     * unconditionally).
-     */
+    /* Modes other than WB_AUTO apply the preset-scene correction to the result gains
+     * unconditionally, including when the adaptive estimate aborted. */
     if (p->mode != 1) {
         g[0] = result->gain_out.r;
         g[1] = result->gain_out.gr;
@@ -1331,13 +1277,8 @@ int awb_isr(awb_entity_t *e, const awb_stats_t *stats, awb_result_t *result)
 int awb_run(awb_entity_t *e, const awb_stats_t *stats, awb_result_t *result)
 {
     if (e == NULL || stats == NULL) {
-        /*
-         * Without statistics the configured safe quadruple replaces the
-         * result when *any* channel is zero, not only when all four are (a
-         * partly-zero gain is replaced wholesale).  The quadruple is injected
-         * through the table contract; when none is supplied the caller's
-         * result is left untouched.
-         */
+        /* Without statistics the injected safe quadruple replaces the whole result if any channel
+         * is zero; when none is injected the caller's result is left untouched. */
         if (result != NULL &&
             (result->gain_out.r == 0 || result->gain_out.gr == 0 ||
              result->gain_out.gb == 0 || result->gain_out.b == 0)) {

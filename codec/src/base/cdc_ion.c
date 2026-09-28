@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
 
-/* ION helpers on a caller-owned /dev/ion descriptor (SPEC §3). IOMMU mode only.
+/* ION helpers on a caller-owned /dev/ion descriptor. IOMMU mode only.
  * Kernel calls go through the vb_sys seam. */
 
 #include <errno.h>

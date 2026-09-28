@@ -1,20 +1,12 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
-/*
- * test_gtm_shim.c - host test for the GTM shim.
- *
- * Drives the shim through the SDK isp_gtm_core_ops_t contract with synthetic
- * gtm_param_t / gtm_stats_t objects, and checks the translation against the
- * clean-room core driven directly with equivalent gtm_clean_* inputs.
- */
+/* test_gtm_shim.c - host test for the GTM shim: drives it with synthetic inputs
+ * and compares against the clean core driven with equivalent gtm_clean_* data. */
 #include <stdio.h>
 #include <string.h>
 
-/*
- * Clean-room side: rename its entry points for this TU so both the clean types
- * and the SDK ABI header can be included.  The clean spellings are the ones
- * compiled into gtm_clean.o (see the Makefile).
- */
+/* Rename clean entry points (as compiled into gtm_clean.o) so both the clean
+ * types and the SDK ABI header can be included. */
 #define gtm_init       clean_gtm_init
 #define gtm_exit       clean_gtm_exit
 #define gtm_get_params clean_gtm_get_params
@@ -31,17 +23,13 @@
 #include "freeisp/isp_dims.h"
 #include "gtm_shim.h"
 
-/* The shim's exported 3A entry points (fwi vtable shape; the framework
- * declares them in framework_isp.h).  Not in gtm_shim.h: TUs that also see
- * gtm_clean.h have a clean-core gtm_init of a different type. */
+/* Declared here, not in gtm_shim.h: TUs that also see gtm_clean.h have a
+ * clean-core gtm_init of a different type. */
 void *gtm_init(fwi_gtm_core_ops_t **core_ops);
 void  gtm_exit(void *core_obj);
 
-/*
- * musl's math objects (pulled in by the clean core) reference the ARM EH
- * personality routines.  This test never unwinds; weak definitions close the
- * static link under the OpenWrt toolchain.
- */
+/* musl libm references the ARM EH personality routines; this test never
+ * unwinds, so weak stubs close the static link. */
 #if defined(__arm__)
 #define SHIM_WEAK __attribute__((weak))
 SHIM_WEAK int __aeabi_unwind_cpp_pr0(void) { return 0; }

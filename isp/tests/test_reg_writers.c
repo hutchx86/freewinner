@@ -1,14 +1,7 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
-/*
- * test_reg_writers.c - host tests for the clean-room register-writer tier.
- *
- * Builds a flat register block, maps it into an instance with
- * isp_reg_map_load_addr(), drives the writers and checks the resulting
- * register words against the bitfields in spec/reglayer2.md section 1.  Field positions
- * are asserted by extraction; a few whole-word checks pin the spec's literal
- * packing formulas.
- */
+/* test_reg_writers.c - host tests for the register-writer tier: drives the
+ * writers into a flat block and checks fields against spec/reglayer2.md 1. */
 #include "reg_writers.h"
 
 #include <stdio.h>
@@ -208,13 +201,13 @@ static void test_field_preserve(void)
 
 static void test_struct_payloads(void)
 {
-    isp_ctc_cfg_t ctc;
-    isp_gca_cfg_t gca;
-    isp_lca_cfg_t lca;
-    isp_d2d_cfg_t d2d;
-    isp_d3d_cfg_t d3d;
-    isp_pltm_cfg_t p;
-    isp_sharp_cfg_t s;
+    fwi_reg_ctc_cfg_t ctc;
+    fwi_reg_gca_cfg_t gca;
+    fwi_reg_lca_cfg_t lca;
+    fwi_reg_d2d_cfg_t d2d;
+    fwi_reg_d3d_cfg_t d3d;
+    fwi_reg_pltm_cfg_t p;
+    fwi_reg_sharp_cfg_t s;
     static const uint16_t gain[9] = { 0x101, 0x102, 0x103, 0x104, 0x105,
                                       0x106, 0x107, 0x108, 0x109 };
     static const uint16_t off[3] = { 0x111, 0x222, 0x333 };
@@ -340,7 +333,7 @@ static void test_struct_payloads(void)
 
 static void test_windows_and_af(void)
 {
-    isp_af_filter_t f;
+    fwi_reg_af_filter_t f;
     unsigned i;
 
     reset();

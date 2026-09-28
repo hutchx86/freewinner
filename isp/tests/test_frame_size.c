@@ -1,14 +1,7 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
-/*
- * test_frame_size.c - host tests for the clean-room frame-size unit.
- *
- * Behaviour source: spec/media_utils/frame_size.md section 3-5.  The
- * full format x dimension x stride matrix from section 5 is exercised; expected
- * values are derived independently in 32-bit unsigned arithmetic plus a set of
- * hand-computed pinned vectors.  On a 32-bit host the target ABI sizes and
- * offsets from section 2 are asserted as well.
- */
+/* test_frame_size.c - host tests for the frame-size unit (spec
+ * media_utils/frame_size.md 3-5): full format x size x stride matrix. */
 #include "utils/frame_size.h"
 
 #include <stddef.h>
@@ -74,12 +67,8 @@ static int is_aw(unsigned int fmt)
 	       fmt <= FWM_MM_PIXEL_FORMAT_YUV_AW_LBC_1_0X;
 }
 
-/*
- * Independent 32-bit reference: returns 1 when the format is handled and fills
- * the expected plane sizes, 0 when the format must be rejected.  The products
- * are formed with explicit uint32_t so the reference does not silently borrow
- * host 64-bit wraparound.
- */
+/* 32-bit reference: 1 and the plane sizes if the format is handled, else 0;
+ * explicit uint32_t so it does not borrow host 64-bit wraparound. */
 static int ref_sizes(unsigned int fmt, unsigned int w, unsigned int h,
 		     const unsigned int st[3], int *y, int *u, int *v)
 {
@@ -377,10 +366,8 @@ static void test_null_and_edges(void)
 	CHECK_EQ(getVideoFrameBufferSizeInfo(&f, NULL), FAILURE);
 	CHECK_EQ(getVideoFrameBufferSizeInfo(NULL, NULL), FAILURE);
 
-	/*
-	 * mStride must be ignored for every non-AW group: a rejected-format
-	 * frame still leaves the output untouched even with large strides.
-	 */
+	/* mStride is ignored for non-AW groups: a rejected format leaves the output
+	 * untouched even with large strides. */
 	f = make_frame(FWM_MM_PIXEL_FORMAT_YUV_SEMIPLANAR_422, 16, 16,
 		       g_plain_strides);
 	out.mYSize = SENTINEL;

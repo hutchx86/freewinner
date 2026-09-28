@@ -23,19 +23,13 @@
 extern "C" {
 #endif
 
-/* ------------------------------------------------- section 5.7 register access
- *
- * Every read or write of the encoder-block / ISP-block register window goes
- * through these two functions. Their own pointer parameter is `volatile`-
- * qualified; they live in their own translation unit (freecodec_enc_regs.c)
- * and are marked noinline there, so a caller can never have them folded away
- * or reordered relative to the surrounding writes (spec section 5.7). */
+/* All register-window access (spec 5.7): volatile, noinline, in their own
+ * translation unit (freecodec_enc_regs.c) so nothing is folded or reordered. */
 uint32_t fc_enc_reg_read(volatile uint32_t *base, unsigned int word_off);
 void     fc_enc_reg_write(volatile uint32_t *base, unsigned int word_off, uint32_t val);
 
-/* Write `n` consecutive words starting at word offset 0 (the per-picture
- * register script, spec 12 section 5.5 step 6, and the ISP block, spec 13
- * section 1 -- both blocks are "rebuilt from scratch every picture"). */
+/* Write `n` words from word offset 0: the per-picture register script (spec 12
+ * 5.5 step 6) and the ISP block (spec 13 s1), both rebuilt every picture. */
 void fc_enc_reg_write_block(volatile uint32_t *base, const uint32_t *words,
                             unsigned int n);
 
@@ -161,9 +155,8 @@ typedef struct fc_enc_instance {
 /* Shared helpers used by both the device and its tests. */
 unsigned int fc_enc_align_up(unsigned int x, unsigned int n);
 
-/* Test-only hook: install a register-write observer (spec section 14's
- * "register write order ... a write log"). block is 0 for the encoder
- * block, 1 for the ISP block. Not part of the device's public ABI. */
+/* Test-only register-write observer (spec 14); block 0 = encoder, 1 = ISP.
+ * Not part of the device ABI. */
 void fc_enc_set_trace(void *handle,
                       void (*trace)(void *opaque, unsigned int block,
                                    unsigned int off, uint32_t val),

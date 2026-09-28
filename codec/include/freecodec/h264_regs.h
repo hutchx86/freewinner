@@ -13,9 +13,8 @@
 extern "C" {
 #endif
 
-/* ver2 register shadow (the encoder context's shadow v2 block). Each word name
- * describes the encoder-block register it carries (spec 11 §1/§2); the word
- * order is the shadow layout, not the register order. */
+/* ver2 register shadow: each word names the register it carries (spec 11
+ * s1/s2); word order is the shadow layout, not the register order. */
 typedef struct freecodec_h264_shadow_v2 {
     uint32_t picture_control;
     uint32_t slice_stride_control;

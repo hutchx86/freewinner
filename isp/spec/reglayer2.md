@@ -96,12 +96,12 @@ reference used by the MSC builders, provided by `freeisp_comp_ref_fill(double[25
 
 ### 0.4 Context / module-config fields referenced by name
 
-`base.c` operates on `isp_lib_context_t` (see `include/base.h`).
-`module_cfg.c` operates on `isp_module_config_t` (see
+`base.c` operates on `fwi_base_ctx_t` (see `include/base.h`).
+`module_cfg.c` operates on `fwi_mod_config_t` (see
 `include/module_cfg.h`); the SDK-ABI adapter that maps the framework's real
-`struct isp_module_config` (37040 B) onto that clean type is
+`struct fwi_hw_module_cfg` (vendor: `isp_module_config`, 37040 B) onto that clean type is
 `shim/module_cfg/module_cfg_shim.c` (see `shim/INTEGRATION.md` §A9). `reg_writers.c` operates on
-`isp_reg_map_t` (`include/reg_writers.h`). An implementer must use those
+`fwi_reg_map_t` (`include/reg_writers.h`). An implementer must use those
 headers unchanged: the spec below names fields by their header names.
 
 `comp_ref` is only available through `freeisp_comp_ref_fill`; `isp_ae_set_params_helper`
@@ -252,19 +252,19 @@ void isp_reg_set_wdr_cfg(unsigned long id, uint32_t lo_th, uint32_t hi_th, uint3
                          uint32_t slope, uint32_t mv_th, uint32_t mv_scale, uint32_t out_sel);
 void isp_reg_set_dpc(unsigned long id, uint32_t r0, uint32_t r1, uint32_t r2, uint32_t r3,
                      uint32_t slope_th, uint32_t cold_abs_th);
-void isp_reg_set_ctc(unsigned long id, const isp_ctc_cfg_t *cfg);
-void isp_reg_set_gca(unsigned long id, const isp_gca_cfg_t *cfg);
-void isp_reg_set_lca(unsigned long id, const isp_lca_cfg_t *cfg);
-void isp_reg_set_d2d_cfg(unsigned long id, const isp_d2d_cfg_t *cfg);
-void isp_reg_set_d3d_cfg(unsigned long id, const isp_d3d_cfg_t *cfg);
+void isp_reg_set_ctc(unsigned long id, const fwi_reg_ctc_cfg_t *cfg);
+void isp_reg_set_gca(unsigned long id, const fwi_reg_gca_cfg_t *cfg);
+void isp_reg_set_lca(unsigned long id, const fwi_reg_lca_cfg_t *cfg);
+void isp_reg_set_d2d_cfg(unsigned long id, const fwi_reg_d2d_cfg_t *cfg);
+void isp_reg_set_d3d_cfg(unsigned long id, const fwi_reg_d3d_cfg_t *cfg);
 void isp_reg_set_sensor_offset(unsigned long id, uint32_t r, uint32_t gr, uint32_t gb, uint32_t b);
 void isp_reg_set_dg_gain(unsigned long id, uint32_t r, uint32_t gr, uint32_t gb, uint32_t b);
 void isp_reg_set_wb_gain(unsigned long id, uint32_t r, uint32_t gr, uint32_t gb, uint32_t b);
 void isp_reg_set_wb_clip(unsigned long id, uint32_t clip);
 void isp_reg_set_lsc(unsigned long id, uint32_t ct_x, uint32_t ct_y, uint32_t rs_val);
-void isp_reg_set_pltm_cfg(unsigned long id, const isp_pltm_cfg_t *cfg);
+void isp_reg_set_pltm_cfg(unsigned long id, const fwi_reg_pltm_cfg_t *cfg);
 void isp_reg_set_cfa(unsigned long id, uint32_t dir_th, uint32_t interp_mode, uint32_t zig_zag);
-void isp_reg_set_sharp(unsigned long id, const isp_sharp_cfg_t *cfg);
+void isp_reg_set_sharp(unsigned long id, const fwi_reg_sharp_cfg_t *cfg);
 void isp_reg_set_rgb2rgb_gain_offset(unsigned long id, const uint16_t gain[9], const uint16_t offset[3]);
 void isp_reg_set_cnr(unsigned long id, uint32_t c_th, uint32_t y_th, uint32_t st_v_y, uint32_t st_h_y);
 void isp_reg_set_saturation(unsigned long id, uint32_t r, uint32_t g, uint32_t b);
@@ -275,7 +275,7 @@ void isp_reg_set_ae_win(unsigned long id, uint32_t width, uint32_t height,
 void isp_reg_set_af_en(unsigned long id, uint32_t en_bits);
 void isp_reg_set_af_win(unsigned long id, uint32_t hor_num, uint32_t ver_num, uint32_t width,
                         uint32_t height, uint32_t hor_start, uint32_t ver_start);
-void isp_reg_set_af_filter(unsigned long id, const isp_af_filter_t *f);
+void isp_reg_set_af_filter(unsigned long id, const fwi_reg_af_filter_t *f);
 void isp_reg_set_awb_satur_lim(unsigned long id, uint32_t lim_r, uint32_t lim_g, uint32_t lim_b);
 void isp_reg_set_awb_win(unsigned long id, uint32_t width, uint32_t height,
                          uint32_t hor_start, uint32_t ver_start);
@@ -328,11 +328,11 @@ void isp_reg_set_lca_gf_satu_lut(unsigned long id, const void *src);
 ## 2. `module_cfg.c` — dispatch and payload builders
 
 ### 2.1 Entry points
-`void isp_map_addr(isp_module_config_t *cfg, void *vaddr)`:
+`void isp_map_addr(fwi_mod_config_t *cfg, void *vaddr)`:
 if `cfg!=NULL`, `isp_reg_map_load_addr(cfg->isp_dev_id, vaddr)`.
 (The second argument is passed through.)
 
-`void isp_hardware_update(isp_module_config_t *cfg)`:
+`void isp_hardware_update(fwi_mod_config_t *cfg)`:
 if `cfg==NULL` return. Walk `isp_module_attrs[0..30]` in table order:
 ```
 if (cfg->module_enable_flag & attr.feature_bit) {
@@ -350,9 +350,9 @@ discarded; a full 16-bit table load is issued every frame.
 The 31-entry table order, feature bit, config, enable and hardware module are in
 §2.4. `module_enable_flag` is the OR of feature bits.
 
-### 2.2 Prepare routines — `void isp_reg_prepare_*(isp_module_config_t*)`
+### 2.2 Prepare routines — `void isp_reg_prepare_*(fwi_mod_config_t*)`
 All return immediately if `cfg==NULL`. "writer calls" are the §1 entry points in
-call order. Payload fields named are `isp_module_config_t` members.
+call order. Payload fields named are `fwi_mod_config_t` members.
 
 | config | effect (writer calls and payload writes) |
 |--------|------------------------------------------|
@@ -462,7 +462,7 @@ module bit `0x400000`, not MSC — on enable `isp_reg_module_enable(dev,0x400000
 on disable `isp_reg_module_disable(dev,0x400000)`. `isp_reg_enable_contrast` and
 `isp_reg_enable_rgb2yuv` are no-ops.
 
-Signatures: every prepare routine is `void isp_reg_prepare_X(isp_module_config_t *cfg);`; every enable routine is `void isp_reg_enable_X(isp_module_config_t *cfg, isp_module_enable_t en);` with `ISP_MODULE_DISABLE==0`, `ISP_MODULE_ENABLE==1`. `isp_reg_enable_contrast` and `isp_reg_enable_rgb2yuv` ignore both arguments; all other enables ignore `cfg` except for `cfg->isp_dev_id` and (DG) `cfg->mode_cfg.dg_mode`.
+Signatures: every prepare routine is `void isp_reg_prepare_X(fwi_mod_config_t *cfg);`; every enable routine is `void isp_reg_enable_X(fwi_mod_config_t *cfg, isp_module_enable_t en);` with `ISP_MODULE_DISABLE==0`, `ISP_MODULE_ENABLE==1`. `isp_reg_enable_contrast` and `isp_reg_enable_rgb2yuv` ignore both arguments; all other enables ignore `cfg` except for `cfg->isp_dev_id` and (DG) `cfg->mode_cfg.dg_mode`.
 
 ### 2.5 `module_cfg.c` traps
 - `isp_reg_enable_msc` toggles CONTRAST; any implementation that toggles 0x20000000 is
@@ -500,7 +500,7 @@ Signatures: every prepare routine is `void isp_reg_prepare_X(isp_module_config_t
 
 ## 3. `base.c` — configuration / statistics layer
 
-Entry points on `isp_lib_context_t *ctx`. Internal helpers are required behaviour
+Entry points on `fwi_base_ctx_t *ctx`. Internal helpers are required behaviour
 and are specified where they carry formulas.
 
 ### 3.1 Statistics capture

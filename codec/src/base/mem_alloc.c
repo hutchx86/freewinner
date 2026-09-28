@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
 
-/* Process-wide DMA allocator behind MemAdapterGetOpsS() (SPEC §1): ION buffers
+/* Process-wide DMA allocator behind MemAdapterGetOpsS(): ION buffers
  * mapped into the process and into the video engine's IOMMU. IOMMU mode only.
  * All kernel/engine calls go through the vb_sys seam. */
 
@@ -97,7 +97,7 @@ static void mem_close(void)
         return;
     }
     if (--g_refs == 0) {
-        /* Forget remaining records; their memory is the callers' (SPEC §8). */
+        /* Forget remaining records; their memory is the callers'. */
         for (a = g_list; a; a = next) {
             next = a->next;
             free(a);

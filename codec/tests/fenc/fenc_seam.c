@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
 
-/* Seam definitions for the package C host tests (see fenc_seam.h). */
+/* Seam definitions for the fenc_ host tests (see fenc_seam.h). */
 
 #include <stdint.h>
 #include <stdio.h>

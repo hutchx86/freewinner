@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-/* manage.c - lifecycle, 3A bring-up/tear-down and the register program buffer
- * (20 §6, §9, §12.1) */
+/* manage.c - lifecycle, 3A bring-up/tear-down and the register program buffer */
 #define _GNU_SOURCE   /* pthread_setname_np */
 #include "framework_internal.h"
 #include <pthread.h>
@@ -8,20 +7,16 @@
 #include <stdlib.h>
 #include <string.h>
 
-/*
- * The 3A entry points (ae_init/awb_init/afs_init/iso_init/gtm_init/pltm_init)
- * are implemented by isp/shim/{ae,awb,afs,iso,gtm,pltm}/*_shim.c and return
- * the fwi_*_core_ops_t vtable the rest of the framework dereferences through
- * ctx->*_entity.ops.  bring_up_3a() below only wires them in.
- */
+/* The 3A entry points (ae_init, awb_init, ...) live in isp/shim/ and return the
+ * fwi_*_core_ops_t vtable reached via ctx->*_entity.ops; bring_up_3a() only wires them in. */
 
 struct hw_isp_media_dev media_params;
 
 extern fwi_isp_ctx_t isp_ctx[1];
 
-static struct isp_tuning_store tuning_store[HW_ISP_DEVICE_NUM];
+static struct fwi_tuning_store tuning_store[HW_ISP_DEVICE_NUM];
 
-struct isp_tuning_store *isp_tuning_store_get(int id)
+struct fwi_tuning_store *isp_tuning_store_get(int id)
 {
     if (id < 0 || id >= HW_ISP_DEVICE_NUM)
         return NULL;
@@ -30,7 +25,7 @@ struct isp_tuning_store *isp_tuning_store_get(int id)
 
 int media_dev_init(void)
 {
-    printf("freeisp framework (clean-room r1)\n");
+    printf("freeisp framework\n");
     return 0;
 }
 
@@ -43,7 +38,7 @@ void media_dev_exit(void)
 }
 
 /* ------------------------------------------------------------------ */
-/* 20 §9 register program buffer                                       */
+/* register program buffer                                             */
 /* ------------------------------------------------------------------ */
 #define BAYER_OFF 0x1600
 #define RGB_OFF   0x7b40
@@ -91,7 +86,7 @@ static int alloc_reg_buffer(fwi_isp_ctx_t *ctx)
 }
 
 /* ------------------------------------------------------------------ */
-/* 20 §12.1 3A bring-up and tear-down                                  */
+/* 3A bring-up and tear-down                                           */
 /* ------------------------------------------------------------------ */
 static int bring_up_3a(fwi_isp_ctx_t *ctx, struct hw_isp_device *dev)
 {
@@ -179,7 +174,7 @@ static void tear_down_3a(fwi_isp_ctx_t *ctx)
 }
 
 /* ------------------------------------------------------------------ */
-/* 20 §8.1 sensor info from the sensor config                          */
+/* sensor info from the sensor config                                  */
 /* ------------------------------------------------------------------ */
 static int fill_sensor_info(fwi_isp_ctx_t *ctx, struct hw_isp_device *dev,
                             const char *name)
@@ -198,9 +193,8 @@ static int fill_sensor_info(fwi_isp_ctx_t *ctx, struct hw_isp_device *dev,
     s->fps_fixed = cfg.fps_fixed;
     s->wdr_mode = cfg.wdr_mode;
     s->colour_space = 0;
-    /* 20 §8.1: the Allwinner SDK media-bus literals (NOT the modern mainline
-     * <linux/media-bus-format.h>, which gives 0x300f a different Bayer order).
-     * 8/10/12-bit code per Bayer phase -> the input_seq enum; unknown -> BGGR. */
+    /* Allwinner SDK media-bus literals (not mainline media-bus-format.h, where 0x300f is a
+     * different Bayer order): 8/10/12-bit code per phase -> input_seq; unknown -> BGGR. */
     switch (cfg.mbus_code) {
     case 0x3001: /* BGGR 8-bit  */
     case 0x3007: /* BGGR 10-bit */
@@ -254,13 +248,13 @@ static int fill_sensor_info(fwi_isp_ctx_t *ctx, struct hw_isp_device *dev,
 }
 
 /* ------------------------------------------------------------------ */
-/* 20 §6.2 isp_init                                                    */
+/* isp_init                                                            */
 /* ------------------------------------------------------------------ */
 int isp_init(int id)
 {
     fwi_isp_ctx_t *ctx;
     struct hw_isp_device *dev;
-    struct isp_tuning_store *st;
+    struct fwi_tuning_store *st;
 
     if (id >= HW_ISP_DEVICE_NUM || id < 0)
         return -1;
@@ -322,7 +316,7 @@ int isp_init(int id)
 
     isp_loop_start(isp_loop_for(id));
     {
-        struct isp_table_reg_map reg;
+        struct fwi_table_reg_map reg;
         reg.addr = ctx->reg_image;
         reg.size = ISP_LOAD_DRAM_SIZE;
         isp_set_load_reg(dev, &reg);
@@ -331,7 +325,7 @@ int isp_init(int id)
 }
 
 /* ------------------------------------------------------------------ */
-/* 20 §6.3 run / stop / join; §6.4 exit                                */
+/* run / stop / join; exit                                             */
 /* ------------------------------------------------------------------ */
 static void *isp_thread_body(void *arg)
 {
@@ -380,7 +374,7 @@ int32_t isp_pthread_join(int id)
 
 int isp_exit(int id)
 {
-    struct isp_tuning_store *st;
+    struct fwi_tuning_store *st;
 
     if (id >= HW_ISP_DEVICE_NUM || id < 0)
         return -1;

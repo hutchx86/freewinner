@@ -1,15 +1,7 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
-/*
- * test_base_shim.c - host smoke test for the isp_base SDK-ABI shim.
- *
- * Exercises the shim's SDK entry points and the freeisp_get_tables() base
- * provider with a hand-built `struct isp_lib_context`.  The authoritative
- * behavioural verification is the private differential harness; this test
- * only proves the published shim builds and translates the common path
- * (provider wiring, band-step, gamma, digital gain, lens centre) without a
- * vendor object present.
- */
+/* test_base_shim.c - host smoke test for the isp_base SDK-ABI shim: provider
+ * wiring, band-step, gamma, digital gain and lens centre, no vendor object. */
 #include <stdio.h>
 #include <string.h>
 
@@ -21,26 +13,8 @@
 #undef ISP_MSC_TBL_SIZE
 #undef ISP_MSC_TEMP_NUM
 
-/* Include the clean base tier for base_tables_t / freeisp_tables_t.  The same
- * SDK/clean tag collisions the shim handles are renamed here for this TU. */
-#define isp_ae_param        clean_isp_ae_param
-#define isp_ae_result       clean_isp_ae_result
-#define isp_ae_settings     clean_isp_ae_settings
-#define isp_ae_settings_t   clean_isp_ae_settings_t
-#define isp_ae_stats        clean_isp_ae_stats
-#define isp_af_param        clean_isp_af_param
-#define isp_af_result       clean_isp_af_result
-#define isp_af_stats        clean_isp_af_stats
-#define isp_afs_param       clean_isp_afs_param
-#define isp_afs_stats       clean_isp_afs_stats
-#define isp_awb_stats       clean_isp_awb_stats
-#define isp_gca_cfg         clean_isp_gca_cfg
-#define isp_h3a_reg_win     clean_isp_h3a_reg_win
-#define isp_lca_cfg         clean_isp_lca_cfg
-#define isp_pltm_stats      clean_isp_pltm_stats
-#define isp_sensor_info     clean_isp_sensor_info
-#define isp_sensor_info_t   clean_isp_sensor_info_t
-#define isp_sharp_cfg       clean_isp_sharp_cfg
+/* Include the clean base tier for base_tables_t / freeisp_tables_t, with the
+ * same entry-point renames as the shim. */
 #define config_band_step         clean_config_band_step
 #define config_lens_center       clean_config_lens_center
 #define config_dig_gain          clean_config_dig_gain
@@ -54,24 +28,6 @@
 #define config_lens_table        clean_config_lens_table
 #define config_msc_table         clean_config_msc_table
 #include "base.h"
-#undef isp_ae_param
-#undef isp_ae_result
-#undef isp_ae_settings
-#undef isp_ae_settings_t
-#undef isp_ae_stats
-#undef isp_af_param
-#undef isp_af_result
-#undef isp_af_stats
-#undef isp_afs_param
-#undef isp_afs_stats
-#undef isp_awb_stats
-#undef isp_gca_cfg
-#undef isp_h3a_reg_win
-#undef isp_lca_cfg
-#undef isp_pltm_stats
-#undef isp_sensor_info
-#undef isp_sensor_info_t
-#undef isp_sharp_cfg
 #undef config_band_step
 #undef config_lens_center
 #undef config_dig_gain

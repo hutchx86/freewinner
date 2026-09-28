@@ -1,14 +1,7 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
-/*
- * test_frame_pool.c - host tests for the clean-room frame-header pool.
- *
- * Behaviour source: spec/media_utils/frame_pool.md.  The scripted
- * sequences of section 8 (cases 1-18) are driven through the public macros
- * only; the structural invariants (three-list partition, FIFO order, node
- * count, caller overwrite) are asserted after every operation.  The target ABI
- * sizes/offsets from section 2 are asserted only on a 32-bit host.
- */
+/* test_frame_pool.c - host tests for the frame-header pool (spec
+ * media_utils/frame_pool.md 8, cases 1-18), invariants checked after each op. */
 #define _GNU_SOURCE
 
 #include "utils/frame_pool.h"
@@ -59,11 +52,8 @@ void media_utils_log_error(const char *reason, unsigned int detail)
 	g_log_calls++;
 }
 
-/*
- * Strong overrides of the unit's weak heap seam.  When inactive they are a
- * transparent calloc/free; the partial-allocation case arms the counter and
- * makes the nth allocation fail.
- */
+/* Strong overrides of the weak heap seam: plain calloc/free until armed, then
+ * the nth allocation fails. */
 static int g_seam_active;
 static int g_seam_fail_at;
 static int g_seam_calls;

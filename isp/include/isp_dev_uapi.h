@@ -1,12 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-/* isp_dev_uapi.h - project device-layer types, kernel-facing API and the
- * replaceable syscall seam (20-framework.md §4, 22-public-api.md §3).
- *
- * Layout notes (20 §2.1): every member that could be an enum is declared as a
- * 32-bit unsigned integer so this header is layout-identical when compiled with
- * or without -fshort-enums.  The kernel UAPI structs come from linux/media.h
- * and linux/videodev2.h and are interface facts.
- */
+/* isp_dev_uapi.h - device-layer types, kernel-facing API and the replaceable
+ * syscall seam. Enum-like members are uint32_t so the layout is the same with or
+ * without -fshort-enums. */
 #ifndef ISP_DEV_UAPI_H
 #define ISP_DEV_UAPI_H
 
@@ -31,24 +26,24 @@
 #define ISP_LOAD_DRAM_SIZE  0x13240u
 #define ISP_STAT_TOTAL_SIZE 0xea40u
 
-/* legacy media entity type values the target kernel reports (20 §4.2) */
+/* legacy media entity type values the target kernel reports */
 #define ISP_MEDIA_ENT_T_DEVNODE          0x00010000u
 #define ISP_MEDIA_ENT_T_V4L2_SUBDEV      0x00020000u
 #define ISP_MEDIA_ENT_T_V4L2_SUBDEV_SENSOR 0x00020001u
 
 /* ------------------------------------------------------------------ */
-/* private V4L2 ioctls (20 §4.6)                                       */
+/* private V4L2 ioctls                                                */
 /* ------------------------------------------------------------------ */
-struct isp_top_clk {
+struct fwi_top_clk {
     uint32_t clk_rate;
 };
 
-struct isp_h3a_cfg {
+struct fwi_h3a_cfg {
     uint32_t buf_size;
     uint32_t config_counter;
 };
 
-struct isp_stat_req {
+struct fwi_stat_req {
     void *buf;
     uint32_t buf_size;
     uint32_t frame_number;
@@ -88,26 +83,26 @@ struct sensor_temp {
     int32_t temp;
 };
 
-struct isp_act_code {
+struct fwi_act_code {
     uint32_t code;
 };
 
-struct isp_act_init {
+struct fwi_act_init {
     uint16_t code_min;
     uint16_t code_max;
 };
 
-struct isp_table_reg_map {
+struct fwi_table_reg_map {
     void *addr;
     unsigned int size;
 };
 
 #define VIDIOC_SET_TOP_CLK \
-    _IOWR('V', 192 + 6, struct isp_top_clk)
+    _IOWR('V', 192 + 6, struct fwi_top_clk)
 #define VIDIOC_VIN_ISP_H3A_CFG \
-    _IOWR('V', 192 + 31, struct isp_h3a_cfg)
+    _IOWR('V', 192 + 31, struct fwi_h3a_cfg)
 #define VIDIOC_VIN_ISP_STAT_REQ \
-    _IOWR('V', 192 + 32, struct isp_stat_req)
+    _IOWR('V', 192 + 32, struct fwi_stat_req)
 #define VIDIOC_VIN_ISP_STAT_EN \
     _IOWR('V', 192 + 33, unsigned int)
 #define VIDIOC_VIN_SENSOR_CFG_REQ \
@@ -119,16 +114,16 @@ struct isp_table_reg_map {
 #define VIDIOC_VIN_SENSOR_GET_TEMP \
     _IOWR('V', 192 + 63, struct sensor_temp)
 #define VIDIOC_VIN_ACT_SET_CODE \
-    _IOWR('V', 192 + 64, struct isp_act_code)
+    _IOWR('V', 192 + 64, struct fwi_act_code)
 #define VIDIOC_VIN_ACT_INIT \
-    _IOWR('V', 192 + 65, struct isp_act_init)
+    _IOWR('V', 192 + 65, struct fwi_act_init)
 #define VIDIOC_VIN_ISP_LOAD_REG \
-    _IOWR('V', 192 + 70, struct isp_table_reg_map)
+    _IOWR('V', 192 + 70, struct fwi_table_reg_map)
 
 /* ------------------------------------------------------------------ */
-/* replaceable syscall seam (20 §4.1, 22 §3.4)                         */
+/* replaceable syscall seam                                           */
 /* ------------------------------------------------------------------ */
-struct isp_uapi_sys {
+struct fwi_uapi_sys {
     int   (*open)(const char *path, int flags, unsigned int mode);
     int   (*close)(int fd);
     int   (*ioctl)(int fd, unsigned long request, void *arg);
@@ -142,9 +137,9 @@ struct isp_uapi_sys {
     int   (*stat_)(const char *path, struct stat *st);
 };
 
-extern const struct isp_uapi_sys *isp_uapi_sys;
-void isp_uapi_set_sys(const struct isp_uapi_sys *sys);
-const struct isp_uapi_sys *isp_uapi_get_sys(void);
+extern const struct fwi_uapi_sys *isp_uapi_sys;
+void isp_uapi_set_sys(const struct fwi_uapi_sys *sys);
+const struct fwi_uapi_sys *isp_uapi_get_sys(void);
 
 /* ------------------------------------------------------------------ */
 /* project device-layer records                                        */
@@ -216,7 +211,7 @@ struct video_fmt {
     uint32_t index;
 };
 
-struct isp_video_device {
+struct fwi_video_device {
     unsigned int id;
     int isp_id;
     struct media_entity *entity;
@@ -245,7 +240,7 @@ struct hw_isp_device {
 struct hw_isp_media_dev {
     struct media_device *mdev;
     struct hw_isp_device *isp_dev[HW_ISP_DEVICE_NUM];
-    struct isp_video_device *video_dev[HW_VIDEO_DEVICE_NUM];
+    struct fwi_video_device *video_dev[HW_VIDEO_DEVICE_NUM];
     pthread_t isp_tid[HW_ISP_DEVICE_NUM];
     unsigned int isp_use_cnt[HW_ISP_DEVICE_NUM];
     int isp_sync_mode;
@@ -254,7 +249,7 @@ struct hw_isp_media_dev {
 };
 
 /* ------------------------------------------------------------------ */
-/* device-layer API (22 §3.2)                                          */
+/* device-layer API                                                   */
 /* ------------------------------------------------------------------ */
 struct media_device *media_open(const char *path, int verbose);
 void media_close(struct media_device *md);
@@ -267,29 +262,29 @@ void isp_dev_close(struct hw_isp_media_dev *md, int id);
 int isp_video_open(struct hw_isp_media_dev *md, unsigned int id);
 void isp_video_close(struct hw_isp_media_dev *md, unsigned int id);
 
-int video_to_isp_id(struct isp_video_device *video);
-int video_set_fmt(struct isp_video_device *video, struct video_fmt *vfmt);
-int video_get_fmt(struct isp_video_device *video, struct video_fmt *vfmt);
-struct buffers_pool *buffers_pool_new(struct isp_video_device *video);
-void buffers_pool_delete(struct isp_video_device *video);
-int video_req_buffers(struct isp_video_device *video, struct buffers_pool *pool);
-int video_free_buffers(struct isp_video_device *video);
-int video_wait_buffer(struct isp_video_device *video, int timeout_ms);
-int video_dequeue_buffer(struct isp_video_device *video,
+int video_to_isp_id(struct fwi_video_device *video);
+int video_set_fmt(struct fwi_video_device *video, struct video_fmt *vfmt);
+int video_get_fmt(struct fwi_video_device *video, struct video_fmt *vfmt);
+struct buffers_pool *buffers_pool_new(struct fwi_video_device *video);
+void buffers_pool_delete(struct fwi_video_device *video);
+int video_req_buffers(struct fwi_video_device *video, struct buffers_pool *pool);
+int video_free_buffers(struct fwi_video_device *video);
+int video_wait_buffer(struct fwi_video_device *video, int timeout_ms);
+int video_dequeue_buffer(struct fwi_video_device *video,
                          struct video_buffer *buffer);
-int video_queue_buffer(struct isp_video_device *video, unsigned int buf_id);
-int video_stream_on(struct isp_video_device *video);
-int video_stream_off(struct isp_video_device *video);
-int video_set_control(struct isp_video_device *video, int cid, int value);
-int video_get_control(struct isp_video_device *video, int cid, int *value);
-int video_set_top_clk(struct isp_video_device *video, unsigned int rate);
+int video_queue_buffer(struct fwi_video_device *video, unsigned int buf_id);
+int video_stream_on(struct fwi_video_device *video);
+int video_stream_off(struct fwi_video_device *video);
+int video_set_control(struct fwi_video_device *video, int cid, int value);
+int video_get_control(struct fwi_video_device *video, int cid, int *value);
+int video_set_top_clk(struct fwi_video_device *video, unsigned int rate);
 
 int isp_sensor_get_configs(struct hw_isp_device *isp, struct sensor_config *cfg);
 int isp_sensor_set_fps(struct hw_isp_device *isp, struct sensor_fps *fps);
 int isp_sensor_get_temp(struct hw_isp_device *isp, struct sensor_temp *temp);
-int isp_set_load_reg(struct hw_isp_device *isp, struct isp_table_reg_map *reg);
+int isp_set_load_reg(struct hw_isp_device *isp, struct fwi_table_reg_map *reg);
 
-/* graph walks (20 §4.3) */
+/* graph walks */
 struct media_entity *media_pipeline_head(struct media_device *md,
                                          struct media_entity *entity);
 int isp_entity_to_isp_id(struct media_device *md, struct media_entity *entity);

@@ -2,7 +2,7 @@
 /* Copyright (C) 2026 freewinner contributors */
 #include "utils/frame_size.h"
 
-/* Numeric pixel-format values (24 §3); enumerators are not spelled (24 §0). */
+/* Numeric pixel-format values; enumerators are not spelled. */
 enum {
 	FS_YUV420_3PLANE_A = 20,
 	FS_YUV420_2PLANE_A = 23,
@@ -45,7 +45,7 @@ ERRORTYPE getVideoFrameBufferSizeInfo(VIDEO_FRAME_INFO_S *pFrame,
 
 	vf = &pFrame->VFrame;
 	fmt = (unsigned int)vf->mPixelFormat;
-	/* All arithmetic unsigned 32-bit, wrap before divide (24 §1). */
+	/* All arithmetic unsigned 32-bit, wrap before divide. */
 	area = vf->mWidth * vf->mHeight;
 
 	if (fmt == FS_YUV420_2PLANE_A || fmt == FS_YUV420_2PLANE_B) {
@@ -70,7 +70,7 @@ ERRORTYPE getVideoFrameBufferSizeInfo(VIDEO_FRAME_INFO_S *pFrame,
 		y = (area * FS_RAW12_BITS) / FS_BITS_PER_BYTE;
 		u = v = 0u;
 	} else {
-		/* Output left untouched on rejection (24 §3 step 2). */
+		/* Output left untouched on rejection. */
 		media_utils_log_error("getVideoFrameBufferSizeInfo: unsupported format",
 				      fmt);
 		return FAILURE;

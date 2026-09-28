@@ -90,3 +90,18 @@ $(TARGET): $(OBJS) $(RMM_LAYOUT_H) $(FREECODEC_H264_OBJS)
 - ALSA and the AAC replacement are unaffected; this is the H.264 half only.
 - Device acceptance (both channels, ring decodes) is tracked in the parent
   project; the link criterion is met by the private link harness.
+
+## OSD header layout
+
+The overlay header packer (`src/h264/isp/h264_isp.c`) writes one 16-byte entry
+per block, the layout the ISP reads when `ic_version > 0x2110f` (sun8iw19 is
+`0x21110`):
+
+| Offset | Content |
+|---|---|
+| +0 | block rectangle in macroblocks (16 px): `start_mb_x`, `end_mb_x`, `start_mb_y`, `end_mb_y`, one byte each |
+| +8 | control word: `[21:0]` data byte offset >> 8 (256-byte units), `[22]` force_reverse, `[27:24]` extra_alpha, `[28]` extra_alpha_flag, `[29]` reverse_luma, `[30]` cover, `[31]` last block |
+| +12 | `fill_y`, `fill_u`, `fill_v`, reverse-unit nibbles (0 for `NORMAL`) |
+
+A `FWM_VENC_OVERLAY_NORMAL` block copies its bitmap and advances the data
+offset by its 256-byte-aligned size.

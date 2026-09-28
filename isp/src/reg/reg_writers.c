@@ -1,24 +1,9 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
-/*
- * reg_writers.c - clean-room ISP register/hardware writer tier.
- *
- * Independent re-production of the register-writer translation unit from the
- * behaviour-only specification in spec/reglayer2.md section 1, written
- * without access to the deployed object or any earlier transcription (see
- * reimplementation/README.md).
- *
- * Each ISP instance owns an isp_reg_map_t descriptor (include/reg_writers.h).
- * isp_reg_map_load_addr() fills every member with instance_base + hardware
- * offset; every writer resolves the instance, checks its inputs, then
- * read-modify-writes the 32-bit register(s).  Two primitives are used:
- *
- *   put(reg, mask, shift, val): *reg = (*reg & ~(mask<<shift)) | ((val&mask)<<shift)
- *   store(reg, fields, val):    *reg = (*reg & ~fields) | (val & fields)
- *
- * Register offsets are interface facts from the spec; every literal field mask
- * below is copied verbatim from that spec.
- */
+/* reg_writers.c - ISP register writer tier (spec/reglayer2.md §1). Each writer resolves
+ * its instance's fwi_reg_map_t, checks inputs and read-modify-writes (spec §0.2):
+ * put(reg, mask, shift, v): *reg = (*reg & ~(mask << shift)) | ((v & mask) << shift)
+ * store(reg, fields, v):    *reg = (*reg & ~fields) | (v & fields) */
 
 #include <string.h>
 
@@ -28,10 +13,10 @@
 /* Instance descriptors                                                */
 /* ------------------------------------------------------------------ */
 
-static isp_reg_map_t g_map[ISP_REG_INSTANCES];
+static fwi_reg_map_t g_map[ISP_REG_INSTANCES];
 static unsigned char  g_map_valid[ISP_REG_INSTANCES];
 
-static isp_reg_map_t *instance(unsigned long id)
+static fwi_reg_map_t *instance(unsigned long id)
 {
     if (id >= (unsigned long)ISP_REG_INSTANCES)
         return NULL;
@@ -70,7 +55,7 @@ static const uint32_t g_af_filter_off[ISP_AF_FILTER_REGS] = {
 
 void isp_reg_map_load_addr(unsigned long id, void *base)
 {
-    isp_reg_map_t *m;
+    fwi_reg_map_t *m;
     uint8_t *b = (uint8_t *)base;
     unsigned i;
 
@@ -203,7 +188,7 @@ void isp_reg_map_load_addr(unsigned long id, void *base)
 
 void isp_reg_set_input_fmt(unsigned long id, uint32_t fmt)
 {
-    isp_reg_map_t *m = instance(id);
+    fwi_reg_map_t *m = instance(id);
     if (!m)
         return;
     put(m->isp_global_cfg0, 0x7u, 4, fmt);
@@ -211,7 +196,7 @@ void isp_reg_set_input_fmt(unsigned long id, uint32_t fmt)
 
 void isp_reg_update_table(unsigned long id, uint32_t mask)
 {
-    isp_reg_map_t *m = instance(id);
+    fwi_reg_map_t *m = instance(id);
     uint32_t v;
 
     if (!m)
@@ -223,7 +208,7 @@ void isp_reg_update_table(unsigned long id, uint32_t mask)
 
 void isp_reg_top_control(unsigned long id, uint32_t n, uint32_t w)
 {
-    isp_reg_map_t *m = instance(id);
+    fwi_reg_map_t *m = instance(id);
     if (!m)
         return;
     put(m->isp_top_ctrl, 0x3fffu, 0, w);
@@ -232,7 +217,7 @@ void isp_reg_top_control(unsigned long id, uint32_t n, uint32_t w)
 
 void isp_reg_module_enable(unsigned long id, uint32_t flag)
 {
-    isp_reg_map_t *m = instance(id);
+    fwi_reg_map_t *m = instance(id);
     if (!m)
         return;
     *m->isp_module_bypass0 |= flag;
@@ -248,7 +233,7 @@ void isp_reg_module_enable(unsigned long id, uint32_t flag)
 
 void isp_reg_module_disable(unsigned long id, uint32_t flag)
 {
-    isp_reg_map_t *m = instance(id);
+    fwi_reg_map_t *m = instance(id);
     if (!m)
         return;
     *m->isp_module_bypass0 &= ~flag;
@@ -264,7 +249,7 @@ void isp_reg_module_disable(unsigned long id, uint32_t flag)
 
 void isp_reg_set_dg_bypass(unsigned long id, int en, uint32_t dg_mode)
 {
-    isp_reg_map_t *m = instance(id);
+    fwi_reg_map_t *m = instance(id);
     if (!m)
         return;
     *m->isp_module_bypass0 &= ~(0x80000u | 0x4000000u);
@@ -285,7 +270,7 @@ void isp_reg_set_dg_bypass(unsigned long id, int en, uint32_t dg_mode)
 
 void isp_reg_set_wdr_compress_mode(unsigned long id, uint32_t mode)
 {
-    isp_reg_map_t *m = instance(id);
+    fwi_reg_map_t *m = instance(id);
     if (!m)
         return;
     put(m->isp_global_cfg0, 0x1u, 24, mode);
@@ -293,7 +278,7 @@ void isp_reg_set_wdr_compress_mode(unsigned long id, uint32_t mode)
 
 void isp_reg_set_saturation_mode(unsigned long id, uint32_t mode)
 {
-    isp_reg_map_t *m = instance(id);
+    fwi_reg_map_t *m = instance(id);
     if (!m)
         return;
     put(m->isp_module_mode0, 0x1u, 1, mode);
@@ -301,7 +286,7 @@ void isp_reg_set_saturation_mode(unsigned long id, uint32_t mode)
 
 void isp_reg_set_cfa_mode(unsigned long id, uint32_t mode)
 {
-    isp_reg_map_t *m = instance(id);
+    fwi_reg_map_t *m = instance(id);
     if (!m)
         return;
     put(m->isp_module_mode0, 0x1u, 2, mode);
@@ -309,7 +294,7 @@ void isp_reg_set_cfa_mode(unsigned long id, uint32_t mode)
 
 void isp_reg_set_dg_mode(unsigned long id, uint32_t mode)
 {
-    isp_reg_map_t *m = instance(id);
+    fwi_reg_map_t *m = instance(id);
     if (!m)
         return;
     put(m->isp_module_mode0, 0x1u, 3, mode);
@@ -317,7 +302,7 @@ void isp_reg_set_dg_mode(unsigned long id, uint32_t mode)
 
 void isp_reg_set_ae_mode(unsigned long id, uint32_t mode)
 {
-    isp_reg_map_t *m = instance(id);
+    fwi_reg_map_t *m = instance(id);
     if (!m)
         return;
     put(m->isp_module_mode0, 0x3u, 4, mode);
@@ -325,7 +310,7 @@ void isp_reg_set_ae_mode(unsigned long id, uint32_t mode)
 
 void isp_reg_set_lsc_mode(unsigned long id, uint32_t mode)
 {
-    isp_reg_map_t *m = instance(id);
+    fwi_reg_map_t *m = instance(id);
     if (!m)
         return;
     put(m->isp_module_mode0, 0x3u, 16, mode);
@@ -333,7 +318,7 @@ void isp_reg_set_lsc_mode(unsigned long id, uint32_t mode)
 
 void isp_reg_set_msc_mode(unsigned long id, uint32_t mode)
 {
-    isp_reg_map_t *m = instance(id);
+    fwi_reg_map_t *m = instance(id);
     if (!m)
         return;
     put(m->isp_module_mode0, 0x3u, 18, mode);
@@ -341,7 +326,7 @@ void isp_reg_set_msc_mode(unsigned long id, uint32_t mode)
 
 void isp_reg_set_awb_mode(unsigned long id, uint32_t mode)
 {
-    isp_reg_map_t *m = instance(id);
+    fwi_reg_map_t *m = instance(id);
     if (!m)
         return;
     put(m->isp_module_mode0, 0x1u, 6, mode);
@@ -349,7 +334,7 @@ void isp_reg_set_awb_mode(unsigned long id, uint32_t mode)
 
 void isp_reg_set_hist_src(unsigned long id, uint32_t mode)
 {
-    isp_reg_map_t *m = instance(id);
+    fwi_reg_map_t *m = instance(id);
     if (!m)
         return;
     put(m->isp_module_mode0, 0x1u, 7, mode);
@@ -357,7 +342,7 @@ void isp_reg_set_hist_src(unsigned long id, uint32_t mode)
 
 void isp_reg_set_hist_mode(unsigned long id, uint32_t mode)
 {
-    isp_reg_map_t *m = instance(id);
+    fwi_reg_map_t *m = instance(id);
     if (!m)
         return;
     put(m->isp_module_mode0, 0x3u, 8, mode);
@@ -365,7 +350,7 @@ void isp_reg_set_hist_mode(unsigned long id, uint32_t mode)
 
 void isp_reg_set_dpc_mode(unsigned long id, uint32_t mode)
 {
-    isp_reg_map_t *m = instance(id);
+    fwi_reg_map_t *m = instance(id);
     if (!m)
         return;
     put(m->isp_module_mode0, 0x3u, 10, mode);
@@ -373,7 +358,7 @@ void isp_reg_set_dpc_mode(unsigned long id, uint32_t mode)
 
 void isp_reg_set_d3d_mode(unsigned long id, uint32_t mode)
 {
-    isp_reg_map_t *m = instance(id);
+    fwi_reg_map_t *m = instance(id);
     if (!m)
         return;
     put(m->isp_module_mode0, 0x3u, 12, mode);
@@ -381,7 +366,7 @@ void isp_reg_set_d3d_mode(unsigned long id, uint32_t mode)
 
 void isp_reg_set_af_mode(unsigned long id, uint32_t mode)
 {
-    isp_reg_map_t *m = instance(id);
+    fwi_reg_map_t *m = instance(id);
     if (!m)
         return;
     put(m->isp_module_mode0, 0x1u, 14, mode);
@@ -394,7 +379,7 @@ void isp_reg_set_af_mode(unsigned long id, uint32_t mode)
 void isp_reg_set_blc_offset(unsigned long id, uint32_t r, uint32_t gr,
                             uint32_t gb, uint32_t b)
 {
-    isp_reg_map_t *m = instance(id);
+    fwi_reg_map_t *m = instance(id);
     uint32_t lo, hi;
 
     if (!m)
@@ -411,7 +396,7 @@ void isp_reg_set_wdr_cfg(unsigned long id, uint32_t lo_th, uint32_t hi_th,
                          uint32_t exp_ratio, uint32_t slope, uint32_t mv_th,
                          uint32_t mv_scale, uint32_t out_sel)
 {
-    isp_reg_map_t *m = instance(id);
+    fwi_reg_map_t *m = instance(id);
     if (!m)
         return;
     store(m->isp_wdr_cfg0, 0xffffffffu,
@@ -426,7 +411,7 @@ void isp_reg_set_wdr_cfg(unsigned long id, uint32_t lo_th, uint32_t hi_th,
 void isp_reg_set_dpc(unsigned long id, uint32_t r0, uint32_t r1, uint32_t r2,
                      uint32_t r3, uint32_t slope_th, uint32_t cold_abs_th)
 {
-    isp_reg_map_t *m = instance(id);
+    fwi_reg_map_t *m = instance(id);
     if (!m)
         return;
     store(m->isp_dpc_cfg0, 0xffffffffu,
@@ -436,9 +421,9 @@ void isp_reg_set_dpc(unsigned long id, uint32_t r0, uint32_t r1, uint32_t r2,
           (slope_th & 0x3ffu) | ((cold_abs_th & 0x1ffu) << 16));
 }
 
-void isp_reg_set_ctc(unsigned long id, const isp_ctc_cfg_t *cfg)
+void isp_reg_set_ctc(unsigned long id, const fwi_reg_ctc_cfg_t *cfg)
 {
-    isp_reg_map_t *m = instance(id);
+    fwi_reg_map_t *m = instance(id);
     if (!m || !cfg)
         return;
     store(m->isp_ctc_cfg0, 0x0fff0fffu,
@@ -448,9 +433,9 @@ void isp_reg_set_ctc(unsigned long id, const isp_ctc_cfg_t *cfg)
           (cfg->dir_wt & 0x7fu) | ((cfg->dir_th & 0xfffu) << 8));
 }
 
-void isp_reg_set_gca(unsigned long id, const isp_gca_cfg_t *cfg)
+void isp_reg_set_gca(unsigned long id, const fwi_reg_gca_cfg_t *cfg)
 {
-    isp_reg_map_t *m = instance(id);
+    fwi_reg_map_t *m = instance(id);
     if (!m || !cfg)
         return;
     store(m->isp_gca_center, 0x1fff1fffu,
@@ -464,9 +449,9 @@ void isp_reg_set_gca(unsigned long id, const isp_gca_cfg_t *cfg)
     put(m->isp_gca_ctrl, 0xffu, 0, cfg->r.int_cns);
 }
 
-void isp_reg_set_lca(unsigned long id, const isp_lca_cfg_t *cfg)
+void isp_reg_set_lca(unsigned long id, const fwi_reg_lca_cfg_t *cfg)
 {
-    isp_reg_map_t *m = instance(id);
+    fwi_reg_map_t *m = instance(id);
     if (!m || !cfg)
         return;
     store(m->isp_lca_cor_ratio, 0x03ff03ffu,
@@ -482,9 +467,9 @@ void isp_reg_set_lca(unsigned long id, const isp_lca_cfg_t *cfg)
           ((cfg->pf_decr_ratio & 0xfu) << 16));
 }
 
-void isp_reg_set_d2d_cfg(unsigned long id, const isp_d2d_cfg_t *cfg)
+void isp_reg_set_d2d_cfg(unsigned long id, const fwi_reg_d2d_cfg_t *cfg)
 {
-    isp_reg_map_t *m = instance(id);
+    fwi_reg_map_t *m = instance(id);
     if (!m || !cfg)
         return;
     store(m->isp_d2d_cfg0, 0x00ffffffu,
@@ -503,9 +488,9 @@ void isp_reg_set_d2d_cfg(unsigned long id, const isp_d2d_cfg_t *cfg)
           ((cfg->lp_pcnt[3] & 0xffu) << 24));
 }
 
-void isp_reg_set_d3d_cfg(unsigned long id, const isp_d3d_cfg_t *cfg)
+void isp_reg_set_d3d_cfg(unsigned long id, const fwi_reg_d3d_cfg_t *cfg)
 {
-    isp_reg_map_t *m = instance(id);
+    fwi_reg_map_t *m = instance(id);
     if (!m || !cfg)
         return;
     store(m->isp_d3d_cfg0, 0xffffffffu,
@@ -524,7 +509,7 @@ void isp_reg_set_d3d_cfg(unsigned long id, const isp_d3d_cfg_t *cfg)
 void isp_reg_set_sensor_offset(unsigned long id, uint32_t r, uint32_t gr,
                                uint32_t gb, uint32_t b)
 {
-    isp_reg_map_t *m = instance(id);
+    fwi_reg_map_t *m = instance(id);
     if (!m)
         return;
     store(m->isp_sensor_offset0, 0x1fff1fffu,
@@ -536,7 +521,7 @@ void isp_reg_set_sensor_offset(unsigned long id, uint32_t r, uint32_t gr,
 void isp_reg_set_dg_gain(unsigned long id, uint32_t r, uint32_t gr, uint32_t gb,
                          uint32_t b)
 {
-    isp_reg_map_t *m = instance(id);
+    fwi_reg_map_t *m = instance(id);
     uint32_t g0, g1;
 
     if (!m)
@@ -554,7 +539,7 @@ void isp_reg_set_dg_gain(unsigned long id, uint32_t r, uint32_t gr, uint32_t gb,
 void isp_reg_set_wb_gain(unsigned long id, uint32_t r, uint32_t gr, uint32_t gb,
                          uint32_t b)
 {
-    isp_reg_map_t *m = instance(id);
+    fwi_reg_map_t *m = instance(id);
     if (!m)
         return;
     store(m->isp_wb_gain0, 0x0fff0fffu, (r & 0xfffu) | ((gr & 0xfffu) << 16));
@@ -563,7 +548,7 @@ void isp_reg_set_wb_gain(unsigned long id, uint32_t r, uint32_t gr, uint32_t gb,
 
 void isp_reg_set_wb_clip(unsigned long id, uint32_t clip)
 {
-    isp_reg_map_t *m = instance(id);
+    fwi_reg_map_t *m = instance(id);
     if (!m)
         return;
     store(m->isp_wb_cfg0, 0x00000fffu, clip & 0xfffu);
@@ -572,7 +557,7 @@ void isp_reg_set_wb_clip(unsigned long id, uint32_t clip)
 void isp_reg_set_lsc(unsigned long id, uint32_t ct_x, uint32_t ct_y,
                      uint32_t rs_val)
 {
-    isp_reg_map_t *m = instance(id);
+    fwi_reg_map_t *m = instance(id);
     uint32_t v;
 
     if (!m)
@@ -584,9 +569,9 @@ void isp_reg_set_lsc(unsigned long id, uint32_t ct_x, uint32_t ct_y,
     store(m->isp_rsc_cfg2, 0x7fffffffu, v);
 }
 
-void isp_reg_set_pltm_cfg(unsigned long id, const isp_pltm_cfg_t *cfg)
+void isp_reg_set_pltm_cfg(unsigned long id, const fwi_reg_pltm_cfg_t *cfg)
 {
-    isp_reg_map_t *m = instance(id);
+    fwi_reg_map_t *m = instance(id);
     if (!m || !cfg)
         return;
     store(m->isp_pltm_cfg0, 0xff0f0f07u,
@@ -610,7 +595,7 @@ void isp_reg_set_pltm_cfg(unsigned long id, const isp_pltm_cfg_t *cfg)
 void isp_reg_set_cfa(unsigned long id, uint32_t dir_th, uint32_t interp_mode,
                      uint32_t zig_zag)
 {
-    isp_reg_map_t *m = instance(id);
+    fwi_reg_map_t *m = instance(id);
     if (!m)
         return;
     store(m->isp_demosaic_cfg0, 0x00f11fffu,
@@ -618,9 +603,9 @@ void isp_reg_set_cfa(unsigned long id, uint32_t dir_th, uint32_t interp_mode,
           ((zig_zag & 0xfu) << 20));
 }
 
-void isp_reg_set_sharp(unsigned long id, const isp_sharp_cfg_t *cfg)
+void isp_reg_set_sharp(unsigned long id, const fwi_reg_sharp_cfg_t *cfg)
 {
-    isp_reg_map_t *m = instance(id);
+    fwi_reg_map_t *m = instance(id);
     if (!m || !cfg)
         return;
     store(m->isp_sharp_edge_stren, 0x0fff0fffu,
@@ -649,7 +634,7 @@ void isp_reg_set_sharp(unsigned long id, const isp_sharp_cfg_t *cfg)
 void isp_reg_set_rgb2rgb_gain_offset(unsigned long id, const uint16_t gain[9],
                                      const uint16_t offset[3])
 {
-    isp_reg_map_t *m = instance(id);
+    fwi_reg_map_t *m = instance(id);
     if (!m || !gain || !offset)
         return;
     store(m->isp_rgb2rgb_gain0, 0x0fff0fffu, gain[0] | (gain[1] << 16));
@@ -665,7 +650,7 @@ void isp_reg_set_rgb2rgb_gain_offset(unsigned long id, const uint16_t gain[9],
 void isp_reg_set_cnr(unsigned long id, uint32_t c_th, uint32_t y_th,
                      uint32_t st_v_y, uint32_t st_h_y)
 {
-    isp_reg_map_t *m = instance(id);
+    fwi_reg_map_t *m = instance(id);
     if (!m)
         return;
     store(m->isp_cnr_cfg0, 0x0fff0fffu, (c_th & 0xfffu) | ((y_th & 0xfffu) << 16));
@@ -675,7 +660,7 @@ void isp_reg_set_cnr(unsigned long id, uint32_t c_th, uint32_t y_th,
 
 void isp_reg_set_saturation(unsigned long id, uint32_t r, uint32_t g, uint32_t b)
 {
-    isp_reg_map_t *m = instance(id);
+    fwi_reg_map_t *m = instance(id);
     if (!m)
         return;
     store(m->isp_satu_cfg0, 0x00000fffu,
@@ -690,7 +675,7 @@ void isp_reg_set_dehaze(unsigned long id)
 void isp_reg_set_rgb2yuv_gain_offset(unsigned long id, const uint16_t gain[9],
                                      const uint16_t offset[3])
 {
-    isp_reg_map_t *m = instance(id);
+    fwi_reg_map_t *m = instance(id);
     if (!m || !gain || !offset)
         return;
     store(m->isp_rgb2yuv_gain0, 0x07ff07ffu, gain[0] | (gain[1] << 16));
@@ -706,7 +691,7 @@ void isp_reg_set_rgb2yuv_gain_offset(unsigned long id, const uint16_t gain[9],
 void isp_reg_set_ae_win(unsigned long id, uint32_t width, uint32_t height,
                         uint32_t hor_start, uint32_t ver_start)
 {
-    isp_reg_map_t *m = instance(id);
+    fwi_reg_map_t *m = instance(id);
     if (!m)
         return;
     store(m->isp_ae_size, 0x0fff0fffu,
@@ -724,7 +709,7 @@ void isp_reg_set_af_en(unsigned long id, uint32_t en_bits)
     static const unsigned char hw_bit[12] = {
         0, 2, 4, 5, 6, 10, 12, 14, 15, 16, 17, 18
     };
-    isp_reg_map_t *m = instance(id);
+    fwi_reg_map_t *m = instance(id);
     uint32_t hw = 0;
     unsigned i;
 
@@ -741,7 +726,7 @@ void isp_reg_set_af_win(unsigned long id, uint32_t hor_num, uint32_t ver_num,
                         uint32_t width, uint32_t height, uint32_t hor_start,
                         uint32_t ver_start)
 {
-    isp_reg_map_t *m = instance(id);
+    fwi_reg_map_t *m = instance(id);
     if (!m)
         return;
     put(m->isp_af_cfg, 0x1fu, 19, hor_num);
@@ -753,9 +738,9 @@ void isp_reg_set_af_win(unsigned long id, uint32_t hor_num, uint32_t ver_num,
           ((hor_start >> 1) & 0xfffu) | (((ver_start >> 1) & 0xfffu) << 16));
 }
 
-void isp_reg_set_af_filter(unsigned long id, const isp_af_filter_t *f)
+void isp_reg_set_af_filter(unsigned long id, const fwi_reg_af_filter_t *f)
 {
-    isp_reg_map_t *m = instance(id);
+    fwi_reg_map_t *m = instance(id);
     if (!m || !f)
         return;
     store(m->isp_af_filter[0], 0x3fffffffu,
@@ -801,7 +786,7 @@ void isp_reg_set_af_filter(unsigned long id, const isp_af_filter_t *f)
 void isp_reg_set_awb_satur_lim(unsigned long id, uint32_t lim_r, uint32_t lim_g,
                                uint32_t lim_b)
 {
-    isp_reg_map_t *m = instance(id);
+    fwi_reg_map_t *m = instance(id);
     if (!m)
         return;
     (void)lim_g;    /* the spec's deployed behaviour never programs lim_g */
@@ -813,7 +798,7 @@ void isp_reg_set_awb_satur_lim(unsigned long id, uint32_t lim_r, uint32_t lim_g,
 void isp_reg_set_awb_win(unsigned long id, uint32_t width, uint32_t height,
                          uint32_t hor_start, uint32_t ver_start)
 {
-    isp_reg_map_t *m = instance(id);
+    fwi_reg_map_t *m = instance(id);
     if (!m)
         return;
     store(m->isp_awb_cfg2, 0x01ff01ffu,
@@ -826,7 +811,7 @@ void isp_reg_set_awb_win(unsigned long id, uint32_t width, uint32_t height,
 void isp_reg_set_hist_win(unsigned long id, uint32_t width, uint32_t height,
                           uint32_t hor_start, uint32_t ver_start)
 {
-    isp_reg_map_t *m = instance(id);
+    fwi_reg_map_t *m = instance(id);
     if (!m)
         return;
     store(m->isp_hist_size, 0x0fff0fffu,
@@ -839,7 +824,7 @@ void isp_reg_set_hist_win(unsigned long id, uint32_t width, uint32_t height,
 
 void isp_reg_set_afs_anti_flick(unsigned long id, uint32_t line_inc)
 {
-    isp_reg_map_t *m = instance(id);
+    fwi_reg_map_t *m = instance(id);
     if (!m)
         return;
     put(m->isp_afs_cfg0, 0x3fu, 0, line_inc);
@@ -851,7 +836,7 @@ void isp_reg_set_afs_anti_flick(unsigned long id, uint32_t line_inc)
 
 void isp_reg_set_d3d_lum_th_lut(unsigned long id, const void *src)
 {
-    isp_reg_map_t *m = instance(id);
+    fwi_reg_map_t *m = instance(id);
     if (!m || !src)
         return;
     memcpy(m->isp_d3d_lum_th_lut, src, ISP_LUT_TH_BYTES);
@@ -859,7 +844,7 @@ void isp_reg_set_d3d_lum_th_lut(unsigned long id, const void *src)
 
 void isp_reg_set_d3d_bright_th_lut(unsigned long id, const void *src)
 {
-    isp_reg_map_t *m = instance(id);
+    fwi_reg_map_t *m = instance(id);
     if (!m || !src)
         return;
     memcpy(m->isp_d3d_bright_th_lut, src, ISP_LUT_TH_BYTES);
@@ -867,7 +852,7 @@ void isp_reg_set_d3d_bright_th_lut(unsigned long id, const void *src)
 
 void isp_reg_set_d3d_ref_noise_lut(unsigned long id, const void *src)
 {
-    isp_reg_map_t *m = instance(id);
+    fwi_reg_map_t *m = instance(id);
     if (!m || !src)
         return;
     memcpy(m->isp_d3d_ref_noise_lut, src, ISP_LUT_TH_BYTES);
@@ -889,7 +874,7 @@ static void d3d_k_write(uint32_t *reg[ISP_D3D_K_REGS], const uint8_t *vals)
 
 void isp_reg_set_d3d_k_lut(unsigned long id, const uint8_t *vals)
 {
-    isp_reg_map_t *m = instance(id);
+    fwi_reg_map_t *m = instance(id);
     if (!m || !vals)
         return;
     d3d_k_write(m->isp_d3d_k_lut, vals);
@@ -897,7 +882,7 @@ void isp_reg_set_d3d_k_lut(unsigned long id, const uint8_t *vals)
 
 void isp_reg_set_d3d_k_delta_lut(unsigned long id, const uint8_t *vals)
 {
-    isp_reg_map_t *m = instance(id);
+    fwi_reg_map_t *m = instance(id);
     if (!m || !vals)
         return;
     d3d_k_write(m->isp_d3d_k_delta_lut, vals);
@@ -905,7 +890,7 @@ void isp_reg_set_d3d_k_delta_lut(unsigned long id, const uint8_t *vals)
 
 void isp_reg_set_sharp_val_lut(unsigned long id, const void *src)
 {
-    isp_reg_map_t *m = instance(id);
+    fwi_reg_map_t *m = instance(id);
     if (!m || !src)
         return;
     memcpy(m->isp_sharp_val_lut, src, ISP_LUT_TH_BYTES);
@@ -913,7 +898,7 @@ void isp_reg_set_sharp_val_lut(unsigned long id, const void *src)
 
 void isp_reg_set_sharp_edge_lum_lut(unsigned long id, const void *src)
 {
-    isp_reg_map_t *m = instance(id);
+    fwi_reg_map_t *m = instance(id);
     if (!m || !src)
         return;
     memcpy(m->isp_sharp_edge_lum_lut, src, ISP_LUT_TH_BYTES);
@@ -921,7 +906,7 @@ void isp_reg_set_sharp_edge_lum_lut(unsigned long id, const void *src)
 
 void isp_reg_set_sharp_hfrq_lum_lut(unsigned long id, const void *src)
 {
-    isp_reg_map_t *m = instance(id);
+    fwi_reg_map_t *m = instance(id);
     if (!m || !src)
         return;
     memcpy(m->isp_sharp_hfrq_lum_lut, src, ISP_LUT_TH_BYTES);
@@ -929,7 +914,7 @@ void isp_reg_set_sharp_hfrq_lum_lut(unsigned long id, const void *src)
 
 void isp_reg_set_sharp_hsv_lut(unsigned long id, const void *src)
 {
-    isp_reg_map_t *m = instance(id);
+    fwi_reg_map_t *m = instance(id);
     if (!m || !src)
         return;
     memcpy(m->isp_sharp_hsv_lut, src, ISP_LUT_TH_BYTES);
@@ -937,7 +922,7 @@ void isp_reg_set_sharp_hsv_lut(unsigned long id, const void *src)
 
 void isp_reg_set_sharp_s_map_lut(unsigned long id, const void *src)
 {
-    isp_reg_map_t *m = instance(id);
+    fwi_reg_map_t *m = instance(id);
     if (!m || !src)
         return;
     memcpy(m->isp_sharp_s_map_lut, src, ISP_LUT_SHARP_SMAP_BYTES);
@@ -945,7 +930,7 @@ void isp_reg_set_sharp_s_map_lut(unsigned long id, const void *src)
 
 void isp_reg_set_d2d_lp0_np_lut(unsigned long id, const void *src)
 {
-    isp_reg_map_t *m = instance(id);
+    fwi_reg_map_t *m = instance(id);
     if (!m || !src)
         return;
     memcpy(m->isp_d2d_lp0_np_lut, src, ISP_LUT_TH_BYTES);
@@ -953,7 +938,7 @@ void isp_reg_set_d2d_lp0_np_lut(unsigned long id, const void *src)
 
 void isp_reg_set_d2d_lp1_np_lut(unsigned long id, const void *src)
 {
-    isp_reg_map_t *m = instance(id);
+    fwi_reg_map_t *m = instance(id);
     if (!m || !src)
         return;
     memcpy(m->isp_d2d_lp1_np_lut, src, ISP_LUT_TH_BYTES);
@@ -961,7 +946,7 @@ void isp_reg_set_d2d_lp1_np_lut(unsigned long id, const void *src)
 
 void isp_reg_set_d2d_lp2_np_lut(unsigned long id, const void *src)
 {
-    isp_reg_map_t *m = instance(id);
+    fwi_reg_map_t *m = instance(id);
     if (!m || !src)
         return;
     memcpy(m->isp_d2d_lp2_np_lut, src, ISP_LUT_TH_BYTES);
@@ -969,7 +954,7 @@ void isp_reg_set_d2d_lp2_np_lut(unsigned long id, const void *src)
 
 void isp_reg_set_d2d_lp3_np_lut(unsigned long id, const void *src)
 {
-    isp_reg_map_t *m = instance(id);
+    fwi_reg_map_t *m = instance(id);
     if (!m || !src)
         return;
     memcpy(m->isp_d2d_lp3_np_lut, src, ISP_LUT_TH_BYTES);
@@ -977,7 +962,7 @@ void isp_reg_set_d2d_lp3_np_lut(unsigned long id, const void *src)
 
 void isp_reg_set_af_square_lut(unsigned long id, const void *src)
 {
-    isp_reg_map_t *m = instance(id);
+    fwi_reg_map_t *m = instance(id);
     if (!m || !src)
         return;
     memcpy(m->isp_af_square_lut, src, ISP_AF_SQUARE_WORDS * 4u);
@@ -997,7 +982,7 @@ static void msc_write(uint32_t *reg, const uint16_t *vals)
 
 void isp_reg_set_msc_blw_lut(unsigned long id, const uint16_t *vals)
 {
-    isp_reg_map_t *m = instance(id);
+    fwi_reg_map_t *m = instance(id);
     if (!m || !vals)
         return;
     msc_write(m->isp_msc_blw_lut, vals);
@@ -1005,7 +990,7 @@ void isp_reg_set_msc_blw_lut(unsigned long id, const uint16_t *vals)
 
 void isp_reg_set_msc_blh_lut(unsigned long id, const uint16_t *vals)
 {
-    isp_reg_map_t *m = instance(id);
+    fwi_reg_map_t *m = instance(id);
     if (!m || !vals)
         return;
     msc_write(m->isp_msc_blh_lut, vals);
@@ -1013,7 +998,7 @@ void isp_reg_set_msc_blh_lut(unsigned long id, const uint16_t *vals)
 
 void isp_reg_set_msc_blw_dlt_lut(unsigned long id, const uint16_t *vals)
 {
-    isp_reg_map_t *m = instance(id);
+    fwi_reg_map_t *m = instance(id);
     if (!m || !vals)
         return;
     msc_write(m->isp_msc_blw_dlt_lut, vals);
@@ -1021,7 +1006,7 @@ void isp_reg_set_msc_blw_dlt_lut(unsigned long id, const uint16_t *vals)
 
 void isp_reg_set_msc_blh_dlt_lut(unsigned long id, const uint16_t *vals)
 {
-    isp_reg_map_t *m = instance(id);
+    fwi_reg_map_t *m = instance(id);
     if (!m || !vals)
         return;
     msc_write(m->isp_msc_blh_dlt_lut, vals);
@@ -1029,7 +1014,7 @@ void isp_reg_set_msc_blh_dlt_lut(unsigned long id, const uint16_t *vals)
 
 void isp_reg_set_lca_pf_satu_lut(unsigned long id, const void *src)
 {
-    isp_reg_map_t *m = instance(id);
+    fwi_reg_map_t *m = instance(id);
     if (!m || !src)
         return;
     memcpy(m->isp_lca_pf_satu_lut, src, ISP_LCA_SATU_BYTES);
@@ -1037,7 +1022,7 @@ void isp_reg_set_lca_pf_satu_lut(unsigned long id, const void *src)
 
 void isp_reg_set_lca_gf_satu_lut(unsigned long id, const void *src)
 {
-    isp_reg_map_t *m = instance(id);
+    fwi_reg_map_t *m = instance(id);
     if (!m || !src)
         return;
     memcpy(m->isp_lca_gf_satu_lut, src, ISP_LCA_SATU_BYTES);

@@ -1,11 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 # Copyright (C) 2026 freewinner contributors
-#
-# H.264 frame-level rate-control unit (spec/10-rate-control.md, r4). Pure
-# computation, no device dependency: the host test drives the spec's own
-# closed-loop plant (section 6) against the unit and checks section 3's
-# contract, and checks the first-picture QP ladder exactly against
-# spec/vectors/rc_first_qp*.csv.
+# H.264 frame-level rate control (spec 10), pure computation. test_rc checks it
+# against the RC_VECTOR_DIR vectors (not shipped; SKIP without them).
 
 H264_RC_SRC  := src/h264/rc/h264_rc.c
 H264_RC_OBJS := $(BUILD)/h264/rc/h264_rc.o
@@ -15,9 +11,12 @@ $(BUILD)/h264/rc/h264_rc.o: $(H264_RC_SRC) $(H264_RC_HDRS) | $(BUILD)
 	@mkdir -p $(dir $@)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
+# Black-box vectors: private, not in this repository (test skips without them).
+RC_VECTOR_DIR ?= $(CURDIR)/../spec/vectors
+
 $(BUILD)/test_rc: tests/h264/test_rc.c $(H264_RC_OBJS) $(H264_RC_HDRS) | $(BUILD)
 	$(CC) $(CPPFLAGS) $(CFLAGS) \
-	    -DRC_VECTOR_DIR='"$(CURDIR)/../spec/vectors"' \
+	    -DRC_VECTOR_DIR='"$(RC_VECTOR_DIR)"' \
 	    $< $(H264_RC_OBJS) $(LDFLAGS) -o $@
 
 H264_RC_TEST := $(BUILD)/test_rc

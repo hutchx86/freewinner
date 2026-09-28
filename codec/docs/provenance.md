@@ -47,7 +47,8 @@ workspace excluded).
 | Compiled-in table | Where | What it is | How obtained / class |
 |---|---|---|---|
 | `isp_pattern_in_mode[20]` | `src/h264/isp/h264_isp.c:25` | `fwm_venc_pixel_format_e` → the ISP control word's input-layout code `[31:27]`, full 20-entry map: `{0,4,0x18,0x1a,2,6,0x1c,0x1e,1,3,5,7,0x10,0x12,0x14,0x16,0x0a,0x0c,8,0x15}` | **Interface fact** (hardware register field): the mapping and the 20-entry width are reproduced in `spec/13-isp-and-picture-ring.md` §1.1, recovered from the deployed encoder object (2026-09-21). Index 1 (`YVU420SP`, the format the VI delivers) = 4 — omitting it made the ISP read NV21 as NV12 and swap U/V. |
-| `group_off[]` | `src/h264/ve/ve_driver.c:381` | VE register-group base offsets `{0x000, 0x100, 0x200, 0x300, 0x400, 0x500, 0xe00}` for the register-group base | **Interface fact** (hardware register layout), matching `freecodec_ve_register_group` in `include/freecodec/ve_iface.h:25`. |
+| `group_off[]` | `src/h264/ve/ve_driver.c:378` | VE register-group base offsets `{0x000, 0x100, 0x200, 0x300, 0x400, 0x500, 0xe00}` for the register-group base | **Interface fact** (hardware register layout), matching `fc_ve_group` in `include/freecodec/ve_iface.h:30`. |
+| `ENC_SCRIPT_WRITE_OFFSETS[]` (35 offsets) | `src/h264/enc/freecodec_enc.c:53` | The encoder-block registers the per-picture register script writes back (spec 12 §5.5 step 6) | **Derived from our own code**: exactly the offsets our register-configuration step (`freecodec_h264_config_registers`, `src/h264/regs/h264_regs.c`) computes, minus the bit-writer registers `0x18`/`0x20` (driven by the slice-header feed), plus `0x1c`, whose read-modify-write seed comes from the live register. The offsets themselves are encoder register addresses (interface facts). Restricting the write-back was a fix found on our own camera: a whole-window write also zeroed `0x18`. |
 
 Dispatch tables of our own function pointers
 --------------------------------------------
@@ -57,8 +58,8 @@ struct layout, the name strings and the slot order are interface facts.
 
 | Table | Where | Slots |
 |---|---|---|
-| `g_default_port` | `src/h264/ve/ve_driver.c:135` | The nine libc/pthread port entries (open/close/ioctl/mmap/munmap + four mutex ops). Our injectable seam (`include/freecodec/ve_port.h`); no vendor data. |
-| `g_ve_ops` | `src/h264/ve/ve_driver.c:583` | The `fc_ve_ops` implementation. The slot order is the consumer ABI (`include/freecodec/ve_iface.h:115`); the handlers are ours. |
+| `g_default_port` | `src/h264/ve/ve_driver.c:132` | The nine libc/pthread port entries (open/close/ioctl/mmap/munmap + four mutex ops). Our injectable seam (`include/freecodec/ve_port.h`); no vendor data. |
+| `g_ve_ops` | `src/h264/ve/ve_driver.c:573` | The `fc_ve_ops` implementation. The slot order is the consumer ABI (`include/freecodec/ve_iface.h:117`); the handlers are ours. |
 
 Literal constants that are not tables
 -------------------------------------
@@ -78,22 +79,71 @@ recovered data tables:
   reference-only condition (`spec/h264-idr-divergence.md`).
   A few register field positions/values in `src/h264/regs/h264_regs.c` were
   instead recovered from the withheld golden: the `fast_enc` ME-control bits 4
-  and 20 (`:65-66`), `pic_var_chroma 0x1e` / `pic_var_luma 0x0c` (`:97-98`) and
-  `maxcoef 0x20` (`:90`). Those few are **observed**; the golden is not
+  and 20 (`:64-65`), `pic_var_chroma 0x1e` / `pic_var_luma 0x0c` (`:96-97`) and
+  `maxcoef 0x20` (`:89`). Those few are **observed**; the golden is not
   shipped.
 - **MPEG-4 / AAC standard values** in `src/aac/freecodec_aac.c`: the sampling-
-  frequency index switch in `fc_sf_index` (lines 30-48; the ISO/IEC 14496-3
+  frequency index switch in `fc_sf_index` (lines 30-47; the ISO/IEC 14496-3
   sampling frequencies), the channel map in `fc_chan_config`, and the 7-byte
   no-CRC ADTS header bytes/layout in `fc_adts_header` (`0xFF 0xF1 … 0xFC`,
   profile 1 = AAC-LC; lines 56-69).
 - **Interoperability interface facts** in `include/freecodec/`: the
-  `/dev/cedar_dev` ioctl codes and register-group enum (`ve_iface.h:25,78`), the
-  `fc_ve_ops` slot order (`ve_iface.h:128`), the `freecodec_ve_port`
+  `/dev/cedar_dev` ioctl codes and register-group enum (`ve_iface.h:55,30`), the
+  `fc_ve_ops` slot order (`ve_iface.h:117`), the `freecodec_ve_port`
   seam (`ve_port.h:17`), and the struct/enum layouts in `h264_regs.h`,
   `h264_isp.h`, `h264_headers.h`, `h264_gop.h` and `aac_iface.h`. These
   reproduce the deployed ABI; they contain no source expression.
 
+------------
+-----
+Observed behaviour kept in code
+-------------------------------
+
+Two small rate-control tables are kept in the source as **observed
+behaviour**: they were determined from the output of the stock encoder running
+on our own camera (the bit budget and QP it chose, and the MB-RC table it left
+in engine memory), not from vendor source. Neither is a large data table; both
+are small enough to state in full.
+
+- **First-QP ladder** (`first_qp_ladder`, `src/h264/rc/h264_rc.c:43`): the
+  initial slice QP chosen from bits per pixel, ten steps from `bpp < 0.01`
+  (QP 40) to `bpp >= 2.4` (QP 15). Used only for the first picture of a
+  sequence; afterwards our own rate-control model sets the QP.
+- **MB-RC tolerance weights** (`weight32[6]` inside `fc_mbrc_build_table`,
+  `include/freecodec/h264_bufs.h:54`): `{38, 45, 51, 26, 19, 13}` in 1/32
+  units, the three upper and three lower limits (1 +/- 6/32, 13/32, 19/32)
+  applied to each row's cumulative share of the picture's activity.
+
+The black-box vectors these were checked against are not shipped (see
+"Shipped test data").
+
+Shipped test data
+-----------------
+
+Only two data files are in the repository; both are small and their origin is
+our own hardware or our own formula:
+
+- **`spec/vectors/regs_observed_ref_high.csv`** (47 rows): encoder and ISP
+  register values captured on our own camera while the stock encoder coded the
+  high-resolution stream, reduced to the modal value per register for P and I
+  pictures with the share of pictures that held it. `tests/h264/test_enc.c`
+  (register-parity test) checks that our register unit reproduces the modal
+  values of the address-independent registers.
+- **`codec/tests/h264/data/subpic_size.csv`** (19 rows): auxiliary
+  reference-plane sizes for common picture sizes. Every row is reproduced by
+  our own size formula (`fc_aux_plane_bytes`, `include/freecodec/h264_bufs.h`,
+  spec r2/03 §2); `tests/h264/test_bufsize.c` checks it.
+
+**Not shipped**: the black-box and emulator vectors used to pin the rate
+control and the MB-RC table (the former `spec/vectors/rc_*.csv` and
+`codec/tests/h264/data/mbrc_table.csv`). They stay in the private analysis
+workspace. The tests that use them print `SKIP` and pass when the files are
+absent; point them at a copy with `make check RC_VECTOR_DIR=<dir>` (`test_rc`,
+`mk/h264_rc.mk`) and `make check MBRC_VECTORS=<file>` (`test_mbrc`,
+`mk/h264.mk`).
+
 Re-derived in code
+------------------
 ------------------
 
 - The ISP bilinear scaler tap pair (`isp_scaler_pair`,
@@ -224,11 +274,11 @@ Excluded from this inventory
 ----------------------------
 
 - **Function-local scratch arrays**, computed per call and holding no fixed
-  data: the header bit-writer `h264_bw.buf[256]`
-  (`src/h264/headers/h264_headers.c:16`) and the allocated context arrays
+  data: the header bit-writer `h264_bw.buf[H264_BW_MAX_BYTES]` (256 bytes,
+  `src/h264/headers/h264_headers.c:16`) and the allocated context arrays
   `shadow[13]`/`scaler_coeff[64]` (`src/h264/isp/h264_isp.c:18-19`).
 - **Mutable process state**, not literal data: `g_env`
-  (`src/h264/ve/ve_driver.c:85`) and `g_port` (`:147`).
+  (`src/h264/ve/ve_driver.c:82`) and `g_port` (`:144`).
 - **Name strings**: the encoder device-table name strings and the debug strings;
   labels, not tables.
 
@@ -246,9 +296,9 @@ Third-party components
 
 The AAC path is built on upstream **FAAC** (Freeware Advanced Audio Coder,
 Copyright (C) 1999-2026 the FAAC authors), **LGPL-2.1-or-later**. FAAC is
-**not vendored**: `codec/mk/aac.mk:6` takes a builder-supplied `FAAC_DIR` and
-its header comment states it "is never vendored into this repo" (`mk/aac.mk:3-4,
-32-33`); `docs/integration-aac.md` states that the archive this subproject
+**not vendored**: `codec/mk/aac.mk:6` takes a builder-supplied `FAAC_DIR`,
+its comments state it is never vendored (`mk/aac.mk:3-4, 30`), and the AAC unit
+is skipped when it is absent (`mk/aac.mk:32-33`); `docs/integration-aac.md` states that the archive this subproject
 produces is the FAAC-backed replacement for `-laacenc`. FAAC's copyright and
 licence must accompany any binary distribution; the full third-party statement
 is in `codec/CREDITS.md`. The H.264 path links only libc/libm (and pthread for

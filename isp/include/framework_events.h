@@ -1,19 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 /* framework_events.h - V4L2 control/event ids used by the framework and the
- * event-loop declarations (20 §4.7, §5, §11).  Kept file name (owner Q2).
- */
+ * event-loop declarations. */
 #ifndef FRAMEWORK_EVENTS_H
 #define FRAMEWORK_EVENTS_H
 
 #include <linux/videodev2.h>
 #include <stdint.h>
 
-/* Legacy/vendor V4L2 control ids (20 §4.7, §11.2): user class 0x00980900,
- * camera class 0x009a0900, platform private 0x00981950.  Each is defined only
- * if the kernel headers did not already provide it, so the framework builds
- * against both the target's vendor headers and a host's upstream ones (some
- * of these -- EXPOSURE_BIAS, WHITE_BALANCE_PRESET, AUTO_BRIGHTNESS, WDR --
- * are absent from upstream v4l2-controls.h). */
+/* Vendor V4L2 control ids (user 0x00980900, camera 0x009a0900, platform 0x00981950),
+ * each defined only if absent, so both vendor and upstream kernel headers work. */
 #ifndef V4L2_CID_BRIGHTNESS
 #define V4L2_CID_BRIGHTNESS             (0x00980900)
 #endif
@@ -150,8 +145,8 @@
 #define V4L2_EVENT_VIN_H3A      (V4L2_EVENT_PRIVATE_START + 0x101)
 #define V4L2_EVENT_VIN_ISP_OFF  (V4L2_EVENT_PRIVATE_START + 0x103)
 
-/* stats event payload in event.u.data (20 §4.6) */
-struct isp_stat_event {
+/* stats event payload in event.u.data */
+struct fwi_stat_event {
     uint32_t frame_number;
     uint16_t config_counter;
     uint8_t buf_err;

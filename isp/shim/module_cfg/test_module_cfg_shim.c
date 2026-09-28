@@ -1,21 +1,8 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
-/*
- * test_module_cfg_shim.c - host self-test for the isp_module_cfg SDK-ABI shim.
- *
- * Drives the SDK entry points with a `struct isp_module_config` and checks that
- * the translation layer carries the inputs into the clean core and the clean
- * outputs back out:
- *   - linear: the deployed direction is linear_table -> fe_table, so the shim
- *     must fill the fe_table target with the linear_table contents (this is the
- *     bug the SDK differential exists to catch);
- *   - the embedded -> pointer target copies (cem/drc/pltm/wdr/gamma/saturation);
- *   - the d3d embedded outputs (tdnf_th -> tdnf_lum_th / tdnf_bri_th);
- *   - register programming through isp_map_addr + isp_hardware_update.
- *
- * The host ABI check in the shim is skipped (host pointers are 64-bit); the ARM
- * differential is the authoritative ABI test.
- */
+/* test_module_cfg_shim.c - host test for the module_cfg shim: linear_table ->
+ * fe_table direction, embedded -> target table copies, d3d outputs and register
+ * programming. The 32-bit ABI size check only runs on the ARM target. */
 #include <stdio.h>
 #include <string.h>
 
@@ -23,9 +10,8 @@
 #include "freeisp/isp_dims.h"
 #include "module_cfg_shim.h"
 
-/* musl's static libm objects carry .ARM.exidx referencing the C++ unwinder;
- * the program never throws, so satisfy the linker as the other ARM harnesses
- * do. */
+/* musl static libm .ARM.exidx references the C++ unwinder; nothing throws,
+ * so weak stubs satisfy the linker. */
 __attribute__((weak)) int __aeabi_unwind_cpp_pr0(void) { return 0; }
 __attribute__((weak)) int __aeabi_unwind_cpp_pr1(void) { return 0; }
 __attribute__((weak)) int __aeabi_unwind_cpp_pr2(void) { return 0; }

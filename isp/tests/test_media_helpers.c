@@ -1,12 +1,7 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
-/*
- * test_media_helpers.c - host tests for the clean-room copy_MPP_CHN_S helper.
- *
- * Behaviour source: spec/media_utils/media_helpers.md section 2/4.
- * A fully populated descriptor (including a non-zero sentinel pattern) is
- * copied and every field plus the return value is asserted.
- */
+/* test_media_helpers.c - host tests for copy_MPP_CHN_S (spec
+ * media_utils/media_helpers.md 2/4): every field and the return value. */
 #include "utils/media_helpers.h"
 
 #include <stddef.h>

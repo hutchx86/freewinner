@@ -1,19 +1,7 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
-/*
- * test_framework_events.c - host unit tests for the clean-room event
- * multiplexer, ported to its new private home (framework_internal.h's
- * isp_loop_* API / struct isp_event_loop) per the H task-1/decision-#2
- * repoint: the public framework_events.h (owner Q2, kept file name) is now a
- * different, unrelated V4L2-CID header, and the fd-mux/select multiplexer
- * moved to a private header the framework alone uses.
- *
- * Covers init, watch/unwatch bookkeeping, maxfd, duplicate-fd dedup, select
- * dispatch order, stop-from-callback, EINTR retry and timeout -- the same
- * ground the old test covered against the old public API, retargeted to the
- * new array-based struct isp_event_loop (no exposed rfds/wfds/efds or
- * intrusive list; select's fd_sets are local to isp_loop_run() now).
- */
+/* test_framework_events.c - host tests for the private isp_loop_* event loop:
+ * watch bookkeeping, maxfd, dedup, dispatch order, stop, EINTR and timeout. */
 #define _POSIX_C_SOURCE 200809L
 
 #include "framework_internal.h"
@@ -26,13 +14,8 @@
 #include <sys/socket.h>
 #include <sys/time.h>
 
-/*
- * events.c's other functions (isp_event_start/stop, subdev/stats handlers)
- * are in the same object file as isp_loop_*; whole-object linking means their
- * referenced symbols must resolve even though this test never calls them.
- * Minimal stand-ins only -- never exercised here (this test only calls
- * isp_loop_init/watch/unwatch/start/stop/run directly).
- */
+/* events.c is linked whole, so its other handlers' symbols need these
+ * minimal stand-ins; none are exercised here. */
 struct hw_isp_media_dev media_params;
 
 static int test_select(int nfds, fd_set *r, fd_set *w, fd_set *e,
@@ -41,8 +24,8 @@ static int test_select(int nfds, fd_set *r, fd_set *w, fd_set *e,
     return select(nfds, r, w, e, tmo);
 }
 
-static const struct isp_uapi_sys g_test_sys = { .select = test_select };
-const struct isp_uapi_sys *isp_uapi_sys = &g_test_sys;
+static const struct fwi_uapi_sys g_test_sys = { .select = test_select };
+const struct fwi_uapi_sys *isp_uapi_sys = &g_test_sys;
 
 void isp_handle_ctrl_event(fwi_isp_ctx_t *ctx, const struct v4l2_event *ev)
 {
@@ -89,7 +72,7 @@ static int g_failures;
 /* Dispatch logging                                                    */
 /* ------------------------------------------------------------------ */
 
-static struct isp_event_loop *g_loop;
+static struct fwi_event_loop *g_loop;
 static int g_hits;
 static int g_order[16];
 
@@ -119,7 +102,7 @@ static void cb_stop(void *priv)
 }
 
 /* index of fd in the watch array, or -1 */
-static int watch_index(const struct isp_event_loop *l, int fd)
+static int watch_index(const struct fwi_event_loop *l, int fd)
 {
     int i;
 
@@ -153,7 +136,7 @@ static void on_alarm(int sig)
 
 static void test_init(void)
 {
-    struct isp_event_loop l;
+    struct fwi_event_loop l;
 
     memset(&l, 0xAA, sizeof(l));
     isp_loop_init(&l);
@@ -166,7 +149,7 @@ static void test_init(void)
 
 static void test_watch_unwatch(void)
 {
-    struct isp_event_loop l;
+    struct fwi_event_loop l;
     int p1[2];
     int p2[2];
     int expect_max;
@@ -220,7 +203,7 @@ static void test_watch_unwatch(void)
 
 static void test_duplicate_watch_updates_in_place(void)
 {
-    struct isp_event_loop l;
+    struct fwi_event_loop l;
     int p[2];
     int q[2];
 
@@ -256,7 +239,7 @@ static void test_duplicate_watch_updates_in_place(void)
 
 static void test_dispatch_order(void)
 {
-    struct isp_event_loop l;
+    struct fwi_event_loop l;
     int pa[2];
     int pb[2];
     int sv[2];
@@ -305,7 +288,7 @@ static void test_dispatch_order(void)
 
 static void test_mixed_readiness(void)
 {
-    struct isp_event_loop l;
+    struct fwi_event_loop l;
     int pa[2];
     int pb[2];
     int pw[2];
@@ -345,7 +328,7 @@ static void test_mixed_readiness(void)
 
 static void test_stop_halts_dispatch(void)
 {
-    struct isp_event_loop l;
+    struct fwi_event_loop l;
     int pa[2];
     int pb[2];
     char c = 'a';
@@ -378,7 +361,7 @@ static void test_stop_halts_dispatch(void)
 
 static void test_eintr_retry(void)
 {
-    struct isp_event_loop l;
+    struct fwi_event_loop l;
     int p[2];
     struct sigaction sa;
     struct sigaction old;
@@ -423,7 +406,7 @@ static void test_eintr_retry(void)
 
 static void test_timeout_leaves_done(void)
 {
-    struct isp_event_loop l;
+    struct fwi_event_loop l;
 
     isp_loop_init(&l);
     isp_loop_start(&l);
@@ -433,7 +416,7 @@ static void test_timeout_leaves_done(void)
 
 static void test_select_error_leaves_done(void)
 {
-    struct isp_event_loop l;
+    struct fwi_event_loop l;
     int p[2];
 
     if (pipe(p) != 0) {
@@ -453,7 +436,7 @@ static void test_select_error_leaves_done(void)
 
 static void test_start_stop(void)
 {
-    struct isp_event_loop l;
+    struct fwi_event_loop l;
 
     isp_loop_init(&l);
     isp_loop_stop(&l);

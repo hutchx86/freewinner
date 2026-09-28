@@ -1,12 +1,7 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
-/*
- * gtm_clean.c - clean-room global tone-mapping module.
- *
- * Implements the behaviour specified in spec/gtm.md.  Every tuning
- * table is injected at runtime through freeisp_get_tables(); this file
- * contains no table data.  Sections below mirror the spec's numbered stages.
- */
+/* gtm_clean.c - global tone-mapping module (spec/gtm.md; sections mirror its stages).
+ * Every tuning table is injected via freeisp_get_tables(); no table data here. */
 #include "gtm_clean.h"
 #include "freeisp/sdiv.h"
 
@@ -150,10 +145,8 @@ static void gtm_statistic(gtm_entity_t *e, const int32_t *h,
     for (i = 0; i < GTM_NCURVE; i++)
         e->cum_hist[i] = c[i];
 
-    /* Otsu-style threshold scan over odd bins.  The class weights and the
-     * between-class measure are unsigned 32-bit, as in the object: a
-     * normalised histogram can sum slightly above 4096, in which case the
-     * upper weight wraps instead of going negative. */
+    /* Otsu-style scan over odd bins. Weights and the between-class measure are unsigned 32-bit
+     * as deployed: a normalised histogram summing above 4096 wraps the upper weight. */
     for (k = 1; k <= 253; k += 2) {
         uint32_t cw = (uint32_t)c[k];
         uint32_t uw = (uint32_t)GTM_Q12 - cw;
@@ -829,11 +822,8 @@ int gtm_run(gtm_entity_t *e, const gtm_clean_stats_t *stats,
     result->curve = p->curve;
     result->curve_prev = p->curve_prev;
 
-    /*
-     * An empty histogram (fix_sum == 0) leaves the equalisation path without a
-     * generated curve, but the run must still fall through to the curve
-     * refresh and the brightness/contrast blend rather than returning here.
-     */
+    /* An empty histogram (fix_sum == 0) generates no curve, but the run must still fall
+     * through to the curve refresh and the brightness/contrast blend. */
     if (p->mode == GTM_MODE_DYNAMIC_RANGE) {
         (void)gtm_eq_path(e, stats);
         gtm_prefilter(e);

@@ -1,15 +1,10 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
 
-/* Encoder API framework (package C): the `VideoEnc*` entry points that sit
- * between the media daemon and the encoder support library / codec device. It
- * owns one encoder context, selects a device table at create, drives the input
- * picture queues and the device per frame, and forwards parameters. Behaviour
- * is cleanroom/middleware/fenc/SPEC.md; this is original clean-room code.
- *
- * Deliberately not implemented (see NOT-IMPLEMENTED.md): H.265/JPEG/VP8 codecs,
- * the still-JPEG `AWJpecEnc`/ION path, the create-time SDK banner, and the
- * compile-time-disabled speed log. */
+/* Encoder API framework: the `VideoEnc*` entry points between the media daemon
+ * and the support library / codec device. One context per encoder: selects the
+ * device table, drives the input queues and the device, forwards parameters.
+ * Omissions (H.265/JPEG/VP8, still-JPEG) are listed in NOT-IMPLEMENTED.md. */
 
 #include <stdint.h>
 #include <stdio.h>
@@ -23,7 +18,7 @@
 
 #define FENC_LOG(...) fprintf(stderr, "fenc: " __VA_ARGS__)
 
-/* Framework constants (SPEC §5.7). */
+/* Framework constants. */
 #define FENC_INPUT_SLOTS      4
 #define FENC_IC_H264_VER2_MIN 0x1708u  /* at or above: H.264 -> the ver2 device */
 #define FENC_IC_PERF_MODE     0x1639u  /* only this IC has the encoder-perf knob */
@@ -267,9 +262,8 @@ int VideoEncodeOneFrame(fwm_venc_handle_t *encoder)
     if (ctx->ve_ops->unlock)
         ctx->ve_ops->unlock(ctx->ve_self);
 
-    /* Whether or not the encode succeeded, the picture moves to the used queue
-     * so the caller can reclaim it. Matching is on id; the manager keeps its
-     * own (unadjusted) copy. */
+    /* Success or not, the picture moves to the used queue (matched on id) so
+     * the caller can reclaim it. */
     (void)AddUsedInputBuffer(ctx->fbm, (vb_input_buffer *)&ctx->peek);
 
     return rc;

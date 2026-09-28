@@ -1,17 +1,8 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
-/*
- * freeisp - runtime-injected view of the compiled-in libisp constant tables.
- *
- * These tables are NOT compiled into freeisp. They are located inside the
- * stock on-camera `rmm` image at runtime (see rmm_tables.h) and handed to the
- * algorithm modules through this struct. Only `Ae_DeltaLvTbl` has writable
- * storage (the AE module rewrites it while building its tone curve); every other
- * pointer is const.
- *
- * Dimensions follow the target algorithm library's declarations for these
- * tables (ARMv7).
- */
+/* freeisp - runtime-injected view of the libisp constant tables, located in the stock
+ * rmm image (see rmm_tables.h). All const except Ae_DeltaLvTbl, which the AE module
+ * rewrites while building its tone curve. Dimensions follow the ARMv7 library. */
 #ifndef FREEISP_TABLES_H
 #define FREEISP_TABLES_H
 
@@ -60,10 +51,10 @@ typedef struct freeisp_tables {
   /* base / module cfg */
   const HW_U16        *anti_gamma_table;     /* HW_U16[4096] */
   const HW_S32        *isp_cm_color_temp;    /* int[3] (reconstructed) */
-  const void          *rgb2yuv_matrix;       /* isp_rgb2yuv_gain_offset[6] */
+  const void          *rgb2yuv_matrix;       /* fwi_rgb2yuv_gain_offset_t[6] */
   const HW_U16        *lsc_trig_cfg_def;     /* HW_U16[6] */
   const HW_U16        *msc_trig_cfg_def;     /* HW_U16[6] */
-  const void          *module_attrs;         /* isp_module_attribute[31] (rebuilt) */
+  const void          *module_attrs;         /* module attribute table [31] (rebuilt) */
 } freeisp_tables_t;
 
 #endif /* FREEISP_TABLES_H */

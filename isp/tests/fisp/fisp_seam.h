@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
 
-/* Recorder seam for the fisp_ host tests (SPEC 7.1). Every framework-tier and
+/* Recorder seam for the fisp_ host tests. Every framework-tier and
  * device-layer symbol fisp_ consumes is defined here as a scriptable recorder,
  * so the tests can assert the exact call, control id, value and order without a
  * device, the framework tier or a camera. */
@@ -50,8 +50,8 @@ extern int fisp_seam_g_ctrl_rc;         /* default 0 */
 extern int fisp_seam_g_ctrl_value;      /* default 7 */
 
 /* Sentinel VI device handed out for ISP id 0; NULL for id 1. */
-extern struct isp_video_device fisp_seam_video0;
-struct isp_video_device *fisp_seam_resolver(int isp_dev);
+extern struct fwi_video_device fisp_seam_video0;
+struct fwi_video_device *fisp_seam_resolver(int isp_dev);
 
 void fisp_seam_reset(void);
 

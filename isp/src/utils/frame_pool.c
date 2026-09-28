@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-/* frame_pool.c - unit U frame pool / video buffer manager (21-utils.md §4) */
+/* frame_pool.c - frame pool / video buffer manager */
 #include "utils/frame_pool.h"
 #include <stdio.h>
 #include <stdlib.h>

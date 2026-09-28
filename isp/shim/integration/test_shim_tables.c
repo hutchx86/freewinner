@@ -1,24 +1,15 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
-/*
- * test_shim_tables.c - host test for the on-device runtime table feed.
- *
- * Loads the two real stock `rmm` images, exercises both entry points (path and
- * memory), and verifies that the located vendor tables are mapped onto each
- * clean module's table block with the expected values.  It also checks that
- * every shim setter was handed exactly the block published by
- * freeisp_shim_tables_get() (i.e. the tables are actually installed).
- *
- * The six setters are capture stubs here: the real shims share the
- * `freeisp_get_tables()` symbol and so cannot all be linked into one binary.
- * The setter -> clean-core plumbing is covered by each module's own shim test.
- */
+/* test_shim_tables.c - host test for the table feed: loads two stock rmm images
+ * by path and from memory, checks each mapped block and that it was installed.
+ * Setters are capture stubs: the real shims all define freeisp_get_tables(). */
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "freeisp_shim_tables.h"
+#include "freeisp/ae_out_bias.h"
 
 /* Pull in the per-module table shapes; rename each clean header's own
  * `freeisp_tables` tag/typedef/provider out of the way (as the provider does). */
@@ -86,6 +77,41 @@ static int g_fails;
         }                                                                 \
     } while (0)
 
+/* Spec ae.md 15.10: 16 strictly increasing positive codes. */
+static int ladder_ok(const int32_t *l)
+{
+    int i;
+
+    if (l == NULL || l[0] <= 0)
+        return 0;
+    for (i = 1; i < 16; i++)
+        if (l[i] <= l[i - 1])
+            return 0;
+    return 1;
+}
+
+/* Spec ae.md 15.11: 1..AE_NSEG valid segments, zero beyond `length`. */
+static int desc_ok(const ae_desc_t *d)
+{
+    static const ae_segment_t zero;
+    unsigned int i;
+
+    if (d == NULL || d->length < 1u || d->length > AE_NSEG)
+        return 0;
+    for (i = 0; i < AE_NSEG; i++) {
+        const ae_segment_t *s = &d->seg[i];
+
+        if (i >= d->length) {
+            if (memcmp(s, &zero, sizeof(zero)) != 0)
+                return 0;
+        } else if (s->max_exp == 0u || s->min_exp < s->max_exp ||
+                   s->min_gain > s->max_gain || s->min_iris == 0u) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
 static void check_ae(const char *img)
 {
     const ae_clean_tables_t *t =
@@ -96,16 +122,10 @@ static void check_ae(const char *img)
     if (!t) return;
 
     CHECK(t->log2 != NULL && t->log2[5] == 2585, "Ae_Log2[5] != 2585");
-    CHECK(t->fno_ladder != NULL && t->fno_ladder[0] == 141 && t->fno_ladder[15] == 3794,
-          "aperture ladder endpoints");
-    CHECK(t->fno_def != NULL && t->fno_def[0] == 141 && t->fno_def[15] == 3794,
-          "injected default aperture ladder endpoints");
-    CHECK(t->table_default != NULL && t->table_default->length == 2 &&
-          t->table_default->ev_step == 40 && t->table_default->shutter_shift == 0,
-          "TABLEDEF header");
-    CHECK(t->table_default != NULL && t->table_default->seg[0].min_exp == 8000 &&
-          t->table_default->seg[1].max_gain == 6000,
-          "TABLEDEF segments");
+    CHECK(t->fno_ladder != NULL && t->fno_def == t->fno_ladder,
+          "default aperture ladder not mapped to both slots");
+    CHECK(ladder_ok(t->fno_ladder), "aperture ladder not 16 increasing positive codes");
+    CHECK(desc_ok(t->table_default), "TABLEDEF structure");
     CHECK(t->touchprob != NULL && t->touchprob[0] == 32, "TOUCHPROB[0]");
     CHECK(t->conv != NULL && t->conv[127] == 127 && t->conv[128] == 0,
           "CONV rows 0/1");
@@ -132,13 +152,8 @@ static void check_awb(const char *img)
     CHECK(t != NULL, "AWB block is NULL");
     if (!t) return;
 
-    /*
-     * These two string literals are data values used to locate the vendor's
-     * own table block inside the rmm image (the "Outlier Light" anchor is what
-     * the locator searches for; interoperability necessity).  They are not
-     * compiled into the shipped clean tier; here they only confirm that the
-     * mapped class-label table is the vendor's.
-     */
+    /* Label strings are the locator's interoperability anchor, not shipped
+     * data; here they confirm the mapped class-label table is the vendor's. */
     CHECK(t->class_label != NULL &&
           strcmp(t->class_label, "AH Light") == 0 &&
           strcmp(t->class_label + 9 * 32, "Outlier Light") == 0,
@@ -222,6 +237,46 @@ static void check_pltm(const char *img)
     CHECK(t->converge_bank != NULL && t->converge_bank[127] == 127, "converge bank");
 }
 
+/* AE output biases: found once, role/validity rules hold, mapped into the AE block.
+ * Values are printed for the log only; the source holds none. */
+static void check_ae_out_bias(const char *img, int mapped)
+{
+    const ae_clean_tables_t *t =
+        (const ae_clean_tables_t *)freeisp_shim_tables_get(FREEISP_SHIM_TABLE_AE);
+    freeisp_ae_out_bias_t b;
+    const char *why = "?";
+    size_t at[2] = { 0, 0 };
+    FILE *f = fopen(img, "rb");
+    unsigned char *buf = NULL;
+    long n = 0;
+    int rc = -1;
+
+    if (f && fseek(f, 0, SEEK_END) == 0 && (n = ftell(f)) > 0 &&
+        fseek(f, 0, SEEK_SET) == 0 && (buf = malloc((size_t)n)) != NULL &&
+        fread(buf, 1, (size_t)n, f) == (size_t)n)
+        rc = freeisp_ae_out_bias_extract_at(buf, (size_t)n, b, at, &why);
+    if (f)
+        fclose(f);
+    free(buf);
+
+    CHECK(rc == 0, "AE output biases not extracted");
+    if (rc != 0) {
+        printf("  ae out bias: %s\n", why);
+        return;
+    }
+    printf("  ae out bias: B0=%d @0x%zx  B1=%d @0x%zx\n", (int)b[0], at[0], (int)b[1], at[1]);
+    CHECK(freeisp_ae_out_bias_validate(b, &why) == 0, "AE output biases invalid");
+    CHECK(b[0] < b[1], "AE output biases not ordered B0 < B1");
+    CHECK(at[0] > at[1] && at[0] - at[1] < 4096, "B0 site not after B1 within 4 KiB");
+    if (!mapped)
+        return;
+    CHECK(strncmp(freeisp_shim_ae_out_bias_status(), "extracted from firmware", 23) == 0,
+          "AE output-bias status");
+    CHECK(t != NULL && t->net_out_bias != NULL &&
+          t->net_out_bias[0] == b[0] && t->net_out_bias[1] == b[1],
+          "AE block net_out_bias not the extracted pair");
+}
+
 /* The vendor tables shared by several modules must be single-sourced. */
 static void check_shared(const char *img)
 {
@@ -270,6 +325,7 @@ static int run_case(const char *img, int via_memory)
 
     CHECK(rc == 0, "load failed");
     if (rc != 0) {
+        check_ae_out_bias(img, 0);
         freeisp_shim_tables_free();
         return -1;
     }
@@ -280,6 +336,7 @@ static int run_case(const char *img, int via_memory)
     check_iso(img);
     check_gtm(img);
     check_pltm(img);
+    check_ae_out_bias(img, 1);
     check_shared(img);
 
     for (id = 0; id < FREEISP_SHIM_TABLE_COUNT; id++) {

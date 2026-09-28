@@ -1,16 +1,8 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
 
-/*
- * test_fisp.c - host black-box tests for the fisp_ ISP runtime (package B).
- *
- * Replays the SPEC section 7 vectors against the recorder seam in
- * fisp_seam.c: the lifecycle delegation and its order, the V4L2-control id and
- * value for every setter/getter, the two-write AE_SetMode, every range rule and
- * its return convention, the ISP_CTRL_* attribute path, the luminance
- * passthrough, and the load-register 3DNR hook. No device, no framework tier,
- * no camera.
- */
+/* test_fisp.c - black-box tests for the fisp_ ISP runtime: replays the vectors
+ * below against the fisp_seam.c recorder. No device, framework or camera. */
 
 #include "fisp_abi.h"
 #include "fisp_seam.h"
@@ -111,15 +103,15 @@ static void check_attr_get(int n, long dev, long ctrl, const char *msg)
 	}
 }
 
-/* A resolver that never finds a device (SPEC vector 35). */
-static struct isp_video_device *null_resolver(int isp_dev)
+/* A resolver that never finds a device (vector 35). */
+static struct fwi_video_device *null_resolver(int isp_dev)
 {
 	(void)isp_dev;
 	return NULL;
 }
 
 /* ------------------------------------------------------------------ */
-/* ABI conformance (SPEC 5)                                            */
+/* ABI conformance                                                     */
 /* ------------------------------------------------------------------ */
 
 /* Compile-time layout/id asserts, in the model TU (test_fisp_abi.c). */
@@ -127,9 +119,8 @@ extern int fisp_abi_model_checks(void);
 
 static void test_abi(void)
 {
-	/* The struct isp_table_reg_map size/offsets are asserted at compile time
-	 * in the 32-bit ABI model; the pointer-sized field cannot be checked on a
-	 * 64-bit host. */
+	/* fwi_table_reg_map layout is checked at compile time; the pointer-sized
+	 * field cannot be checked on a 64-bit host. */
 	g_checks += fisp_abi_model_checks();
 
 	CHECK_EQ(ISP_LOAD_DRAM_SIZE, 0x13240, "ISP_LOAD_DRAM_SIZE");
@@ -138,7 +129,7 @@ static void test_abi(void)
 	CHECK_EQ(HW_VIDEO_DEVICE_NUM, 4, "HW_VIDEO_DEVICE_NUM");
 	CHECK_EQ(FISP_VI_ISP_NUM_MAX, 2, "VI_ISP_NUM_MAX");
 
-	/* V4L2 control ids (SPEC 5.3). */
+	/* V4L2 control ids. */
 	CHECK_EQ(V4L2_CID_BRIGHTNESS, 0x00980900, "V4L2_CID_BRIGHTNESS");
 	CHECK_EQ(V4L2_CID_CONTRAST, 0x00980901, "V4L2_CID_CONTRAST");
 	CHECK_EQ(V4L2_CID_SATURATION, 0x00980902, "V4L2_CID_SATURATION");
@@ -152,13 +143,13 @@ static void test_abi(void)
 	CHECK_EQ(V4L2_CID_AUTO_EXPOSURE_BIAS, 0x009a0913, "AUTO_EXPOSURE_BIAS");
 	CHECK_EQ(V4L2_CID_EXPOSURE_METERING, 0x009a0919, "EXPOSURE_METERING");
 
-	/* ISP_CTRL_* ids (SPEC 5.4). */
+	/* ISP_CTRL_* ids. */
 	CHECK_EQ(ISP_CTRL_PLTMWDR_STR, 2, "ISP_CTRL_PLTMWDR_STR");
 	CHECK_EQ(ISP_CTRL_DN_STR, 3, "ISP_CTRL_DN_STR");
 	CHECK_EQ(ISP_CTRL_3DN_STR, 4, "ISP_CTRL_3DN_STR");
 	CHECK_EQ(ISP_CTRL_EV_IDX, 13, "ISP_CTRL_EV_IDX");
 
-	/* Return convention (SPEC 2.1). */
+	/* Return convention. */
 	CHECK_EQ(SUCCESS, 0, "SUCCESS");
 	CHECK_EQ(FAILURE, -1, "FAILURE");
 }
@@ -543,7 +534,7 @@ static void test_lifecycle(void)
 }
 
 /* ------------------------------------------------------------------ */
-/* SPEC 6.4: default resolver scans media_params.video_dev[]           */
+/* Default resolver scans media_params.video_dev[]                     */
 /* ------------------------------------------------------------------ */
 
 static void test_default_resolver(void)
@@ -574,12 +565,12 @@ static void test_default_resolver(void)
 }
 
 /* ------------------------------------------------------------------ */
-/* SPEC 7.3: load-register 3DNR hook                                   */
+/* Load-register 3DNR hook                                             */
 /* ------------------------------------------------------------------ */
 
 static void test_load_reg(void)
 {
-	struct isp_table_reg_map reg;
+	struct fwi_table_reg_map reg;
 	static unsigned char buf[ISP_LOAD_DRAM_SIZE];
 	unsigned int word;
 	int rc;

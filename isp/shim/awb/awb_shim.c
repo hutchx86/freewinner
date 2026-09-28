@@ -1,86 +1,15 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
-/*
- * awb_shim.c - AWB (auto white balance) integration shim.
- *
- * Presents the clean-room AWB core (src/awb/awb_clean.c) to the
- * Yi/mediad ISP framework through the SDK isp_awb_core_ops_t contract.
- * Integration glue only: no algorithm is implemented here.  See DESIGN.md.
- *
- * Entity layout (the vendor entity also embeds its config block at offset 0):
- *
- *   typedef struct awb_shim_entity {
- *       awb_param_t    config;   // SDK mirror at offset 0; get_params -> &config
- *       awb_entity_t  *clean;    // clean-room instance
- *   } awb_shim_entity_t;
- *
- * The clean entity embeds its own awb_params_t, so the shim reaches it through
- * clean_awb_get_params() and rewrites the fields it maps.  The SDK mirror is
- * re-read into the clean config on every set and every run, because the
- * framework writes the mirror in place between calls.
- *
- * Field mapping (SDK awb_param_t -> clean awb_params_t):
- *
- *   clean field            SDK source
- *   ------------------------------------------------------------------
- *   mode                   awb_ctrl.wb_mode
- *   manual_gain[4]         awb_ctrl.wb_gain_manual.{r,gr,gb,b}_gain
- *   lock                   awb_ctrl.white_balance_lock
- *   win_region[4]          awb_ctrl.awb_coor.{x1,y1,x2,y2}
- *   interval               awb_ini.awb_interval
- *   speed                  awb_ini.awb_speed
- *   temp_low               awb_ini.awb_color_temper_low    (unused clean)
- *   temp_high              awb_ini.awb_color_temper_high   (unused clean)
- *   base_temp              awb_ini.awb_base_temper
- *   green_dist             awb_ini.awb_green_zone_dist
- *   blue_dist              awb_ini.awb_blue_sky_dist
- *   light_num              awb_ini.awb_light_num
- *   ext_light_num          awb_ini.awb_ext_light_num
- *   skin_num               awb_ini.awb_skin_color_num
- *   special_num            awb_ini.awb_special_color_num
- *   light_info[320]        awb_ini.awb_light_info
- *   ext_light_info[320]    awb_ini.awb_ext_light_info
- *   skin_info[160]         awb_ini.awb_skin_color_info
- *   special_info[320]      awb_ini.awb_special_color_info
- *   preset_gain[22]        awb_ini.awb_preset_gain
- *   r_favor / b_favor      awb_ini.awb_rgain_favor / awb_ini.awb_bgain_favor
- *   ae_lv                  awb_sensor_info.ae_lv
- *   ae_index / ae_index_max awb_sensor_info.ae_tbl_idx / .ae_tbl_idx_max
- *   ae_done                awb_sensor_info.is_ae_done
- *   test_mode              test_cfg.isp_test_mode         (unused clean)
- *   platform_id            isp_platform_id                (unused clean)
- *   fixed_temp             test_cfg.isp_color_temp
- *   control_enable         test_cfg.awb_en
- *   frame_id               awb_frame_id
- *
- * Statistics mapping: clean win[i].avg[0..2] <- isp_awb_stats_s.awb_avg_r/g/b
- * (row-major 32x32), clean win[i].npix <- isp_awb_stats_s.awb_sum_cnt.
- *
- * Result translation: clean gain_out.{r,gr,gb,b} -> wb_gain_output, and
- * color_temp_out -> color_temp_output.  A null SDK stats handle is passed to
- * the clean core as "no statistics"; the clean run then returns -1 and seeds
- * the unity / 6500 K safe default, which is copied out unchanged.
- *
- * Result write-back is gated exactly like the vendor object's.  The clean
- * result is first seeded with the framework's current result so the clean
- * core's early-outs (start-up frames, lock, interval gate, manual mode,
- * outlier abort) leave the caller's gains and colour temperature untouched;
- * only when the clean core writes them are they copied back.  set-params only
- * rebuilds the corpus->hierarchy mapping for the ISP_AWB_INI_DATA tag, as the
- * vendor does.
- */
+/* awb_shim.c - glue presenting the clean AWB core (src/awb/awb_clean.c) through
+ * the fwi_awb_core_ops_t contract; no algorithm here. See DESIGN.md.
+ * Field mapping: docs/shim-mappings.md#awb */
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-/*
- * Clean-room side.  The clean entry points share names with the SDK ones and
- * the clean awb_stats_t/awb_result_t collide with the SDK typedefs, so rename
- * the clean spellings for this translation unit only.  awb_clean.c is compiled
- * with the same entry-point defines (see Makefile), so the shim owns the bare
- * awb_* SDK symbols and the clean object exports only clean_awb_*.
- */
+/* Clean names collide with the SDK ones; rename them here (and in the Makefile)
+ * so the shim alone owns the bare awb_* symbols. */
 #define awb_stats_t    clean_awb_stats_t
 #define awb_result_t   clean_awb_result_t
 #define awb_init       clean_awb_init
@@ -99,21 +28,14 @@
 #undef awb_run
 #undef awb_isr
 
-/*
- * Framework side: the generated fwi_* ABI.  The shim exports awb_init/awb_exit
- * and a fwi_awb_core_ops_t vtable; the framework calls it directly.
- */
+/* Framework side: the generated fwi_* ABI. */
 #include "fwi_isp_api.h"
 #include "freeisp/isp_dims.h"
 
 #include "awb_shim.h"
 
-/*
- * The SDK statistics grid is ISP_AWB_ROW * ISP_AWB_COL (= 32*32 at ISP_VERSION
- * 521) and the clean win array is AWB_NWIN = 1024; the reference records in
- * awb_ini are ten HW_S32 each, matching the clean record stride.  Guard both at
- * compile time.
- */
+/* SDK stats grid (32x32) must equal AWB_NWIN, and awb_ini reference records
+ * (ten s32 each) must match the clean record stride. */
 typedef char awb_win_size_check[
     (ISP_AWB_ROW * ISP_AWB_COL == AWB_NWIN) ? 1 : -1];
 typedef char awb_light_info_size_check[
@@ -132,12 +54,7 @@ static uint16_t g_speed_w[AWB_NSPEED * AWB_NSSC];
 static char     g_label[AWB_NREF][32];
 static int32_t  g_std_trust[AWB_NREF];
 static int32_t  g_temp_bright[AWB_NREF * AWB_NREF];
-/*
- * No vendor table carries the no-statistics fallback gains, so the built-in
- * pilot default is unity.  Supply the sensor quadruple with
- * awb_shim_set_safe_gain(), or point the installed table's safe_gain at the
- * real tuning.
- */
+/* No vendor table carries the no-statistics fallback gains; default unity. */
 static uint16_t g_safe_gain[4] = { 256, 256, 256, 256 };
 static int      g_defaults_ready;
 
@@ -157,11 +74,8 @@ static void ensure_defaults(void)
     if (g_defaults_ready)
         return;
 
-    /*
-     * Pilot placeholder data only.  Shaped so the clean trust/weight lookups
-     * stay in range and the smoother never divides by zero; real tuning must
-     * be installed with awb_shim_set_tables() before awb_init().
-     */
+    /* Placeholder data, shaped so lookups stay in range and the smoother never
+     * divides by zero; real tuning comes via awb_shim_set_tables(). */
     for (r = 0; r < AWB_NTRUST; r++)
         for (k = 0; k < 256; k++)
             g_trust[r * 256 + k] = (k < 160) ? (uint8_t)(32 - k / 8) : 0;
@@ -202,12 +116,7 @@ void awb_shim_set_tables(const void *tables)
     }
 }
 
-/*
- * Install the no-statistics fallback gain quadruple (r, gr, gb, b).  The
- * clean core reads it from the table each time the null-statistics path is
- * taken, so this only updates the built-in pilot default; a table installed
- * with awb_shim_set_tables() carries its own safe_gain pointer.
- */
+/* Updates the built-in table only; an installed table has its own safe_gain. */
 void awb_shim_set_safe_gain(const unsigned short gain[4])
 {
     int i;
@@ -346,12 +255,8 @@ static int32_t shim_set(void *obj, fwi_awb_param_t *param, fwi_awb_result_t *res
 
     e->config = *param;
 
-    /*
-     * The vendor set-params only rebuilds the reference hierarchy for the
-     * init-data tag; any other tag is rejected without touching the entity.
-     * Mirror that gate so the corpus mapping runs exactly when the framework
-     * expects the rebuild.
-     */
+    /* Like the vendor, only the init-data tag rebuilds the reference
+     * hierarchy; other tags are rejected. */
     if (param->type != FWI_ISP_AWB_INIT_DATA)
         return -1;
 
@@ -364,19 +269,8 @@ static int32_t shim_set(void *obj, fwi_awb_param_t *param, fwi_awb_result_t *res
     return 0;
 }
 
-/*
- * On-camera real-input capture: FREEISP_AWB_DUMP=<path>.
- *
- * Inert unless the env var is set.  The path is opened once, lazily, on the
- * first run(); one fixed-size record is appended per run():
- *
- *   [awb_param_t]              offset 0      sizeof(awb_param_t)             4824
- *   [struct isp_awb_stats_s]   offset 4824   sizeof(struct isp_awb_stats_s)  32768
- *
- * total 37592 bytes.  awb_param_t is self-contained (no pointers), so this is
- * the exact input pair the shim's map_params()/map_stats() consume.  A value of
- * "1" selects /tmp/freeisp_awb_dump.bin.
- */
+/* Input capture when FREEISP_AWB_DUMP=<path> is set: one param+stats record
+ * per run. Record layout: docs/shim-mappings.md#awb */
 static void awb_dump_zeros(FILE *f, size_t n)
 {
     static const unsigned char z[256];
@@ -445,14 +339,8 @@ static int32_t shim_run(void *obj, fwi_awb_stats_t *data, fwi_awb_result_t *resu
         csp = NULL;   /* fed to the clean core as "no statistics" */
     }
 
-    /*
-     * Seed the clean result with the framework's current white-balance result
-     * before running.  The vendor object mutates the result in place and has
-     * gated early-outs (start-up frames, lock, interval gate, manual mode)
-     * that leave the caller's values untouched; handing the clean core a
-     * zero-initialised result would clobber them on those paths.  The clean
-     * run then either rewrites the fields or leaves the seed in place.
-     */
+    /* Seed with the caller's result: the vendor's early-outs (start-up, lock,
+     * interval, manual) leave it untouched, a zeroed seed would clobber it. */
     memset(&cr, 0, sizeof(cr));
     cr.gain_out.r  = result->wb_gain_output.r_gain;
     cr.gain_out.gr = result->wb_gain_output.gr_gain;

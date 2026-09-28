@@ -1,16 +1,8 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 # Copyright (C) 2026 freewinner contributors
-#
-# Capture runtime (package A, `fcap_`): the 3 `AW_MPI_SYS_*` and 16
-# `AW_MPI_VI_*` entry points, a drop-in for the SDK's MPP capture layer
-# (mpi_sys.c / mpi_vi.c and the VI component/OSD graph they reach).  Built as a
-# static archive the mediad link consumes in place of the vendor objects; host
-# tests replay the SPEC section 7 vectors against the recorder seam.
-#
-# This unit must stay on the default 4-byte enum (SPEC section 0): never add
-# -fshort-enums.  The host test links the real clean device layer
-# (src/framework/isp_dev_uapi.c) driven by the seam's mock syscall table, plus
-# the clean media-utils objects the capture path uses.
+# Capture runtime (fcap_): the AW_MPI_SYS_*/AW_MPI_VI_* entry points, a static
+# archive replacing the vendor MPP capture objects. Default 4-byte enums.
+# Host test links the real isp_dev_uapi.c driven by the seam's mock syscalls.
 
 FCAP_CFLAGS := -Isrc/fcap -Isrc/fisp -DISP_VERSION=521 -pthread
 FCAP_SRCS   := $(wildcard src/fcap/*.c)

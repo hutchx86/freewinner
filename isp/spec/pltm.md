@@ -929,7 +929,7 @@ the SDK inputs the shim's `map_config`/`map_stats` consume:
 | Field | Offset | Bytes |
 | --- | --- | --- |
 | `pltm_param_t` | 0 | 260 |
-| `struct isp_pltm_stats_s` | 260 | 1548 |
+| `fwi_pltm_stats_t` (vendor: `isp_pltm_stats_s`) | 260 | 1548 |
 | `HW_U16 pltm_table[0x300]` (source curve) | 1808 | 1536 |
 | **total** | | **3344** |
 

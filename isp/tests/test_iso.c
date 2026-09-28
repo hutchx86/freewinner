@@ -1,12 +1,7 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
-/*
- * test_iso.c - host tests for the clean-room ISO module (spec/iso.md).
- *
- * The tests do not compare against vendor output.  Every expected value is
- * computed independently from the formulas in the specification using small,
- * hand-checkable inputs.
- */
+/* test_iso.c - host tests for the ISO module (spec/iso.md); all expected
+ * values are hand-derived from the spec formulas. */
 #include "iso_clean.h"
 
 #include <math.h>
@@ -59,12 +54,8 @@ static iso_params_t params;
 static iso_result_t res;
 static iso_entity_t *ent;
 
-/* Rebuilding a fresh scene.  Characteristic defaults:
- *   gain_index_table[k] = k
- *   gain_point[i]       = 30 + 2i   -> gain_axis[i] = 30 + 2i
- *   lum_point[i]        = 25(i + 1) -> lum_axis[i]  = 25(i + 1)
- *   cfg[i].word[w]      = 100i + w
- * With ae_pos = 0 the luminance index is 0 and by_lum[0] == cfg[0]. */
+/* Fresh scene: gain_index_table[k]=k, gain_axis[i]=30+2i, lum_axis[i]=25(i+1),
+ * cfg[i].word[w]=100i+w; ae_pos=0 gives lum index 0, by_lum[0]==cfg[0]. */
 static void fresh(void)
 {
     int i, w;

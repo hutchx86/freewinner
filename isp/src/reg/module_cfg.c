@@ -1,24 +1,9 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
-/*
- * module_cfg.c - clean-room per-frame ISP module dispatch and payload builder.
- *
- * Re-production of the `isp_module_cfg.o` translation unit from
- * spec/reglayer2.md section 2, written without access to the deployed
- * object or any earlier transcription (see reimplementation/README.md).
- *
- * The tier owns a 31-entry attribute table that binds each module feature bit to
- * its prepare routine and its hardware enable routine, plus isp_map_addr() and
- * isp_hardware_update().  Every prepare routine builds that module's slice of
- * isp_module_config and drives the register writers declared in reg_writers.h.
- *
- * Three conditions are invisible to the differential (it cannot observe them):
- * isp_reg_prepare_gamma's both-probes-zero fallback, isp_reg_prepare_saturation's
- * source-pointer gate on its update bit, and isp_reg_enable_msc's disable branch.
- * Each was confirmed black-box against the deployed object and the unit tests
- * were corrected to match the deployed behaviour - the deployed object is the
- * ground truth for this port.
- */
+/* module_cfg.c - per-frame ISP module dispatch and payload builder (spec/reglayer2.md
+ * §2): a 31-entry attribute table binds each module feature bit to its prepare and enable
+ * routines; each prepare routine builds its slice of fwi_mod_config through the
+ * reg_writers.h writers. Also isp_map_addr() and isp_hardware_update(). */
 
 #include <math.h>
 #include <string.h>
@@ -47,14 +32,14 @@ static uint32_t clamp10(uint32_t v)
 /* 2.1 Instance setup and per-frame dispatch                           */
 /* ------------------------------------------------------------------ */
 
-void isp_map_addr(isp_module_config_t *cfg, void *vaddr)
+void isp_map_addr(fwi_mod_config_t *cfg, void *vaddr)
 {
     if (!cfg)
         return;
     isp_reg_map_load_addr(cfg->isp_dev_id, vaddr);
 }
 
-void isp_hardware_update(isp_module_config_t *cfg)
+void isp_hardware_update(fwi_mod_config_t *cfg)
 {
     unsigned i;
 
@@ -62,7 +47,7 @@ void isp_hardware_update(isp_module_config_t *cfg)
         return;
 
     for (i = 0; i < ISP_MODULE_COUNT; i++) {
-        const isp_module_attribute_t *attr = &isp_module_attrs[i];
+        const fwi_mod_attribute_t *attr = &isp_module_attrs[i];
 
         if (cfg->module_enable_flag & attr->feature_bit) {
             if (attr->config)
@@ -85,14 +70,14 @@ void isp_hardware_update(isp_module_config_t *cfg)
 /* 2.2 Prepare routines                                                */
 /* ------------------------------------------------------------------ */
 
-void isp_reg_prepare_afs(isp_module_config_t *cfg)
+void isp_reg_prepare_afs(fwi_mod_config_t *cfg)
 {
     if (!cfg)
         return;
     isp_reg_set_afs_anti_flick(cfg->isp_dev_id, cfg->afs_cfg.inc_line);
 }
 
-void isp_reg_prepare_sharpness(isp_module_config_t *cfg)
+void isp_reg_prepare_sharpness(fwi_mod_config_t *cfg)
 {
     if (!cfg)
         return;
@@ -104,12 +89,12 @@ void isp_reg_prepare_sharpness(isp_module_config_t *cfg)
     isp_reg_set_sharp_s_map_lut(cfg->isp_dev_id, cfg->sharp_s_map_lut);
 }
 
-void isp_reg_prepare_contrast(isp_module_config_t *cfg)
+void isp_reg_prepare_contrast(fwi_mod_config_t *cfg)
 {
     (void)cfg;
 }
 
-void isp_reg_prepare_d2d(isp_module_config_t *cfg)
+void isp_reg_prepare_d2d(fwi_mod_config_t *cfg)
 {
     if (!cfg)
         return;
@@ -120,7 +105,7 @@ void isp_reg_prepare_d2d(isp_module_config_t *cfg)
     isp_reg_set_d2d_lp3_np_lut(cfg->isp_dev_id, cfg->d2d_lp_lut[3]);
 }
 
-void isp_reg_prepare_rgb_drc(isp_module_config_t *cfg)
+void isp_reg_prepare_rgb_drc(fwi_mod_config_t *cfg)
 {
     if (!cfg)
         return;
@@ -130,7 +115,7 @@ void isp_reg_prepare_rgb_drc(isp_module_config_t *cfg)
     }
 }
 
-void isp_reg_prepare_pltm(isp_module_config_t *cfg)
+void isp_reg_prepare_pltm(fwi_mod_config_t *cfg)
 {
     if (!cfg)
         return;
@@ -141,7 +126,7 @@ void isp_reg_prepare_pltm(isp_module_config_t *cfg)
     }
 }
 
-void isp_reg_prepare_wdr(isp_module_config_t *cfg)
+void isp_reg_prepare_wdr(fwi_mod_config_t *cfg)
 {
     if (!cfg)
         return;
@@ -156,7 +141,7 @@ void isp_reg_prepare_wdr(isp_module_config_t *cfg)
     }
 }
 
-void isp_reg_prepare_cem(isp_module_config_t *cfg)
+void isp_reg_prepare_cem(fwi_mod_config_t *cfg)
 {
     if (!cfg)
         return;
@@ -166,7 +151,7 @@ void isp_reg_prepare_cem(isp_module_config_t *cfg)
     }
 }
 
-void isp_reg_prepare_lens(isp_module_config_t *cfg)
+void isp_reg_prepare_lens(fwi_mod_config_t *cfg)
 {
     if (!cfg)
         return;
@@ -254,16 +239,9 @@ static void gamma_pack_ramp(uint32_t *packed)
     }
 }
 
-/*
- * The deployed object selects the gamma source by probing gamma_tbl[0xbff]
- * (full curve), then gamma_tbl[0x2ff] (compact curve), then falling back to the
- * generated ramp.  A table whose plane starts are set but whose two probe
- * entries are both zero therefore emits the *ramp*, not the normal pack.  This
- * branch is invisible to the differential (its pattern sweep only reaches
- * all-zero or all-nonzero tables) and was black-box confirmed against the
- * deployed object; the unit test was corrected to match.
- */
-void isp_reg_prepare_gamma(isp_module_config_t *cfg)
+/* Gamma source: probe gamma_tbl[0xbff] (full), then [0x2ff] (compact), else the generated
+ * ramp; plane starts set but both probes zero therefore emits the ramp, as deployed. */
+void isp_reg_prepare_gamma(fwi_mod_config_t *cfg)
 {
     const uint16_t *tbl;
     uint32_t *packed;
@@ -288,7 +266,7 @@ void isp_reg_prepare_gamma(isp_module_config_t *cfg)
     cfg->table_update |= ISP_TABLE_UPDATE_GAMMA;
 }
 
-void isp_reg_prepare_rgb2yuv(isp_module_config_t *cfg)
+void isp_reg_prepare_rgb2yuv(fwi_mod_config_t *cfg)
 {
     if (!cfg)
         return;
@@ -296,7 +274,7 @@ void isp_reg_prepare_rgb2yuv(isp_module_config_t *cfg)
                                     cfg->rgb2yuv.offset);
 }
 
-void isp_reg_prepare_rgb2rgb(isp_module_config_t *cfg)
+void isp_reg_prepare_rgb2rgb(fwi_mod_config_t *cfg)
 {
     if (!cfg)
         return;
@@ -305,7 +283,7 @@ void isp_reg_prepare_rgb2rgb(isp_module_config_t *cfg)
                                     cfg->rgb2rgb_cfg.offset);
 }
 
-void isp_reg_prepare_ae_win(isp_module_config_t *cfg)
+void isp_reg_prepare_ae_win(fwi_mod_config_t *cfg)
 {
     if (!cfg)
         return;
@@ -315,7 +293,7 @@ void isp_reg_prepare_ae_win(isp_module_config_t *cfg)
                        cfg->ae_cfg.win.ver_start);
 }
 
-void isp_reg_prepare_af(isp_module_config_t *cfg)
+void isp_reg_prepare_af(fwi_mod_config_t *cfg)
 {
     if (!cfg)
         return;
@@ -329,7 +307,7 @@ void isp_reg_prepare_af(isp_module_config_t *cfg)
     isp_reg_set_af_square_lut(cfg->isp_dev_id, cfg->af_cfg.square_lut);
 }
 
-void isp_reg_prepare_awb(isp_module_config_t *cfg)
+void isp_reg_prepare_awb(fwi_mod_config_t *cfg)
 {
     if (!cfg)
         return;
@@ -341,7 +319,7 @@ void isp_reg_prepare_awb(isp_module_config_t *cfg)
                         cfg->awb_cfg.win.ver_start);
 }
 
-void isp_reg_prepare_hist(isp_module_config_t *cfg)
+void isp_reg_prepare_hist(fwi_mod_config_t *cfg)
 {
     if (!cfg)
         return;
@@ -352,7 +330,7 @@ void isp_reg_prepare_hist(isp_module_config_t *cfg)
                          cfg->hist_cfg.win.ver_start);
 }
 
-void isp_reg_prepare_blc(isp_module_config_t *cfg)
+void isp_reg_prepare_blc(fwi_mod_config_t *cfg)
 {
     if (!cfg)
         return;
@@ -362,7 +340,7 @@ void isp_reg_prepare_blc(isp_module_config_t *cfg)
                            cfg->gain_offset_cfg.offset[3]);
 }
 
-void isp_reg_prepare_wb_gain(isp_module_config_t *cfg)
+void isp_reg_prepare_wb_gain(fwi_mod_config_t *cfg)
 {
     if (!cfg)
         return;
@@ -373,7 +351,7 @@ void isp_reg_prepare_wb_gain(isp_module_config_t *cfg)
                         cfg->wb_gain_cfg.wb_gain[3]);
 }
 
-void isp_reg_prepare_dpc(isp_module_config_t *cfg)
+void isp_reg_prepare_dpc(fwi_mod_config_t *cfg)
 {
     if (!cfg)
         return;
@@ -384,7 +362,7 @@ void isp_reg_prepare_dpc(isp_module_config_t *cfg)
                     cfg->otf_cfg.cold_abs_th);
 }
 
-void isp_reg_prepare_cfa(isp_module_config_t *cfg)
+void isp_reg_prepare_cfa(fwi_mod_config_t *cfg)
 {
     if (!cfg)
         return;
@@ -393,7 +371,7 @@ void isp_reg_prepare_cfa(isp_module_config_t *cfg)
                     cfg->cfa_cfg.interp_mode, cfg->cfa_cfg.zig_zag);
 }
 
-void isp_reg_prepare_d3d(isp_module_config_t *cfg)
+void isp_reg_prepare_d3d(fwi_mod_config_t *cfg)
 {
     if (!cfg)
         return;
@@ -409,7 +387,7 @@ void isp_reg_prepare_d3d(isp_module_config_t *cfg)
     cfg->table_update |= ISP_TABLE_UPDATE_D3D;
 }
 
-void isp_reg_prepare_cnr(isp_module_config_t *cfg)
+void isp_reg_prepare_cnr(fwi_mod_config_t *cfg)
 {
     if (!cfg)
         return;
@@ -417,7 +395,7 @@ void isp_reg_prepare_cnr(isp_module_config_t *cfg)
                     cfg->cnr_cfg.st_v_y, cfg->cnr_cfg.st_h_y);
 }
 
-void isp_reg_prepare_saturation(isp_module_config_t *cfg)
+void isp_reg_prepare_saturation(fwi_mod_config_t *cfg)
 {
     int32_t sum;
 
@@ -433,27 +411,17 @@ void isp_reg_prepare_saturation(isp_module_config_t *cfg)
     isp_reg_set_saturation(cfg->isp_dev_id, cfg->satu_cfg.satu_r,
                            cfg->satu_cfg.satu_g, cfg->satu_cfg.satu_b);
 
-    /* The deployed object raises the update bit only when the saturation table
-     * pointer is non-NULL, together with a copy of the embedded table *into*
-     * that pointer target (embedded -> pointer).  Invisible to the
-     * differential (its NULL-pointer case leaves the bit clear in both images);
-     * black-box confirmed against the deployed object and the unit test was
-     * corrected to match. */
+    /* As deployed: the update bit is raised only for a non-NULL saturation table pointer,
+     * together with a copy of the embedded table into that pointer's target. */
     if (cfg->satu_src) {
         memcpy(cfg->satu_src, cfg->satu_cfg.table, ISP_SATU_TBL_SIZE);
         cfg->table_update |= ISP_TABLE_UPDATE_SATU;
     }
 }
 
-/*
- * Commit the front-end linear table.  The deployed routine copies the linear
- * table (SDK `linear_table`) into the front-end table (SDK `fe_table`) and
- * raises the LINEAR table-update bit, but only when the source is present: a
- * NULL source returns before the copy and before the bit is touched.  Taking
- * the source as a parameter keeps that presence test meaningful even though
- * the clean model stores the table inline.
- */
-static void linear_table_commit(isp_module_config_t *cfg, const void *source)
+/* Commit the front-end linear table: copy linear_table into fe_table and raise the LINEAR
+ * update bit only for a non-NULL source (hence the parameter, although the table is inline). */
+static void linear_table_commit(fwi_mod_config_t *cfg, const void *source)
 {
     if (!source)
         return;
@@ -462,7 +430,7 @@ static void linear_table_commit(isp_module_config_t *cfg, const void *source)
     cfg->table_update |= ISP_TABLE_UPDATE_LINEAR;
 }
 
-void isp_reg_prepare_linear(isp_module_config_t *cfg)
+void isp_reg_prepare_linear(fwi_mod_config_t *cfg)
 {
     if (!cfg)
         return;
@@ -472,7 +440,7 @@ void isp_reg_prepare_linear(isp_module_config_t *cfg)
     linear_table_commit(cfg, cfg->linear_src);
 }
 
-void isp_reg_prepare_sensor_offset(isp_module_config_t *cfg)
+void isp_reg_prepare_sensor_offset(fwi_mod_config_t *cfg)
 {
     if (!cfg)
         return;
@@ -483,7 +451,7 @@ void isp_reg_prepare_sensor_offset(isp_module_config_t *cfg)
                               cfg->gain_offset_cfg.sensor_offset[3]);
 }
 
-void isp_reg_prepare_digital_gain(isp_module_config_t *cfg)
+void isp_reg_prepare_digital_gain(fwi_mod_config_t *cfg)
 {
     if (!cfg)
         return;
@@ -494,21 +462,21 @@ void isp_reg_prepare_digital_gain(isp_module_config_t *cfg)
                         cfg->gain_offset_cfg.gain[3]);
 }
 
-void isp_reg_prepare_ctc(isp_module_config_t *cfg)
+void isp_reg_prepare_ctc(fwi_mod_config_t *cfg)
 {
     if (!cfg)
         return;
     isp_reg_set_ctc(cfg->isp_dev_id, &cfg->ctc_cfg);
 }
 
-void isp_reg_prepare_mode(isp_module_config_t *cfg)
+void isp_reg_prepare_mode(fwi_mod_config_t *cfg)
 {
     if (!cfg)
         return;
     isp_reg_set_input_fmt(cfg->isp_dev_id, cfg->mode_cfg.input_fmt);
 }
 
-void isp_reg_prepare_msc(isp_module_config_t *cfg)
+void isp_reg_prepare_msc(fwi_mod_config_t *cfg)
 {
     if (!cfg)
         return;
@@ -521,7 +489,7 @@ void isp_reg_prepare_msc(isp_module_config_t *cfg)
         cfg->table_update |= ISP_TABLE_UPDATE_MSC;
 }
 
-void isp_reg_prepare_lca(isp_module_config_t *cfg)
+void isp_reg_prepare_lca(fwi_mod_config_t *cfg)
 {
     if (!cfg)
         return;
@@ -530,7 +498,7 @@ void isp_reg_prepare_lca(isp_module_config_t *cfg)
     isp_reg_set_lca_gf_satu_lut(cfg->isp_dev_id, cfg->lca_gf_satu_lut);
 }
 
-void isp_reg_prepare_gca(isp_module_config_t *cfg)
+void isp_reg_prepare_gca(fwi_mod_config_t *cfg)
 {
     if (!cfg)
         return;
@@ -541,7 +509,7 @@ void isp_reg_prepare_gca(isp_module_config_t *cfg)
 /* 2.4 Enable routines                                                 */
 /* ------------------------------------------------------------------ */
 
-static void module_toggle(isp_module_config_t *cfg, isp_module_enable_t en,
+static void module_toggle(fwi_mod_config_t *cfg, isp_module_enable_t en,
                           uint32_t bit)
 {
     if (en == ISP_MODULE_ENABLE)
@@ -550,173 +518,173 @@ static void module_toggle(isp_module_config_t *cfg, isp_module_enable_t en,
         isp_reg_module_disable(cfg->isp_dev_id, bit);
 }
 
-void isp_reg_enable_afs(isp_module_config_t *cfg, isp_module_enable_t en)
+void isp_reg_enable_afs(fwi_mod_config_t *cfg, isp_module_enable_t en)
 {
     if (!cfg)
         return;
     module_toggle(cfg, en, ISP_FEAT_AFS);
 }
 
-void isp_reg_enable_sharpness(isp_module_config_t *cfg, isp_module_enable_t en)
+void isp_reg_enable_sharpness(fwi_mod_config_t *cfg, isp_module_enable_t en)
 {
     if (!cfg)
         return;
     module_toggle(cfg, en, ISP_FEAT_SHARP);
 }
 
-void isp_reg_enable_contrast(isp_module_config_t *cfg, isp_module_enable_t en)
+void isp_reg_enable_contrast(fwi_mod_config_t *cfg, isp_module_enable_t en)
 {
     (void)cfg;
     (void)en;
 }
 
-void isp_reg_enable_d2d(isp_module_config_t *cfg, isp_module_enable_t en)
+void isp_reg_enable_d2d(fwi_mod_config_t *cfg, isp_module_enable_t en)
 {
     if (!cfg)
         return;
     module_toggle(cfg, en, ISP_FEAT_D2D);
 }
 
-void isp_reg_enable_rgb_drc(isp_module_config_t *cfg, isp_module_enable_t en)
+void isp_reg_enable_rgb_drc(fwi_mod_config_t *cfg, isp_module_enable_t en)
 {
     if (!cfg)
         return;
     module_toggle(cfg, en, ISP_FEAT_RGB_DRC);
 }
 
-void isp_reg_enable_pltm(isp_module_config_t *cfg, isp_module_enable_t en)
+void isp_reg_enable_pltm(fwi_mod_config_t *cfg, isp_module_enable_t en)
 {
     if (!cfg)
         return;
     module_toggle(cfg, en, ISP_FEAT_PLTM);
 }
 
-void isp_reg_enable_wdr(isp_module_config_t *cfg, isp_module_enable_t en)
+void isp_reg_enable_wdr(fwi_mod_config_t *cfg, isp_module_enable_t en)
 {
     if (!cfg)
         return;
     module_toggle(cfg, en, ISP_FEAT_WDR);
 }
 
-void isp_reg_enable_cem(isp_module_config_t *cfg, isp_module_enable_t en)
+void isp_reg_enable_cem(fwi_mod_config_t *cfg, isp_module_enable_t en)
 {
     if (!cfg)
         return;
     module_toggle(cfg, en, ISP_FEAT_CEM);
 }
 
-void isp_reg_enable_lens(isp_module_config_t *cfg, isp_module_enable_t en)
+void isp_reg_enable_lens(fwi_mod_config_t *cfg, isp_module_enable_t en)
 {
     if (!cfg)
         return;
     module_toggle(cfg, en, ISP_FEAT_LSC);
 }
 
-void isp_reg_enable_gamma(isp_module_config_t *cfg, isp_module_enable_t en)
+void isp_reg_enable_gamma(fwi_mod_config_t *cfg, isp_module_enable_t en)
 {
     if (!cfg)
         return;
     module_toggle(cfg, en, ISP_FEAT_GAMMA);
 }
 
-void isp_reg_enable_rgb2yuv(isp_module_config_t *cfg, isp_module_enable_t en)
+void isp_reg_enable_rgb2yuv(fwi_mod_config_t *cfg, isp_module_enable_t en)
 {
     (void)cfg;
     (void)en;
 }
 
-void isp_reg_enable_rgb2rgb(isp_module_config_t *cfg, isp_module_enable_t en)
+void isp_reg_enable_rgb2rgb(fwi_mod_config_t *cfg, isp_module_enable_t en)
 {
     if (!cfg)
         return;
     module_toggle(cfg, en, ISP_FEAT_RGB2RGB);
 }
 
-void isp_reg_enable_ae(isp_module_config_t *cfg, isp_module_enable_t en)
+void isp_reg_enable_ae(fwi_mod_config_t *cfg, isp_module_enable_t en)
 {
     if (!cfg)
         return;
     module_toggle(cfg, en, ISP_FEAT_AE);
 }
 
-void isp_reg_enable_af(isp_module_config_t *cfg, isp_module_enable_t en)
+void isp_reg_enable_af(fwi_mod_config_t *cfg, isp_module_enable_t en)
 {
     if (!cfg)
         return;
     module_toggle(cfg, en, ISP_FEAT_AF);
 }
 
-void isp_reg_enable_awb(isp_module_config_t *cfg, isp_module_enable_t en)
+void isp_reg_enable_awb(fwi_mod_config_t *cfg, isp_module_enable_t en)
 {
     if (!cfg)
         return;
     module_toggle(cfg, en, ISP_FEAT_AWB);
 }
 
-void isp_reg_enable_hist(isp_module_config_t *cfg, isp_module_enable_t en)
+void isp_reg_enable_hist(fwi_mod_config_t *cfg, isp_module_enable_t en)
 {
     if (!cfg)
         return;
     module_toggle(cfg, en, ISP_FEAT_HIST);
 }
 
-void isp_reg_enable_blc(isp_module_config_t *cfg, isp_module_enable_t en)
+void isp_reg_enable_blc(fwi_mod_config_t *cfg, isp_module_enable_t en)
 {
     if (!cfg)
         return;
     module_toggle(cfg, en, ISP_FEAT_BLC);
 }
 
-void isp_reg_enable_wb_gain(isp_module_config_t *cfg, isp_module_enable_t en)
+void isp_reg_enable_wb_gain(fwi_mod_config_t *cfg, isp_module_enable_t en)
 {
     if (!cfg)
         return;
     module_toggle(cfg, en, ISP_FEAT_WB);
 }
 
-void isp_reg_enable_dpc(isp_module_config_t *cfg, isp_module_enable_t en)
+void isp_reg_enable_dpc(fwi_mod_config_t *cfg, isp_module_enable_t en)
 {
     if (!cfg)
         return;
     module_toggle(cfg, en, ISP_FEAT_DPC);
 }
 
-void isp_reg_enable_d3d(isp_module_config_t *cfg, isp_module_enable_t en)
+void isp_reg_enable_d3d(fwi_mod_config_t *cfg, isp_module_enable_t en)
 {
     if (!cfg)
         return;
     module_toggle(cfg, en, ISP_FEAT_D3D);
 }
 
-void isp_reg_enable_cnr(isp_module_config_t *cfg, isp_module_enable_t en)
+void isp_reg_enable_cnr(fwi_mod_config_t *cfg, isp_module_enable_t en)
 {
     if (!cfg)
         return;
     module_toggle(cfg, en, ISP_FEAT_CNR);
 }
 
-void isp_reg_enable_saturation(isp_module_config_t *cfg, isp_module_enable_t en)
+void isp_reg_enable_saturation(fwi_mod_config_t *cfg, isp_module_enable_t en)
 {
     if (!cfg)
         return;
     module_toggle(cfg, en, ISP_FEAT_SATU);
 }
 
-void isp_reg_enable_linear(isp_module_config_t *cfg, isp_module_enable_t en)
+void isp_reg_enable_linear(fwi_mod_config_t *cfg, isp_module_enable_t en)
 {
     if (!cfg)
         return;
     module_toggle(cfg, en, ISP_FEAT_LINEAR);
 }
 
-void isp_reg_enable_sensor_offset(isp_module_config_t *cfg, isp_module_enable_t en)
+void isp_reg_enable_sensor_offset(fwi_mod_config_t *cfg, isp_module_enable_t en)
 {
     if (!cfg)
         return;
     module_toggle(cfg, en, ISP_FEAT_SO);
 }
 
-void isp_reg_enable_digital_gain(isp_module_config_t *cfg, isp_module_enable_t en)
+void isp_reg_enable_digital_gain(fwi_mod_config_t *cfg, isp_module_enable_t en)
 {
     if (!cfg)
         return;
@@ -724,36 +692,34 @@ void isp_reg_enable_digital_gain(isp_module_config_t *cfg, isp_module_enable_t e
                            cfg->mode_cfg.dg_mode);
 }
 
-void isp_reg_enable_ctc(isp_module_config_t *cfg, isp_module_enable_t en)
+void isp_reg_enable_ctc(fwi_mod_config_t *cfg, isp_module_enable_t en)
 {
     if (!cfg)
         return;
     module_toggle(cfg, en, ISP_FEAT_CTC);
 }
 
-void isp_reg_enable_msc(isp_module_config_t *cfg, isp_module_enable_t en)
+void isp_reg_enable_msc(fwi_mod_config_t *cfg, isp_module_enable_t en)
 {
     if (!cfg)
         return;
 
-    /* The MSC enable drives the CONTRAST bypass bit, not MSC (spec 2.4).  The
-     * deployed object also clears that bit on disable.  Invisible to the
-     * differential (its seeds keep the bit clear); black-box confirmed against
-     * the deployed object and the unit test was corrected to match. */
+    /* The MSC enable drives the CONTRAST bypass bit, not MSC (spec 2.4), and clears it
+     * on disable, as deployed. */
     if (en == ISP_MODULE_ENABLE)
         isp_reg_module_enable(cfg->isp_dev_id, ISP_FEAT_CONTRAST);
     else
         isp_reg_module_disable(cfg->isp_dev_id, ISP_FEAT_CONTRAST);
 }
 
-void isp_reg_enable_lca(isp_module_config_t *cfg, isp_module_enable_t en)
+void isp_reg_enable_lca(fwi_mod_config_t *cfg, isp_module_enable_t en)
 {
     if (!cfg)
         return;
     module_toggle(cfg, en, ISP_FEAT_LCA);
 }
 
-void isp_reg_enable_gca(isp_module_config_t *cfg, isp_module_enable_t en)
+void isp_reg_enable_gca(fwi_mod_config_t *cfg, isp_module_enable_t en)
 {
     if (!cfg)
         return;
@@ -764,7 +730,7 @@ void isp_reg_enable_gca(isp_module_config_t *cfg, isp_module_enable_t en)
 /* 2.4 Dispatch table (31 entries, table order)                        */
 /* ------------------------------------------------------------------ */
 
-const isp_module_attribute_t isp_module_attrs[ISP_MODULE_COUNT] = {
+const fwi_mod_attribute_t isp_module_attrs[ISP_MODULE_COUNT] = {
     { ISP_FEAT_AFS,      "AFS",      isp_reg_prepare_afs,        isp_reg_enable_afs },
     { ISP_FEAT_SHARP,    "SHARP",    isp_reg_prepare_sharpness,  isp_reg_enable_sharpness },
     { ISP_FEAT_CONTRAST, "CONTRAST", isp_reg_prepare_contrast,   isp_reg_enable_contrast },

@@ -1,10 +1,6 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
-/*
- * afs_clean.c - clean-room auto-flicker (mains-ripple) detection.
- *
- * Implements spec/afs.md. See docs/provenance.md for the provenance record.
- */
+/* afs_clean.c - auto-flicker (mains-ripple) detection (spec/afs.md). */
 #include "afs_clean.h"
 #include "freeisp/sdiv.h"
 

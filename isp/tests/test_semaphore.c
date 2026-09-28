@@ -1,13 +1,7 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
-/*
- * test_semaphore.c - host tests for the clean-room cdx_sem_* semaphore.
- *
- * Behaviour source: spec/media_utils/semaphore.md section 5.  The
- * blocking path uses a helper thread with an explicit wakeup and a join so the
- * schedule is deterministic; all waits are bounded.  Exit status is non-zero on
- * any failed check.
- */
+/* test_semaphore.c - host tests for cdx_sem_* (spec media_utils/semaphore.md
+ * 5); the blocking path uses a helper thread and join, all waits bounded. */
 #define _GNU_SOURCE
 #include "utils/semaphore.h"
 

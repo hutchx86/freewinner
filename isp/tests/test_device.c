@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-/* Device-layer tests: A-GRAPH-1..4, A-DEV-OPEN, A-SENSOR, A-VIDEO (23 §2) */
+/* Device-layer tests: A-GRAPH-1..4, A-DEV-OPEN, A-SENSOR, A-VIDEO */
 #include "test.h"
 #include "fake_kernel.h"
 #include <string.h>
@@ -25,7 +25,7 @@ int main(void)
     struct media_device *md;
     struct hw_isp_media_dev mdev;
     struct hw_isp_device *dev;
-    struct isp_table_reg_map reg;
+    struct fwi_table_reg_map reg;
     int i;
 
     setup();
@@ -77,8 +77,8 @@ int main(void)
           dev ? dev->stats_size : 0);
     CHECK(fk_count(VIDIOC_VIN_ISP_H3A_CFG) == 1, "one H3A_CFG");
     {
-        struct isp_h3a_cfg *c =
-            (struct isp_h3a_cfg *)fk_last(VIDIOC_VIN_ISP_H3A_CFG)->data;
+        struct fwi_h3a_cfg *c =
+            (struct fwi_h3a_cfg *)fk_last(VIDIOC_VIN_ISP_H3A_CFG)->data;
         CHECK(c->config_counter == 0, "config_counter 0");
     }
 
@@ -116,7 +116,7 @@ int main(void)
     /* A-VIDEO: video open (fallback to id 0 when hidden), set_fmt */
     {
         struct video_fmt vfmt;
-        struct isp_video_device *v;
+        struct fwi_video_device *v;
         CHECK(isp_video_open(&mdev, 0) == 0, "video open");
         v = mdev.video_dev[0];
         CHECK(v != NULL && v->isp_id == 0, "video isp_id 0");
@@ -178,7 +178,7 @@ int main(void)
     /* A-VIDEO: SoC 4K>25fps refusal */
     {
         struct video_fmt vfmt;
-        struct isp_video_device *v;
+        struct fwi_video_device *v;
         CHECK(isp_video_open(&mdev, 0) == 0, "reopen video");
         v = mdev.video_dev[0];
         fk.soc_bits = 0x20;
@@ -196,9 +196,9 @@ int main(void)
         isp_video_close(&mdev, 0);
     }
 
-    /* A-ENUM (host): isp_table_reg_map field order */
-    CHECK(offsetof(struct isp_table_reg_map, addr) == 0, "reg.addr@0");
-    CHECK(offsetof(struct isp_table_reg_map, size) == sizeof(void *),
+    /* A-ENUM (host): fwi_table_reg_map field order */
+    CHECK(offsetof(struct fwi_table_reg_map, addr) == 0, "reg.addr@0");
+    CHECK(offsetof(struct fwi_table_reg_map, size) == sizeof(void *),
           "reg.size@ptr");
 
     media_close(md);

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-/* msgqueue.c - unit U FIFO message queue (21-utils.md §3) */
+/* msgqueue.c - FIFO message queue */
 #include "utils/msgqueue.h"
 #include "utils/systime.h"
 #include <stdlib.h>

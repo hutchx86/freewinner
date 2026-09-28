@@ -1,37 +1,36 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-/* events.c - event loop, subscriptions and the subdev/stats handlers
- * (20 §4.7, §5) */
+/* events.c - event loop, subscriptions and the subdev/stats handlers */
 #include "framework_internal.h"
 #include <errno.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/select.h>
 
-static struct isp_event_loop loops[HW_ISP_DEVICE_NUM];
+static struct fwi_event_loop loops[HW_ISP_DEVICE_NUM];
 
-struct isp_event_loop *isp_loop_for(int id)
+struct fwi_event_loop *isp_loop_for(int id)
 {
     return &loops[id];
 }
 
-void isp_loop_init(struct isp_event_loop *l)
+void isp_loop_init(struct fwi_event_loop *l)
 {
     memset(l, 0, sizeof(*l));
     l->maxfd = -1;
 }
 
-void isp_loop_start(struct isp_event_loop *l)
+void isp_loop_start(struct fwi_event_loop *l)
 {
     l->done = 0;
     l->started = 1;
 }
 
-void isp_loop_stop(struct isp_event_loop *l)
+void isp_loop_stop(struct fwi_event_loop *l)
 {
     l->done = 1;
 }
 
-int isp_loop_watch(struct isp_event_loop *l, int fd, int kind,
+int isp_loop_watch(struct fwi_event_loop *l, int fd, int kind,
                    void (*cb)(void *priv), void *priv)
 {
     int i;
@@ -54,7 +53,7 @@ int isp_loop_watch(struct isp_event_loop *l, int fd, int kind,
     return 0;
 }
 
-void isp_loop_unwatch(struct isp_event_loop *l, int fd)
+void isp_loop_unwatch(struct fwi_event_loop *l, int fd)
 {
     int i, j;
     for (i = 0; i < l->nwatch; i++) {
@@ -71,7 +70,7 @@ void isp_loop_unwatch(struct isp_event_loop *l, int fd)
             l->maxfd = l->watch[i].fd;
 }
 
-int isp_loop_run(struct isp_event_loop *l)
+int isp_loop_run(struct fwi_event_loop *l)
 {
     while (!l->done) {
         fd_set r, w, e;
@@ -118,7 +117,7 @@ int isp_loop_run(struct isp_event_loop *l)
 }
 
 /* ------------------------------------------------------------------ */
-/* 20 §4.7 subscriptions                                               */
+/* subscriptions                                                       */
 /* ------------------------------------------------------------------ */
 static const int ctrl_ids[] = {
     0x00980900, 0x00980901, 0x00980902, 0x00980903, 0x0098090c, 0x00980911,
@@ -137,7 +136,7 @@ static void stats_handler(void *priv);
 int isp_event_start(fwi_isp_ctx_t *ctx)
 {
     struct hw_isp_device *dev = media_params.isp_dev[ctx->isp_index];
-    struct isp_event_loop *l = isp_loop_for(ctx->isp_index);
+    struct fwi_event_loop *l = isp_loop_for(ctx->isp_index);
     struct v4l2_event_subscription sub;
     unsigned int en = 1;
     unsigned int i;
@@ -176,7 +175,7 @@ int isp_event_start(fwi_isp_ctx_t *ctx)
 void isp_event_stop(fwi_isp_ctx_t *ctx)
 {
     struct hw_isp_device *dev = media_params.isp_dev[ctx->isp_index];
-    struct isp_event_loop *l = isp_loop_for(ctx->isp_index);
+    struct fwi_event_loop *l = isp_loop_for(ctx->isp_index);
     struct v4l2_event_subscription sub;
     unsigned int en = 0;
 
@@ -195,7 +194,7 @@ static void subdev_handler(void *priv)
 {
     fwi_isp_ctx_t *ctx = priv;
     struct hw_isp_device *dev = media_params.isp_dev[ctx->isp_index];
-    struct isp_event_loop *l = isp_loop_for(ctx->isp_index);
+    struct fwi_event_loop *l = isp_loop_for(ctx->isp_index);
     struct v4l2_event ev;
 
     if (dev == NULL)
@@ -227,8 +226,8 @@ static void stats_handler(void *priv)
     fwi_isp_ctx_t *ctx = priv;
     struct hw_isp_device *dev = media_params.isp_dev[ctx->isp_index];
     struct v4l2_event ev;
-    struct isp_stat_req req;
-    struct isp_stat_event *se;
+    struct fwi_stat_req req;
+    struct fwi_stat_event *se;
 
     if (dev == NULL)
         return;
@@ -237,18 +236,13 @@ static void stats_handler(void *priv)
         fprintf(stderr, "isp: dqevent stat failed\n");
         return;
     }
-    se = (struct isp_stat_event *)ev.u.data;
+    se = (struct fwi_stat_event *)ev.u.data;
     if (se->buf_err != 0) {
         fprintf(stderr, "isp: stats buffer error\n");
         return;
     }
-    /* 20-framework §4.7 stats request: the reference zeroes the
-     * whole request and sets only buf/buf_size - frame_number/config_counter
-     * (present in the struct's 16-byte layout but not documented as used by
-     * the reference call) stay zero, not populated from the dequeued event.
-     * Confirmed by experiment (on-camera trace) that populating them from the
-     * dequeued event makes no difference to the stats content either way -
-     * the all-zero-after-frame-1 issue is elsewhere (open, see handoff). */
+    /* Stats request: zero it and set only buf/buf_size. frame_number and config_counter stay
+     * zero; filling them from the dequeued event made no difference on camera. */
     memset(&req, 0, sizeof(req));
     req.buf = dev->stats_buf;
     req.buf_size = dev->stats_size;

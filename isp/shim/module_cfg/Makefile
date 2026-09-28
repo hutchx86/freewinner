@@ -1,17 +1,8 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 # Copyright (C) 2026 freewinner contributors
-# module_cfg SDK-ABI shim build.
-#
-#   make          host test  -> build/test_module_cfg_shim
-#   make check    build + run the host test
-#   make arm      static ARM build -> build_arm/test_module_cfg_shim.arm
-#   make run-arm  run the ARM build under qemu-arm
-#   make clean
-#
-# The clean core is compiled separately with its two SDK-colliding entry points
-# renamed to clean_isp_hardware_update / clean_isp_map_addr, so the shim can
-# export the framework-facing spellings.  The framework types come from the
-# generated fwi_* headers in include/.
+# module_cfg SDK-ABI shim build. Targets: all (host test), check, arm, run-arm,
+# clean. The clean core is built with isp_hardware_update/isp_map_addr renamed
+# to clean_* so the shim can export the framework-facing spellings.
 
 CC       ?= gcc
 CLEAN_DIR := $(abspath $(CURDIR)/../..)

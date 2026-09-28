@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-/* fake_kernel.h - host fake for the isp_uapi_sys seam (23 §1) */
+/* fake_kernel.h - host fake for the isp_uapi_sys seam */
 #ifndef FAKE_KERNEL_H
 #define FAKE_KERNEL_H
 
@@ -63,7 +63,7 @@ typedef struct fake_kernel {
 } fake_kernel;
 
 extern fake_kernel fk;
-extern const struct isp_uapi_sys fake_sys;
+extern const struct fwi_uapi_sys fake_sys;
 
 void fk_reset(void);
 void fk_topology_default(void);

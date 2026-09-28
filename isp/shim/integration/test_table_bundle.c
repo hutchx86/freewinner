@@ -1,20 +1,8 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
-/*
- * test_table_bundle.c - host/ARM test for the cached table bundle.
- *
- * Proves the deploy guarantee: once a bundle has been written from a located
- * `rmm` image, a later boot can install the full, correctly-tuned table set
- * with the vendor image absent, and a missing/corrupt bundle installs nothing
- * (fail-closed) so the shims keep their defaults rather than gaining garbage.
- *
- * It also exercises the cache-first resolver's fallback order:
- *   valid bundle + absent rmm  -> cache used (no vendor read);
- *   absent/corrupt bundle + rmm -> locator used, bundle re-seeded;
- *   both absent                -> nothing installed.
- *
- * The six shim setters are capture stubs, exactly as in test_shim_tables.c.
- */
+/* test_table_bundle.c - a bundle saved from a located rmm image installs the
+ * same tables with the image absent; bad bundles install nothing; and the
+ * cache-first resolver falls back bundle -> locator -> nothing. */
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -108,9 +96,8 @@ static void snap_push(snap_t *s, long long x)
     if (s->n < SNAP_MAX) s->v[s->n++] = x;
 }
 
-/* A compact, cross-image-distinct digest of every module's mapped block.  If
- * the cached bundle reproduces this exactly, it carries byte-equal tuning to
- * the locator path. */
+/* Digest of every mapped block; a bundle reproducing it carries byte-equal
+ * tuning to the locator path. */
 static void snap_blocks(snap_t *s)
 {
     const ae_clean_tables_t   *ae   =

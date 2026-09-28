@@ -261,4 +261,4 @@ the vendor AFS run stage does, so the clean path is observable end to end. Frame
 and unknown modes leave the persistent result untouched, as the vendor does.
 
 The SDK-boundary differential is self-contained in the private AFS differential
-harness; see the private run plan §6.11.
+harness.

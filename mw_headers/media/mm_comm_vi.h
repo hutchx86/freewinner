@@ -1,13 +1,7 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
-/*
- * media/mm_comm_vi.h - thin include-name shim (H "single source",
- * 31-abi-headers.md §5.5/§5.6): VI_ATTR_S and VI_SHUTTIME_CFG_S are now
- * declared once, in freewinner's generated MPP boundary header
- * (fwm_media_abi.h, as fwm_vi_attr_t / fwm_vi_shutter_cfg_t).  This file
- * keeps only its name so mediad's #include lines do not change; app code now
- * spells the types directly (Task 2 punch list).
- */
+/* Include-name shim: keeps mediad's #include line; the types are declared in
+ * fwm_media_abi.h. */
 #ifndef FMW_MEDIA_MM_COMM_VI_H
 #define FMW_MEDIA_MM_COMM_VI_H
 
@@ -19,11 +13,8 @@
 extern "C" {
 #endif
 
-/* Small local mode/reset constants: not MPP-boundary layout, not in the
- * generated fwm_media_enum.h set, and mediad only ever needs the numeric
- * values (0/1/2 and 0/1) it already passed through fwm_vi_shutter_cfg_t's
- * plain uint32_t reset_mode/shutter_mode fields, so these are kept local
- * rather than invented under a fwm_ name. */
+/* Local values for fwm_vi_shutter_cfg_t's plain uint32_t shutter_mode/reset_mode
+ * fields; not MPP-boundary layout, so not in fwm_media_enum.h. */
 typedef enum VI_SHUTTIME_MODE_E {
 	VI_SHUTTIME_MODE_AUTO       = 0,
 	VI_SHUTTIME_MODE_PREVIEW    = 1,

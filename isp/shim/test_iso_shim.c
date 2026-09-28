@@ -1,12 +1,7 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
-/*
- * test_iso_shim.c - host test for the ISO pilot shim.
- *
- * Includes the SDK ABI header and the shim, drives the full
- * init/get/set/run cycle with a synthetic iso_param_t and a synthetic
- * isp_lib_context, and checks the clean -> SDK result translation.
- */
+/* test_iso_shim.c - host test for the ISO shim: init/get/set/run with a
+ * synthetic param block and context, checking the clean -> SDK writeback. */
 #include <stdio.h>
 #include <string.h>
 
@@ -14,18 +9,13 @@
 #include "freeisp/isp_dims.h"
 #include "iso_shim.h"
 
-/* The shim's exported 3A entry points (fwi vtable shape; the framework
- * declares them in framework_isp.h).  Not in iso_shim.h: TUs that also see
- * iso_clean.h have a clean-core iso_init of a different type. */
+/* Shim entry points (declared by framework_isp.h, not iso_shim.h: TUs seeing
+ * iso_clean.h have a clean iso_init of another type). */
 void *iso_init(fwi_iso_cfg_core_ops_t **core_ops);
 void  iso_exit(void *core_obj);
 
-/*
- * musl's atan/e_pow objects (pulled in by the clean core's libm use) reference
- * the ARM EH personality routines.  This test never unwinds; weak definitions
- * close the static link under the OpenWrt toolchain (a real libgcc_eh, if ever
- * linked, would override them).
- */
+/* musl atan/e_pow reference ARM EH personality routines; weak stubs close the
+ * static link (this test never unwinds; a real libgcc_eh would override). */
 #if defined(__arm__)
 #define SHIM_WEAK __attribute__((weak))
 SHIM_WEAK int __aeabi_unwind_cpp_pr0(void) { return 0; }
@@ -200,12 +190,8 @@ static void test_get_set_run(void)
     iso_exit(h);
 }
 
-/*
- * Tuning-corpus mapping + full result writeback: seed the SDK tuning tables and
- * a tdnf_table buffer, run, and check the values land in module_cfg.  The CEM
- * check pins the a/b orientation (cem_ratio == 0 must select isp_cem_table1,
- * the complement-weighted table).
- */
+/* Tuning corpus + full writeback into module_cfg. The CEM check pins a/b
+ * orientation: cem_ratio == 0 selects cem_table1 (complement-weighted). */
 static unsigned char g_tdnf_table[512];
 
 static void test_writeback(void)
@@ -299,7 +285,7 @@ static void test_index_edges(void)
 
 int main(void)
 {
-    /* Table provider: NULL selects the built-in pilot defaults. */
+    /* Table provider: NULL selects the built-in placeholder defaults. */
     iso_shim_set_tables(NULL);
 
     test_lifecycle();

@@ -88,9 +88,8 @@ void freecodec_h264_init_reg_info(const freecodec_h264_reg_info_cfg *cfg,
     /* temporal parameter word. */
     s->temporal_param = field(0x20u, 8, 8);            /* maxcoef b1 */
 
-    /* 0x44 high-pass / picture-variance thresholds (spec 11 2.5) — only for the
-     * v5-capable media engine. The spec's
-     * pic_var_luma constant (0x18) is wrong; the golden stores 0x0c. */
+    /* 0x44 high-pass / picture-variance thresholds (spec 11 2.5), v5-capable
+     * engine only. pic_var_luma is 0x0c as the golden stores, not the spec's 0x18. */
     if (cfg->ic_version > 0x2100fu) {
         s->hp_variance_control = field(cfg->hpfilter_contrast_th, 0, 8)
                            | field(cfg->hpfilter_mad_th, 8, 8)
@@ -350,11 +349,8 @@ void freecodec_h264_config_registers(const freecodec_h264_config_reg_cfg *cfg,
      * the slice step re-stores it before the kick. */
     regs[0x04u / 4u] = cfg->rpara0_v1 | 0x80000000u;
 
-    /* 0x08: slice_stride_control. The 3D step sets the 3-D filter enable (bit 22) when the level is
-     * non-zero and this is not the instance's first picture, and clears it otherwise (3D-filter spec
-     * §3: picture index, not the ring slot); dynamic ME ORs bit 8 + misc bits (see spec r2/02
-     * section 2.3). Always stored from context so a cleared block cannot leave the dynamic-ME enable
-     * zero (spec sec. 5.6). */
+    /* 0x08: 3D-filter enable bit 22 when level != 0 and not the first picture
+     * (3D-filter spec 3); always stored so the dynamic-ME enable survives (spec 5.6). */
     {
         uint32_t rpara1 = cfg->rpara1 & ~(1u << 22);
 
@@ -375,9 +371,8 @@ void freecodec_h264_config_registers(const freecodec_h264_config_reg_cfg *cfg,
     regs[0x18u / 4u] = (cfg->temporal_svc != 0u) ? ((7u << 8) | 1u) : 0u;
     regs[0x20u / 4u] = 0u;
 
-    /* 0x1c: the one read-modify-write (spec ve-register-lifecycle.md section
-     * 5.1) - OR in the three IRQ-enable bits. The caller supplies 0x1c's status
-     * base (zero after the VE reset pulse, so this yields 7). */
+    /* 0x1c: the one read-modify-write (ve-register-lifecycle 5.1): OR in the three
+     * IRQ-enable bits over the caller's live status base. */
     regs[0x1cu / 4u] |= 7u;
 
     /* 0x28: intra refresh; bit 31 = enable, [15:0] = MBs per refresh block
@@ -475,9 +470,8 @@ void freecodec_h264_config_registers(const freecodec_h264_config_reg_cfg *cfg,
         regs[0x8cu / 4u] = end_bits;
     }
 
-    /* 0x94: 3D-filter threshold T << 23 (9-bit field), only when the filter is
-     * enabled, else left at the reset value 0 (3D-filter spec §2; the captured
-     * level << 24 is T << 23 in the QP 20..30 band, where T = 2 x level). */
+    /* 0x94: 3D-filter threshold T << 23 (9 bits), only while enabled, else the
+     * reset value 0 (3D-filter spec 2). */
     if (freecodec_h264_3d_enabled(cfg->filter_3d_level, cfg->picture_index))
         regs[0x94u / 4u] = (cfg->filter_3d_threshold & 0x1ffu) << 23;
     else
@@ -515,9 +509,8 @@ void freecodec_h264_config_registers(const freecodec_h264_config_reg_cfg *cfg,
         regs[0xbcu / 4u] = cfg->sub_enc_pic_y[pic_idx(cfg->sub_rec)];
     }
 
-    /* 0xa8/0xac: 3D-filter planes, zero when off. 0xac (current slot) on every
-     * picture with level != 0; 0xa8 (last slot) only when the filter is enabled,
-     * so the first picture leaves it 0 (3D-filter spec §4). */
+    /* 0xa8/0xac: 3D-filter planes, 0 when off: 0xac whenever level != 0, 0xa8 only
+     * while enabled, so the first picture leaves it 0 (3D-filter spec 4). */
     regs[0xa8u / 4u] = 0u;
     regs[0xacu / 4u] = 0u;
     if (cfg->filter_3d_level != 0u) {

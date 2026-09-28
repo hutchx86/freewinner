@@ -1,20 +1,8 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
-/*
- * base.h - clean-room ISP base tier (software table/window/curve generation
- * and DMA statistics parsing).
- *
- * Behaviour-only implementation of spec/reglayer2.md section 3, plus the interfaces.md entry-point/table-injection contract.  Table data
- * is injected at runtime through the table-provider contract
- * (freeisp_get_tables()); see docs/provenance.md for the full provenance
- * record.
- *
- * The struct tag names and layouts below (`isp_lib_context`,
- * `isp_module_config`, `isp_h3a_reg_win`, ...) are reproduced as
- * **interoperability facts**: they must match the SDK ABI header they mirror,
- * `libisp/include/isp_manage.h` (module payload types also in
- * `isp_module_cfg.h`).  The decomposition and behaviour are our own.
- */
+/* base.h - ISP base tier: software table/window/curve generation and DMA statistics
+ * parsing (isp/spec/reglayer2.md section 3, interfaces.md). Own record layouts; shim/base
+ * translates the SDK records. Tables are injected at runtime (isp/docs/provenance.md). */
 #ifndef BASE_CLEAN_H
 #define BASE_CLEAN_H
 
@@ -103,29 +91,29 @@ enum isp_3a_change_bits {
 /* H3A window descriptor (spec 5)                                      */
 /* ------------------------------------------------------------------ */
 
-typedef struct isp_h3a_reg_win {
+typedef struct fwi_base_h3a_reg_win {
     uint8_t  hor_num;
     uint8_t  ver_num;
     uint32_t width;
     uint32_t height;
     uint32_t hor_start;
     uint32_t ver_start;
-} isp_h3a_reg_win_t;
+} fwi_base_h3a_reg_win_t;
 
 /* ------------------------------------------------------------------ */
 /* Parsed statistics (spec 2.1 / 2.2 / "Stats block behaviour")        */
 /* ------------------------------------------------------------------ */
 
-typedef struct isp_ae_stats {
+typedef struct fwi_base_ae_stats {
     uint32_t win_r[ISP_AE_WIN_N];
     uint32_t win_g[ISP_AE_WIN_N];
     uint32_t win_b[ISP_AE_WIN_N];
     uint16_t luma[ISP_AE_WIN_N];
     uint32_t hist[ISP_HIST_BIN_N];
     uint32_t win_pix_n;
-} isp_ae_stats_t;
+} fwi_base_ae_stats_t;
 
-typedef struct isp_awb_stats {
+typedef struct fwi_base_awb_stats {
     uint32_t sum_r[ISP_AWB_WIN_N];
     uint32_t sum_g[ISP_AWB_WIN_N];
     uint32_t sum_b[ISP_AWB_WIN_N];
@@ -134,9 +122,9 @@ typedef struct isp_awb_stats {
     uint32_t avg_g[ISP_AWB_WIN_N];
     uint32_t avg_b[ISP_AWB_WIN_N];
     uint32_t avg[ISP_AWB_WIN_N];
-} isp_awb_stats_t;
+} fwi_base_awb_stats_t;
 
-typedef struct isp_af_stats {
+typedef struct fwi_base_af_stats {
     uint64_t iir[ISP_AF_WIN_N];
     uint64_t fir[ISP_AF_WIN_N];
     uint64_t iir_cnt[ISP_AF_WIN_N];
@@ -147,15 +135,15 @@ typedef struct isp_af_stats {
     uint64_t h_d2[ISP_AF_WIN_N];
     uint64_t v_d1[ISP_AF_WIN_N];
     uint64_t v_d2[ISP_AF_WIN_N];
-} isp_af_stats_t;
+} fwi_base_af_stats_t;
 
-typedef struct isp_afs_stats {
+typedef struct fwi_base_afs_stats {
     uint32_t sum[ISP_AFS_SUM_N];
     uint32_t pic_w;
     uint32_t pic_h;
-} isp_afs_stats_t;
+} fwi_base_afs_stats_t;
 
-typedef struct isp_pltm_stats {
+typedef struct fwi_base_pltm_stats {
     uint16_t lst[ISP_PLTM_WIN_N];
     uint32_t avg_before;
     uint32_t min_before;
@@ -163,18 +151,18 @@ typedef struct isp_pltm_stats {
     uint32_t avg_after;
     uint32_t min_after;
     uint32_t max_after;
-} isp_pltm_stats_t;
+} fwi_base_pltm_stats_t;
 
-typedef struct isp_stats {
-    isp_ae_stats_t   ae;
-    isp_awb_stats_t  awb;
-    isp_af_stats_t   af;
-    isp_afs_stats_t  afs;
-    isp_pltm_stats_t pltm;
-} isp_stats_t;
+typedef struct fwi_base_stats {
+    fwi_base_ae_stats_t   ae;
+    fwi_base_awb_stats_t  awb;
+    fwi_base_af_stats_t   af;
+    fwi_base_afs_stats_t  afs;
+    fwi_base_pltm_stats_t pltm;
+} fwi_base_stats_t;
 
 /* Motion/dynamic-judge state (spec 2.3). */
-typedef struct isp_dynamic_stats {
+typedef struct fwi_base_dynamic_stats {
     int      enable;
     uint32_t accum[ISP_AE_WIN_N];
     uint32_t accum_last1[ISP_AE_WIN_N];
@@ -201,36 +189,36 @@ typedef struct isp_dynamic_stats {
 
     uint32_t mov;
     uint32_t mov_old;
-} isp_dynamic_stats_t;
+} fwi_base_dynamic_stats_t;
 
-typedef struct isp_stats_ctx {
-    isp_stats_t         stats;
-    isp_dynamic_stats_t dynamic_stats;
+typedef struct fwi_base_stats_ctx {
+    fwi_base_stats_t         stats;
+    fwi_base_dynamic_stats_t dynamic_stats;
     uint32_t            pic_w;
     uint32_t            pic_h;
-} isp_stats_ctx_t;
+} fwi_base_stats_ctx_t;
 
 /* ------------------------------------------------------------------ */
 /* Module payload structs (spec 3.4 shapes used by this tier)          */
 /* ------------------------------------------------------------------ */
 
-typedef struct isp_rgb2yuv {
+typedef struct fwi_base_rgb2yuv {
     int16_t  gain[3][3];
     int16_t  offset[3];
-} isp_rgb2yuv_t;
+} fwi_base_rgb2yuv_t;
 
-typedef struct isp_rgb2rgb_cfg {
+typedef struct fwi_base_rgb2rgb_cfg {
     uint16_t color_matrix[3][3];
     uint16_t color_offset[3];
-} isp_rgb2rgb_cfg_t;
+} fwi_base_rgb2rgb_cfg_t;
 
-typedef struct isp_gain_offset_cfg {
+typedef struct fwi_base_gain_offset_cfg {
     uint16_t gain[4];          /* r, gr, gb, b          */
     uint16_t sensor_offset[4]; /* r, gr, gb, b          */
     uint16_t offset[4];        /* blc offsets           */
-} isp_gain_offset_cfg_t;
+} fwi_base_gain_offset_cfg_t;
 
-typedef struct isp_wdr_cfg {
+typedef struct fwi_base_wdr_cfg {
     uint16_t lo_th;
     uint16_t hi_th;
     uint16_t exp_ratio;
@@ -240,89 +228,89 @@ typedef struct isp_wdr_cfg {
     uint16_t out_sel;
     uint16_t table[ISP_WDR_TBL_WORDS];   /* WDR_MEM_SIZE 0x4000 bytes */
     uint16_t fe_table[ISP_WDR_FE_WORDS]; /* front-end 0x2000 bytes    */
-} isp_wdr_cfg_t;
+} fwi_base_wdr_cfg_t;
 
-typedef struct isp_gamma_cfg {
+typedef struct fwi_base_gamma_cfg {
     uint16_t gamma_tbl[ISP_GAMMA_TBL_LEN];
-} isp_gamma_cfg_t;
+} fwi_base_gamma_cfg_t;
 
-typedef struct isp_lens_cfg {
+typedef struct fwi_base_lens_cfg {
     uint16_t ct_x;
     uint16_t ct_y;
     uint16_t rs_val;
-} isp_lens_cfg_t;
+} fwi_base_lens_cfg_t;
 
-typedef struct isp_disc_cfg {
+typedef struct fwi_base_disc_cfg {
     uint16_t disc_ct_x;
     uint16_t disc_ct_y;
     uint16_t disc_rs_val;
-} isp_disc_cfg_t;
+} fwi_base_disc_cfg_t;
 
-typedef struct isp_awb_cfg {
-    isp_h3a_reg_win_t awb_reg_win;
+typedef struct fwi_base_awb_cfg {
+    fwi_base_h3a_reg_win_t awb_reg_win;
     uint8_t lim_r;
     uint8_t lim_g;
     uint8_t lim_b;
-} isp_awb_cfg_t;
+} fwi_base_awb_cfg_t;
 
-typedef struct isp_af_cfg {
-    isp_h3a_reg_win_t af_reg_win;
-} isp_af_cfg_t;
+typedef struct fwi_base_af_cfg {
+    fwi_base_h3a_reg_win_t af_reg_win;
+} fwi_base_af_cfg_t;
 
-typedef struct isp_ae_cfg {
-    isp_h3a_reg_win_t ae_reg_win;
-} isp_ae_cfg_t;
+typedef struct fwi_base_ae_cfg {
+    fwi_base_h3a_reg_win_t ae_reg_win;
+} fwi_base_ae_cfg_t;
 
-typedef struct isp_hist_cfg {
-    isp_h3a_reg_win_t hist_reg_win;
-} isp_hist_cfg_t;
+typedef struct fwi_base_hist_cfg {
+    fwi_base_h3a_reg_win_t hist_reg_win;
+} fwi_base_hist_cfg_t;
 
-typedef struct isp_afs_cfg {
+typedef struct fwi_base_afs_cfg {
     uint32_t inc_line;
-} isp_afs_cfg_t;
+} fwi_base_afs_cfg_t;
 
-typedef struct isp_mode_cfg {
+typedef struct fwi_base_mode_cfg {
     uint32_t wdr_mode;
     uint32_t ae_mode;
     uint32_t dg_mode;
     uint32_t input_fmt;
-} isp_mode_cfg_t;
+} fwi_base_mode_cfg_t;
 
-typedef struct clean_isp_module_config {
+typedef struct fwi_base_module_cfg {
     uint32_t module_enable_flag;
     uint32_t table_update;
 
-    isp_mode_cfg_t        mode_cfg;
-    isp_awb_cfg_t         awb_cfg;
-    isp_af_cfg_t          af_cfg;
-    isp_ae_cfg_t          ae_cfg;
-    isp_hist_cfg_t        hist_cfg;
-    isp_afs_cfg_t         afs_cfg;
-    isp_rgb2yuv_t         rgb2yuv;
-    isp_rgb2rgb_cfg_t     rgb2rgb_cfg;
-    isp_gain_offset_cfg_t gain_offset_cfg;
-    isp_wdr_cfg_t         wdr_cfg;
-    isp_gamma_cfg_t       gamma_cfg;
-    isp_lens_cfg_t        lens_cfg;
-    isp_disc_cfg_t        disc_cfg;
+    fwi_base_mode_cfg_t        mode_cfg;
+    fwi_base_awb_cfg_t         awb_cfg;
+    fwi_base_af_cfg_t          af_cfg;
+    fwi_base_ae_cfg_t          ae_cfg;
+    fwi_base_hist_cfg_t        hist_cfg;
+    fwi_base_afs_cfg_t         afs_cfg;
+    fwi_base_rgb2yuv_t         rgb2yuv;
+    fwi_base_rgb2rgb_cfg_t     rgb2rgb_cfg;
+    fwi_base_gain_offset_cfg_t gain_offset_cfg;
+    fwi_base_wdr_cfg_t         wdr_cfg;
+    fwi_base_gamma_cfg_t       gamma_cfg;
+    fwi_base_lens_cfg_t        lens_cfg;
+    fwi_base_disc_cfg_t        disc_cfg;
 
     uint16_t linear_table[ISP_LINEAR_TBL_N];
     uint16_t lens_table[ISP_LSC_TBL_SIZE];
     uint16_t msc_table[ISP_MSC_TBL_SIZE];
-} isp_module_config_t;
+} fwi_base_module_cfg_t;
 
 /* ------------------------------------------------------------------ */
 /* Tuning / settings / 3A context (spec 2)                             */
 /* ------------------------------------------------------------------ */
 
-typedef struct isp_gains {
+typedef struct fwi_base_gains {
     uint16_t bayer_gain[4];       /* r, gr, gb, b          */
     int32_t  gain_favour;
     int32_t  analog_gain_min;
     int32_t  analog_gain_max;
     int32_t  digital_gain_min;
     int32_t  digital_gain_max;
-} isp_gains_t;
+} fwi_base_gains_t;
 
 typedef struct ae_ini {
     int32_t gain_favour;
@@ -332,8 +320,8 @@ typedef struct ae_ini {
     int32_t digital_gain_max;
 } ae_ini_t;
 
-typedef struct isp_ini_cfg {
-    isp_gains_t gains;
+typedef struct fwi_base_ini_cfg {
+    fwi_base_gains_t gains;
     int32_t     hue_level;            /* signed */
     int32_t     color_effect;         /* 0 none, others per spec 2.4 */
     int32_t     colour_space;         /* sensor colour-space selector */
@@ -344,9 +332,9 @@ typedef struct isp_ini_cfg {
     int32_t     cm_break_num;
     int32_t     cm_trig[ISP_MSC_TEMP_NUM];
     int32_t     ae_stat_sel;          /* AE stats gamma-correction select */
-} isp_ini_cfg_t;
+} fwi_base_ini_cfg_t;
 
-typedef struct isp_ae_settings {
+typedef struct fwi_base_ae_settings {
     int32_t  flicker_mode;
     int32_t  ae_mode;                 /* 0 normal, 1 WDR */
     int32_t  wdr_output_select;       /* WDR output selector (spec 2.7) */
@@ -360,32 +348,32 @@ typedef struct isp_ae_settings {
     int32_t  ae_gain;
     int32_t  exp_line;
     int32_t  flash_open;
-} isp_ae_settings_t;
+} fwi_base_ae_settings_t;
 
-typedef struct isp_ae_param {
+typedef struct fwi_base_ae_param {
     ae_ini_t ae_ini;
     int      nor_cmd_mode;
     uint32_t frame_cnt;
     int32_t  comanding_input_bits;    /* WDR table input precision   */
     int32_t  comanding_output_bits;   /* WDR table output precision  */
-    isp_ae_settings_t ae_setting;     /* settings snapshot (spot AE) */
-} isp_ae_param_t;
+    fwi_base_ae_settings_t ae_setting;     /* settings snapshot (spot AE) */
+} fwi_base_ae_param_t;
 
 /* The framework keeps the AE parameter block behind a context handle; the
  * settings-update dispatcher hands this handle to the AE helper. */
-typedef struct isp_ae_entity_ctx {
-    isp_ae_param_t *ae_param;
-} isp_ae_entity_ctx_t;
+typedef struct fwi_base_ae_entity_ctx {
+    fwi_base_ae_param_t *ae_param;
+} fwi_base_ae_entity_ctx_t;
 
-typedef struct isp_afs_param {
+typedef struct fwi_base_afs_param {
     int32_t flicker_mode;
-} isp_afs_param_t;
+} fwi_base_afs_param_t;
 
-typedef struct isp_af_param {
+typedef struct fwi_base_af_param {
     int32_t mov;
-} isp_af_param_t;
+} fwi_base_af_param_t;
 
-typedef struct isp_ae_result {
+typedef struct fwi_base_ae_result {
     int32_t  wdr_hi_th;
     int32_t  wdr_low_th;
     int32_t  wdr_exp_ratio;
@@ -395,13 +383,13 @@ typedef struct isp_ae_result {
     int32_t  wdr_ratio_tmp;
     int32_t  wdr_ratio_isp_hw;
     int32_t  ae_gain;                 /* used by the defog path      */
-} isp_ae_result_t;
+} fwi_base_ae_result_t;
 
-typedef struct isp_af_result {
+typedef struct fwi_base_af_result {
     int32_t temperature;
-} isp_af_result_t;
+} fwi_base_af_result_t;
 
-typedef struct isp_sensor_info {
+typedef struct fwi_base_sensor_info {
     int32_t  ae_lv;
     int32_t  colour_space;
     int32_t  temperature;
@@ -410,24 +398,24 @@ typedef struct isp_sensor_info {
     uint32_t blc_en;
     int32_t  so_offset[4];
     int32_t  blc_offset[4];
-} isp_sensor_info_t;
+} fwi_base_sensor_info_t;
 
-typedef struct isp_adjust {
+typedef struct fwi_base_adjust {
     int32_t defog_value;
-} isp_adjust_t;
+} fwi_base_adjust_t;
 
-typedef struct isp_stat {
+typedef struct fwi_base_stat {
     uint16_t min_rgb_saved;
-} isp_stat_t;
+} fwi_base_stat_t;
 
-typedef struct isp_defog_ctx {
+typedef struct fwi_base_defog_ctx {
     uint16_t min_rgb_pre[3];
     int32_t  defog_pre;
     int32_t  defog_changed;
     int32_t  offset;
-} isp_defog_ctx_t;
+} fwi_base_defog_ctx_t;
 
-typedef struct isp_test_settings {
+typedef struct fwi_base_test_settings {
     uint32_t ae_en;
     uint32_t awb_en;
     uint32_t af_en;
@@ -446,9 +434,9 @@ typedef struct isp_test_settings {
     int32_t  isp_test_mode;
     int32_t  isp_color_temp;
     uint32_t isp_test_focus;          /* AF stats read gate (spec 2.9) */
-} isp_test_settings_t;
+} fwi_base_test_settings_t;
 
-typedef struct isp_stats_attach {
+typedef struct fwi_base_stats_attach {
     void *awb_stats;
     void *ae_stats;
     void *af_stats;
@@ -457,33 +445,33 @@ typedef struct isp_stats_attach {
     void *md_stats;
     void *gtm_stats;
     void *rolloff_stats;
-} isp_stats_attach_t;
+} fwi_base_stats_attach_t;
 
 /* The framework's register allocation lives outside this tier; the context
  * carries the instance id so the validated writers can be driven. */
-struct clean_isp_lib_context {
+struct fwi_base_ctx {
     unsigned long isp_dev_id;
 
     uint32_t isp_3a_change_flags;
 
-    isp_module_config_t module_cfg;
-    isp_stats_ctx_t     stats_ctx;
-    isp_stats_attach_t  stats_attach;
+    fwi_base_module_cfg_t module_cfg;
+    fwi_base_stats_ctx_t     stats_ctx;
+    fwi_base_stats_attach_t  stats_attach;
 
-    isp_ini_cfg_t       isp_ini_cfg;
-    isp_test_settings_t isp_test_settings;
-    isp_ae_settings_t   ae_settings;
-    isp_ae_param_t      ae_param;
-    isp_ae_entity_ctx_t ae_entity_ctx;
-    isp_afs_param_t     afs_param;
-    isp_af_param_t      af_param;
-    isp_ae_result_t     ae_result;
-    isp_af_result_t     af_result;
+    fwi_base_ini_cfg_t       isp_ini_cfg;
+    fwi_base_test_settings_t isp_test_settings;
+    fwi_base_ae_settings_t   ae_settings;
+    fwi_base_ae_param_t      ae_param;
+    fwi_base_ae_entity_ctx_t ae_entity_ctx;
+    fwi_base_afs_param_t     afs_param;
+    fwi_base_af_param_t      af_param;
+    fwi_base_ae_result_t     ae_result;
+    fwi_base_af_result_t     af_result;
     int32_t             awb_color_temp_output;   /* AWB result colour temp */
-    isp_sensor_info_t   sensor_info;
-    isp_adjust_t        adjust;
-    isp_stat_t          stat;
-    isp_defog_ctx_t     defog_ctx;
+    fwi_base_sensor_info_t   sensor_info;
+    fwi_base_adjust_t        adjust;
+    fwi_base_stat_t          stat;
+    fwi_base_defog_ctx_t     defog_ctx;
 
     uint16_t anti_gamma_tbl[ISP_ANTI_GAMMA_N];
 
@@ -524,7 +512,7 @@ struct clean_isp_lib_context {
     int32_t  iso_lum_idx;
 };
 
-typedef struct clean_isp_lib_context isp_lib_context_t;
+typedef struct fwi_base_ctx fwi_base_ctx_t;
 
 /* ------------------------------------------------------------------ */
 /* Injected tables (interfaces.md table contract)                      */
@@ -549,13 +537,8 @@ typedef struct base_tables {
     const int16_t  *rgb2yuv_base[ISP_RGB2YUV_SPACES]; /* 9 matrix + 3 offset */
     const uint16_t *color_matrix;          /* cm_break_num * (9+3) entries */
     const int32_t  *color_temp;            /* ISP_MSC_TEMP_NUM            */
-    const uint16_t *otp_msc_golden;        /* ISP_MSC_TBL_LENGTH (1452);
-                                            * injected OTP MSC golden
-                                            * reference; NULL disables the
-                                            * OTP MSC path */
-    const uint32_t *default_reg;           /* ISP_LOAD_REG_SIZE/4 (1024)
-                                            * injected ISP reset image;
-                                            * NULL == seed zeros */
+    const uint16_t *otp_msc_golden;        /* ISP_MSC_TBL_LENGTH (1452); NULL disables OTP MSC */
+    const uint32_t *default_reg;           /* ISP reset image, 1024 words; NULL = zeros */
 } base_tables_t;
 
 #ifndef FREEISP_TABLES_T_DEFINED
@@ -568,42 +551,31 @@ typedef struct freeisp_tables {
 /* Provided by the framework; must be non-NULL before any entry point. */
 const freeisp_tables_t *freeisp_get_tables(void);
 
-/* Radial-distance reference over a 16x16 window, used as a per-window
- * correction factor by the MSC table builders.  The deployment keeps this as a
- * 256-entry double read-only table; here the same geometry is re-derived (see
- * src/reg/comp_ref.c). */
+/* Radial-distance reference over a 16x16 window (per-window MSC correction factor),
+ * re-derived from geometry in src/reg/comp_ref.c. */
 void freeisp_comp_ref_fill(double out[256]);
 
-/* Provided by the integration shim (base_shim.c): applies AE parameters for a
- * cmd by handing the entity handle to the framework AE core.  cmd_type:
- * 1 = refresh the AE table (ISP_AE_UPDATE_AE_TABLE), 3 = rebuild the touch
- * weighting (ISP_AE_BUILD_TOUCH_WEIGHT).
- *
- * The framework helper `isp_ae_set_params_helper` dereferences the SDK
- * `isp_ae_entity_context` (ae_param at +0, ops at +0x1c8, ae_entity at +0x1cc)
- * and dispatches through `ops->isp_ae_set_params`.  The clean context models
- * only `ae_param`, so this tier cannot call that helper directly; the SDK-side
- * shim implements this hook, translates the parameter update and owns the
- * dispatch. */
-void freeisp_ae_set_params(isp_ae_entity_ctx_t *ae_ctx, int32_t cmd_type);
+/* Implemented in base_shim.c (this tier models only ae_param, so it cannot call
+ * isp_ae_set_params_helper). cmd_type 1 = ISP_AE_UPDATE_AE_TABLE, 3 = ISP_AE_BUILD_TOUCH_WEIGHT. */
+void freeisp_ae_set_params(fwi_base_ae_entity_ctx_t *ae_ctx, int32_t cmd_type);
 
 /* ------------------------------------------------------------------ */
 /* Entry points (interfaces.md / reglayer2.md section 3)               */
 /* ------------------------------------------------------------------ */
 
-void isp_handle_stats(isp_lib_context_t *ctx, const void *buffer);
-void isp_handle_stats_sync(isp_lib_context_t *ctx, const void *buf0,
+void isp_handle_stats(fwi_base_ctx_t *ctx, const void *buffer);
+void isp_handle_stats_sync(fwi_base_ctx_t *ctx, const void *buf0,
                            const void *buf1);
-void isp_apply_settings(isp_lib_context_t *ctx);
-void __isp_stat_dynamic_judge(isp_lib_context_t *ctx);
-void isp_apply_colormatrix(isp_lib_context_t *ctx);
-void config_band_step(isp_lib_context_t *ctx);
-void config_dig_gain(isp_lib_context_t *ctx, int32_t exp_digital_gain);
-void config_gamma(isp_lib_context_t *ctx);
-void config_lens_center(isp_lib_context_t *ctx);
-void config_lens_table(isp_lib_context_t *ctx, int32_t vcm_std_pos);
-void config_msc_table(isp_lib_context_t *ctx, int32_t vcm_std_pos);
-void config_wdr(isp_lib_context_t *ctx, int32_t flag);
+void isp_apply_settings(fwi_base_ctx_t *ctx);
+void __isp_stat_dynamic_judge(fwi_base_ctx_t *ctx);
+void isp_apply_colormatrix(fwi_base_ctx_t *ctx);
+void config_band_step(fwi_base_ctx_t *ctx);
+void config_dig_gain(fwi_base_ctx_t *ctx, int32_t exp_digital_gain);
+void config_gamma(fwi_base_ctx_t *ctx);
+void config_lens_center(fwi_base_ctx_t *ctx);
+void config_lens_table(fwi_base_ctx_t *ctx, int32_t vcm_std_pos);
+void config_msc_table(fwi_base_ctx_t *ctx, int32_t vcm_std_pos);
+void config_wdr(fwi_base_ctx_t *ctx, int32_t flag);
 
 /* Diagnostics for tests: the module-cfg payloads are the observable output
  * of most entry points, so no extra getters are required. */

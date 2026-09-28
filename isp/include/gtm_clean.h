@@ -1,18 +1,7 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
-/*
- * gtm_clean.h - clean-room global tone-mapping module.
- *
- * Behaviour-only reimplementation of the GTM stage described in
- * spec/gtm.md.  The module computes one 256-entry tone curve per
- * qualified frame.  No tuning data is compiled in: the guide profiles,
- * pre-gamma bank, equalisation kernel bank and convergence bank all arrive at
- * runtime through the table-provider contract declared here
- * (freeisp_get_tables()).  A provider that yields no GTM table is a
- * programming error and initialisation fails.
- *
- * Own names and structures; the spec's neutral names are used directly.
- */
+/* gtm_clean.h - global tone mapping (isp/spec/gtm.md): one 256-entry curve per
+ * qualified frame. Tables come from freeisp_get_tables(); none for GTM fails init. */
 #ifndef GTM_CLEAN_H
 #define GTM_CLEAN_H
 

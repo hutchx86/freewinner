@@ -1,126 +1,16 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
-/*
- * ae_shim.c - AE (auto-exposure) integration shim.
- *
- * Presents the clean-room AE core (src/ae/ae_clean.c) to the
- * Yi/mediad ISP framework through the SDK isp_ae_core_ops_t contract.
- * Integration glue only: no algorithm is implemented here.
- *
- * The vendor entity embeds its live `ae_param_t config` at offset 0 and hands
- * that pointer to the framework from get_params(); the framework then writes
- * frame id / settings / sensor info into it in place each frame (see
- * libisp/isp_manage/isp_manage.c's AE set-params step) and calls run without a
- * set_params.  The shim reproduces that: the entity's first member is the SDK
- * mirror, get_params() returns it, and run() re-applies the whole mirror to
- * the clean core before running it, so the clean core always sees live
- * values.
- *
- * Field mapping (SDK ae_param_t -> clean ae_params_t):
- *
- *   runtime (ae_setting):
- *     clean ev_bias              <- exp_compensation
- *     clean fixed_exposure       <- exp_absolute         (us)
- *     clean sensor_gain          <- sensor_gain          (Q4)
- *     clean iso_sensitivity      <- iso_sensitivity
- *     clean aperture             <- iris_fno
- *     clean exposure_mode        <- exp_mode
- *     clean iso_control          <- iso_mode
- *     clean light_mode           <- light_mode
- *     clean metering_mode        <- exp_metering_mode
- *     clean hdr_mode             <- ae_mode
- *     clean mains_detected       <- flicker_type  (detected, 0/1/2)
- *     clean scene                <- scene_mode
- *     clean flash_mode           <- flash_mode
- *     clean meter_roi            <- ae_coor
- *     clean exposure_locked      <- exposure_lock
- *     clean flash_open           <- flash_open
- *     clean capture_stage        <- take_pic_start_cnt
- *     clean target_comp          <- ae_target_comp
- *     clean exposure_cfg[14]     <- exposure_cfg[14]
- *
- *   static (ae_ini):
- *     clean table_source         <- define_ae_table
- *     clean max_lv               <- ae_max_lv
- *     clean window_weight_seed   <- ae_win_weight[64]
- *     clean hist_metering_en     <- ae_hist_mod_en
- *     clean kernel_index         <- ae_ConvDataIndex
- *     clean error_delay_frames   <- ae_delay_frame
- *     clean exp_delay_frames     <- exp_delay_frame
- *     clean gain_delay_frames    <- gain_delay_frame
- *     clean ev_comp_step         <- exp_comp_step
- *     clean touch_distance_index <- ae_touch_dist_ind
- *     clean high_fps_handling_en <- ae_handle_high_fps_en
- *     clean iso_to_gain_ratio    <- ae_iso2gain_ratio
- *     clean aperture_ladder[16]  <- ae_fno_step[16]
- *     clean wdr_cfg[4]           <- wdr_cfg[4]
- *     clean total_gain_range[2]  <- ae_total_gain_range[2]
- *     clean analog_gain_range[2] <- ae_analog_gain_range[2]
- *     clean digital_gain_range[2]<- ae_digital_gain_range[2]
- *     clean scene_tables[16]     <- ae_tbl_scene[16]     (byte copy)
- *     clean gain_split_ratio     <- gain_ratio           (double)
- *
- *   sensor (ae_sensor_info): pclk, hts, vts, frame_time, gain_min, gain_max,
- *     sensor_width, sensor_height, hflip, vflip.
- *
- *   test (test_cfg): ae_en -> test_enable; ae_forced -> test_forced;
- *     isp_gain -> test_gain; isp_exp_line -> test_exp_line;
- *     lum_forced, isp_test_exptime, exp_line_start/step/end,
- *     exp_change_interval, isp_test_gain -> test_gain_en, gain_start/step/end,
- *     gain_change_interval, ae_check_delay_en -> delay_en,
- *     ae_delay_type -> delay_type.
- *
- * Parameter kind is a 1:1 mapping of the two enums:
- *   ISP_AE_INI_DATA=0 -> AE_PARAM_INIT, ISP_AE_UPDATE_AE_TABLE=1 ->
- *   AE_PARAM_TABLES, ISP_AE_SET_EXP_IDX=2 -> AE_PARAM_SET_INDEX,
- *   ISP_AE_BUILD_TOUCH_WEIGHT=3 -> AE_PARAM_TOUCH.
- *
- * Stats (SDK isp_ae_stats_s -> clean ae_stats_t):
- *   clean win_avg[384]   <- avg[384]         (saturated to 8-bit)
- *   clean hist[256]      <- hist[256]        (saturated to 8-bit)
- *   clean accum_r/g/b    <- accum_r/g/b      (byte copy of the 16x24 arrays)
- *   clean win_pix_n      <- win_pix_n
- *
- * Result translation (clean ae_result_t -> SDK ae_result_t):
- *   status / setting / setting_last / setting_curr / setting_short, idx_max,
- *   idx_expect, bright_pos, dark_pos, gain_ratio_out -> ae_gain, target,
- *   avg_lum, weight_lum, delta_idx, lv_adj, flash_ev_cumul; wdr_ratio
- *   (sensor/hw_ratio/tmp/last -> sensor/isp_hardware/tmp/last); wdr_hi_th,
- *   wdr_low_th, hist_low/mid/hi, backlight, gain_ratio.
- *
- * Intentionally unmapped:
- *   - SDK ae_ini.ae_win_weight vs clean window_weight_seed is mapped, but the
- *     clean default metering grids come from the injected wght_* tables.
- *   - ae_setting.flicker_mode (power_line_frequency) and
- *     ae_setting.wdr_output_select: no clean counterpart; only the detected
- *     flicker_type is consumed.
- *   - SDK ev_sensor_true_exp_line / ev_av / ev_tv / ev_sv and result
- *     ae_flash_ok / ae_flash_led / ae_wdr_delay: not produced by the clean
- *     core, left zero (the clean output contract, spec section 4, omits them;
- *     ev_av/tv/sv and the flash flags are also never written by the vendor).
- *   - set_params() produces no SDK result: the clean set-param path is a pure
- *     state update, so a result is only produced by the next run().
- *
- * Write-back: the clean core's resolved/mutated configuration is copied back
- * into the SDK mirror at the end of set/run (see sync_mirror): the seeded
- * scene slots 0..2 and aperture ladder (INIT), the analog/digital/total gain
- * ranges (line-table build) and exp_comp_step/sensor_gain/iso_sensitivity
- * (auto and manual-ISO run paths).  Every copy is gated by the same condition
- * the vendor uses (unset array, zero endpoint, zero step); the write-back is a
- * mirror update and does not feed any algorithm input the vendor would not see.
- */
+/* ae_shim.c - presents the clean AE core to the framework's fwi_ae_core_ops_t;
+ * the SDK ae_param_t mirror sits at entity offset 0 and is re-applied each run.
+ * Field mapping: docs/shim-mappings.md#ae */
 #include <math.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-/*
- * Clean-room side.  The clean entry points share names with the SDK ones
- * (ae_init/ae_exit/get/set/run/isr) and the clean ae_stats_t / ae_result_t
- * collide with the SDK typedefs, so rename the clean spellings for this
- * translation unit only.
- */
+/* Clean entry points and ae_stats_t/ae_result_t collide with the SDK names;
+ * renamed for this TU only. */
 #define ae_stats_t     clean_ae_stats_t
 #define ae_result_t    clean_ae_result_t
 #define ae_init        clean_ae_init
@@ -139,21 +29,13 @@
 #undef ae_run
 #undef ae_isr
 
-/*
- * Framework side: the generated fwi_* ABI.  The shim exports ae_init/ae_exit
- * and a fwi_ae_core_ops_t vtable; the framework calls it directly.
- */
+/* Framework side: the generated fwi_* ABI. */
 #include "fwi_isp_api.h"
 #include "freeisp/isp_dims.h"
 
 #include "ae_shim.h"
 
-/*
- * The clean stats block stores the per-window averages and histogram as 8-bit
- * values and the accumulators as flat int arrays; the SDK exposes
- * HW_U32[16][24] accumulators and HW_U32[384]/[256] average/histogram.  Guard
- * the shapes the byte copies rely on.
- */
+/* Guard the shapes the stats/table copies rely on. */
 typedef char ae_win_size_check[
     (ISP_AE_ROW * ISP_AE_COL == AE_NWIN) ? 1 : -1];
 typedef char ae_hist_size_check[
@@ -188,17 +70,13 @@ static ae_desc_t g_table_default;
 static uint8_t  g_auxprob[96 * 256];
 static int      g_defaults_ready;
 
-/*
- * The aperture ladder is NOT compiled in: the clean contract's fno_ladder /
- * fno_def pointers stay NULL until real tables are installed with
- * ae_shim_set_tables().  The vendor default ladder (ae_fno_def) is extracted
- * from the camera's own rmm image at runtime and injected through fno_def.
- */
+/* fno_ladder/fno_def and the network output biases stay NULL: they are injected
+ * at runtime via ae_shim_set_tables(), never compiled in. */
 static const ae_clean_tables_t g_default_ae = {
     g_log2, g_evtab, g_conv, g_touchprob, g_kernel, g_pregamma,
     g_blmask, g_wmatrix, g_wavg, g_wcenter, g_wover, g_wunder,
     g_net_in, g_net_bias, g_net_out, NULL, NULL, &g_table_default,
-    g_auxprob
+    g_auxprob, NULL
 };
 static const freeisp_tables_t g_default_tables = { &g_default_ae };
 
@@ -212,14 +90,8 @@ static void ensure_defaults(void)
     if (g_defaults_ready)
         return;
 
-    /*
-     * Pilot placeholder fixtures only (same shapes as the clean unit test):
-     * they keep every clean index and denominator in range so the core can be
-     * exercised.  Real tuning must be installed with ae_shim_set_tables()
-     * before ae_init().  None of this is tuning data.  The aperture ladder is
-     * deliberately absent here: it is injected from the camera's own rmm image
-     * (ae_fno_def) rather than compiled in.
-     */
+    /* Placeholder fixtures (not tuning data) keeping every clean index in
+     * range; real tables must be installed with ae_shim_set_tables(). */
     for (i = 0; i < 256; i++)
         g_log2[i] = (int32_t)floor(1000.0 * log2((double)(i + 1)) + 0.5);
     for (i = 0; i < AE_IDX_MAX; i++)
@@ -256,22 +128,24 @@ static void ensure_defaults(void)
         for (k = 0; k < 256; k++)
             g_auxprob[r * 256 + k] = (uint8_t)(k < 200 ? 200 - k : 0);
 
+    /* Neutral fallback of our own, used only when no camera table is found: shutter
+     * 1/10000..1/50 s at 1x, then 1x..16x gain at 1/50 s, fixed f/2.0 (ae.md §15.11). */
     memset(&g_table_default, 0, sizeof(g_table_default));
     g_table_default.length = 2;
     g_table_default.ev_step = 40;
     g_table_default.shutter_shift = 0;
-    g_table_default.seg[0].min_exp = 8000;
-    g_table_default.seg[0].max_exp = 30;
+    g_table_default.seg[0].min_exp = 10000;
+    g_table_default.seg[0].max_exp = 50;
     g_table_default.seg[0].min_gain = 256;
     g_table_default.seg[0].max_gain = 256;
-    g_table_default.seg[0].min_iris = 266;
-    g_table_default.seg[0].max_iris = 266;
-    g_table_default.seg[1].min_exp = 30;
-    g_table_default.seg[1].max_exp = 30;
+    g_table_default.seg[0].min_iris = 200;
+    g_table_default.seg[0].max_iris = 200;
+    g_table_default.seg[1].min_exp = 50;
+    g_table_default.seg[1].max_exp = 50;
     g_table_default.seg[1].min_gain = 256;
-    g_table_default.seg[1].max_gain = 6000;
-    g_table_default.seg[1].min_iris = 266;
-    g_table_default.seg[1].max_iris = 266;
+    g_table_default.seg[1].max_gain = 4096;
+    g_table_default.seg[1].min_iris = 200;
+    g_table_default.seg[1].max_iris = 200;
 
     g_defaults_ready = 1;
 }
@@ -296,10 +170,7 @@ void ae_shim_set_tables(const void *tables)
 /* Entity                                                              */
 /* ------------------------------------------------------------------ */
 
-/*
- * `config` is the first member so the SDK mirror sits at entity offset 0
- * (matching the vendor entity layout); get_params() returns &config.
- */
+/* SDK mirror at offset 0 like the vendor entity; get_params() returns it. */
 typedef struct ae_shim_entity {
     fwi_ae_param_t        config;  /* SDK mirror at offset 0              */
     ae_entity_t      *clean;   /* clean-room instance                 */
@@ -406,24 +277,8 @@ static void map_config(ae_params_t *c, const fwi_ae_param_t *s)
 /* ------------------------------------------------------------------ */
 /* SDK write-back: clean params -> SDK ae_param_t mirror               */
 /* ------------------------------------------------------------------ */
-/*
- * The vendor core does not copy the SDK parameter block; the framework writes
- * the block through the pointer returned by get_params() and the core then
- * mutates parts of that same embedded mirror in place:
- *
- *   - on INIT it seeds scene slots 0..2 and the aperture ladder when the
- *     supplied arrays are unset (ae_ini.ae_tbl_scene[0].max_exp == 0,
- *     ae_ini.ae_fno_step[0] == 0);
- *   - when it builds the exposure line tables it rewrites the analog/digital
- *     gain ranges (when either endpoint is zero) and the total gain range,
- *     and, on the auto path, it defaults exp_comp_step to 4;
- *   - the manual-ISO path rewrites ae_setting.sensor_gain / iso_sensitivity.
- *
- * The clean core performs the same mutations on its own parameter block, so the
- * shim copies those fields back into the SDK mirror after each set/run.  This
- * keeps the two entities' stored ae_param_t byte-identical, which the
- * SDK-boundary differential compares.
- */
+/* The vendor mutates its embedded mirror in place (scene/aperture seeds, gain
+ * ranges, manual ISO); copy the clean equivalents back. See shim-mappings.md#ae */
 static void desc_to_sdk(struct fwi_ae_table_info *d, const ae_desc_t *s)
 {
     int j;
@@ -467,7 +322,7 @@ static void sync_mirror(fwi_ae_param_t *sdk, ae_entity_t *clean)
 }
 
 /* ------------------------------------------------------------------ */
-/* Statistics mapping: isp_ae_stats_s -> ae_stats_t                   */
+/* Statistics mapping: fwi_ae_stats_t -> ae_stats_t                   */
 /* ------------------------------------------------------------------ */
 
 static uint8_t sat_u8(uint32_t v)
@@ -524,12 +379,8 @@ static void map_result(fwi_ae_result_t *r, const clean_ae_result_t *c, int write
     map_setting(&ev_sets(&r->sensor_set)->ev_set,        &c->setting);
     map_setting(&ev_sets(&r->sensor_set)->ev_set_last,   &c->setting_last);
     map_setting(&ev_sets(&r->sensor_set)->ev_set_curr,   &c->setting_curr);
-    /*
-     * The vendor only writes the short companion in WDR mode (and in its
-     * default-result path when no statistics are supplied); in linear mode it
-     * leaves sensor_set_short untouched.  Mirror that: linear runs do not
-     * clobber whatever the framework already holds.
-     */
+    /* Vendor writes the short companion only in WDR mode or on the default
+     * (no-stats) path; linear runs leave the framework's copy alone. */
     if (write_short) {
         map_setting(&ev_sets(&r->sensor_set_short)->ev_set, &c->setting_short);
         map_setting(&ev_sets(&r->sensor_set_short)->ev_set_curr, &c->setting_short_curr);
@@ -614,12 +465,8 @@ static int32_t shim_set(void *obj, fwi_ae_param_t *param, fwi_ae_result_t *resul
     map_config(&cp, &e->config);
     ae_set_frame_index(e->clean, e->config.ae_frame_id);
 
-    /*
-     * The vendor reads its embedded config live, so a TABLES/INDEX/TOUCH
-     * command acts on whatever the framework last wrote through the mirror.
-     * Refresh the clean config first, exactly like the INIT -> TABLES
-     * sequence the framework performs at setup.
-     */
+    /* The vendor reads its config live, so re-apply INIT from the mirror before
+     * a TABLES/INDEX/TOUCH command (as the framework does at setup). */
     if (kind != AE_PARAM_INIT) {
         memset(&req, 0, sizeof(req));
         req.kind = AE_PARAM_INIT;
@@ -639,37 +486,8 @@ static int32_t shim_set(void *obj, fwi_ae_param_t *param, fwi_ae_result_t *resul
     return 0;
 }
 
-/*
- * On-camera real-input capture: FREEISP_AE_DUMP=<path> (and FREEISP_AE_TAIL).
- *
- * Inert unless FREEISP_AE_DUMP is set.  The path is opened once, lazily, on the
- * first run(); one fixed-size record is appended per run():
- *
- *   [ae_param_t]              offset 0      sizeof(ae_param_t)             4944
- *   [struct isp_ae_stats_s]   offset 4944   sizeof(struct isp_ae_stats_s)  7172
- *
- * total 12116 bytes (64 records = 775424, the existing capture).  These are the
- * exact inputs the shim's map_config()/map_stats() consume, so the host replay
- * feeds the deployed object and the clean core identical data.  A legacy value
- * of "1" selects /tmp/freeisp_ae_dump.bin (the original capture path).
- *
- * The deployed core's metering grid also flattens past the statistics block: it
- * indexes avg[640..791] (152 u32) on top of avg[384]+hist[256], i.e. it reads
- * real framework memory that follows struct isp_ae_stats_s and is not part of
- * the statistics contract.  So the capture can additionally dump the bytes
- * immediately after the struct it was handed.  FREEISP_AE_TAIL=<nbytes> selects
- * how many (default 1024, 0 = off, capped at 65536); they go to a separate
- * "<dump>.tail" file, keeping the <dump> record layout byte-for-byte unchanged:
- *
- *   header: "AETL", u32 version=1, u32 nbytes, u32 reserved
- *   then one nbytes record per run(), appended in the same order as <dump>.
- *
- * The tail is read from (const uint8_t *)stats->ae_stats +
- * sizeof(struct isp_ae_stats_s), which is exactly the pointer map_stats()
- * dereferences, so the bytes are the real adjacent memory the deployed core
- * over-reads.  Reading past the struct is what the deployed core already does
- * (608 bytes), so the default span is safe; a null stats pointer dumps zeros.
- */
+/* Input capture, inert unless FREEISP_AE_DUMP=<path> (FREEISP_AE_TAIL adds the
+ * vendor's over-read tail). Format: docs/shim-mappings.md#ae */
 #define AE_TAIL_MAX 65536u
 
 static FILE *g_ae_dump_file;
@@ -790,11 +608,7 @@ static int32_t shim_run(void *obj, fwi_ae_stats_t *data, fwi_ae_result_t *result
 
     ae_dump_record(e, stats);
 
-    /*
-     * The framework mutates the mirror in place between calls (frame id,
-     * ae_setting, ae_sensor_info, target compensation); re-apply it so the
-     * clean core always runs on live values.
-     */
+    /* The framework mutates the mirror between calls; re-apply live values. */
     map_config(&cp, &e->config);
     ae_set_frame_index(e->clean, e->config.ae_frame_id);
     memset(&req, 0, sizeof(req));
@@ -803,11 +617,7 @@ static int32_t shim_run(void *obj, fwi_ae_stats_t *data, fwi_ae_result_t *result
     if (clean_ae_set_params(e->clean, &req, NULL) != 0)
         return -1;
 
-    /*
-     * A null SDK stats handle, or a null inner stats pointer, is fed to the
-     * clean core as "no statistics": clean_run seeds its default result and
-     * returns -1.
-     */
+    /* NULL stats -> "no statistics": clean_run seeds its default result, returns -1. */
     memset(&cs, 0, sizeof(cs));
     if (stats && stats->ae_stats) {
         map_stats(&cs, stats);
@@ -816,16 +626,8 @@ static int32_t shim_run(void *obj, fwi_ae_stats_t *data, fwi_ae_result_t *result
         csp = NULL;
     }
 
-    /*
-     * The framework's WDR configuration step (config_wdr) rewrites the shared
-     * result block's blend-ratio slots between runs, and the deployed core sees
-     * those writes on its next run (the exposure path arms the sensor delay
-     * when last != tmp).  The clean core owns a private result block, so
-     * forward the framework's values into its WDR state before running.  A
-     * fully-zero block means the framework has not published a WDR ratio yet
-     * (e.g. a synthetic harness that does not run config_wdr), so the clean
-     * core keeps its own seed and the standalone harnesses are unaffected.
-     */
+    /* config_wdr rewrites the result's WDR ratio slots between runs; forward
+     * them to the clean core's private state (all zero = not published yet). */
     if (result->ae_wdr_ratio.sensor || result->ae_wdr_ratio.hardware ||
         result->ae_wdr_ratio.tmp || result->ae_wdr_ratio.last)
         ae_apply_wdr_feedback(e->clean,
@@ -834,19 +636,11 @@ static int32_t shim_run(void *obj, fwi_ae_stats_t *data, fwi_ae_result_t *result
                               (int32_t)result->ae_wdr_ratio.tmp,
                               (int32_t)result->ae_wdr_ratio.last);
 
-    /*
-     * The clean core only refreshes the fields its current branch produces
-     * (gain_ratio_out, avg_lum, histogram fractions, ...); like the vendor
-     * object it expects a result block that persists across frames, so the
-     * entity owns it rather than a per-call stack block.
-     */
+    /* The core refreshes only the fields its branch produces, so the result
+     * block persists in the entity (as in the vendor object). */
     rc = clean_ae_run(e->clean, csp, &e->result);
-    /*
-     * With no statistics the vendor core only applies its default-result
-     * initialiser when the framework result is still empty (analog gain 0);
-     * otherwise it leaves the result untouched and returns -1.  Mirror that
-     * instead of clobbering a populated result.
-     */
+    /* No stats: the vendor applies its default result only while the framework
+     * result is empty (analog gain 0); otherwise it leaves it untouched. */
     if (csp == NULL && ev_sets(&result->sensor_set)->ev_set_curr.ev_analog_gain != 0) {
         /* leave the SDK result as the framework supplied it */
     } else {

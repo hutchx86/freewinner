@@ -78,6 +78,7 @@ it carries offsets/sizes only.
 | AE | `blmask` | `AeBackLightWeight` | |
 | AE | `wght_matrix/avg/center/over/under` | `Ae_LumWeight_win/avg/center`, `Ae_OverExp_LumWeight`, `Ae_UnderExp_LumWeight` | |
 | AE | `net_in/net_bias/net_out` | `IW`/`b1`/`LW` | |
+| AE | `net_out_bias` | none: code immediates, extracted by `src/tables/ae_out_bias.c` (cache `isp_cfg/ae_out_bias.txt`); NULL = network off | |
 | AE | `fno_ladder` | `ae_fno_def` | |
 | AE | `fno_def` | `ae_fno_def` | (injected default ladder) |
 | AE | `table_default` | `AeTblDef` (whole `ae_desc_t` copy) | |

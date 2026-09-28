@@ -1,13 +1,7 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
-/*
- * test_bitmap.c - host tests for the clean-room bitmap size helper.
- *
- * Behaviour source: spec/media_utils/bitmap.md section 2/4.  NULL,
- * both supported formats, an unsupported format, a zero-dimension bitmap and
- * an overflow-width case are exercised; expected values are derived
- * independently in 32-bit unsigned arithmetic.
- */
+/* test_bitmap.c - host tests for the bitmap size helper (spec
+ * media_utils/bitmap.md 2/4), checked against a 32-bit unsigned reference. */
 #include "utils/bitmap.h"
 
 #include <stddef.h>
@@ -63,11 +57,8 @@ static BITMAP_S make_bitmap(unsigned int fmt, unsigned int w, unsigned int h)
 	return b;
 }
 
-/*
- * Independent 32-bit reference.  The product is formed with explicit uint32_t
- * so the reference wraps identically and does not borrow the host's 64-bit
- * arithmetic.
- */
+/* 32-bit reference: explicit uint32_t so it wraps like the target instead of
+ * borrowing host 64-bit arithmetic. */
 static int ref_size(unsigned int fmt, unsigned int w, unsigned int h)
 {
 	uint32_t p = (uint32_t)w * (uint32_t)h;

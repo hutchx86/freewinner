@@ -1,22 +1,9 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
-/*
- * pltm_presets.c - see freeisp/pltm_presets.h.
- *
- * The preset lookup in the stock daemon is a leaf switch over the preset index
- * (0..18, an argument on the stack) that stores four values through four
- * output pointers (r0..r3 = blend, order, clip, gain).  Compiled for A32 it
- * starts with a bounds check and a PC-relative jump into a table of 19
- * unconditional branches:
- *
- *     cmp   ip, #18
- *     addls pc, pc, ip, lsl #2
- *     b     <default>
- *     b     <case 0> ... b <case 18>
- *
- * Only that shape (standard compiler output for a dense 19-way switch) and the
- * public A32 encodings below are known here; the values come from the image.
- */
+/* pltm_presets.c - extract the PLTM preset bank from the stock daemon. Its lookup is a dense
+ * 19-way A32 switch storing blend/order/clip/gain through r0..r3, compiled as
+ * `cmp ip, #18; addls pc, pc, ip, lsl #2; b <default>; b <case 0..18>`. Only that shape
+ * and public A32 encodings are known here; the values come from the image. */
 #include "freeisp/pltm_presets.h"
 
 #include <stdio.h>

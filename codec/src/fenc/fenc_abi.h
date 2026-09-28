@@ -1,16 +1,10 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
 
-/* Encoder framework interface (spec r2/05 part B records, part B.5 entry
- * points).
- *
- * The daemon owns one `fwm_venc_handle_t *` context built by VideoEncCreate and
- * driven through these entry points; the device tables, records and value sets
- * are the part-B ones shared with vencoder.h (venc_types.h). The support
- * library calls the framework composes sit in venc_base_abi.h.
- *
- * Every symbol below is a fixed link name; the mixed capitalisation is part of
- * the name, not a typo to be normalised. */
+/* Encoder framework interface (spec r2/05 part B.5): the daemon drives one
+ * `fwm_venc_handle_t *` from VideoEncCreate; records are venc_types.h, support
+ * library calls venc_base_abi.h. Every symbol is a fixed link name, mixed case
+ * included. */
 
 #ifndef FREECODEC_FENC_ABI_H
 #define FREECODEC_FENC_ABI_H

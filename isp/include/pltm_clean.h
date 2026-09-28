@@ -1,19 +1,8 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
-/*
- * pltm_clean.h - clean-room local tone-mapping module.
- *
- * Behaviour-only reimplementation of the local tone-mapping stage described in
- * spec/pltm.md.  The module prepares per-tile merge weights, a tone
- * floor table, a gain table and a handful of scalar knobs once per qualified
- * frame; it never touches image pixels.  The local-contrast-to-strength curve
- * bank and the convergence step bank arrive at runtime through the
- * table-provider contract declared here (freeisp_get_tables()); see
- * docs/provenance.md for the full provenance record.  A provider that yields
- * no PLTM table is a programming error and initialisation fails.
- *
- * Own names and structures; the spec's neutral names are used directly.
- */
+/* pltm_clean.h - local tone mapping (isp/spec/pltm.md): per-tile merge weights, floor
+ * and gain tables once per qualified frame; never touches pixels. Tables come from
+ * freeisp_get_tables(); none for PLTM fails init. */
 #ifndef PLTM_CLEAN_H
 #define PLTM_CLEAN_H
 
@@ -141,10 +130,8 @@ typedef struct pltm_clean_result {
 typedef struct pltm_clean_tables {
     const int32_t *strength_bank; /* [PLTM_STRENGTH_ROWS][PLTM_STRENGTH_COLS] */
     const uint8_t *converge_bank; /* [PLTM_CONV_ROWS][PLTM_CONV_COLS]         */
-    /* [PLTM_NPRESET][PLTM_PRESET_COLS]; extracted from the device's own
-     * firmware at runtime (src/tables/pltm_presets.c).  NULL = neutral: every
-     * step maps to full original blend, lowest order, no clip, unity gain,
-     * i.e. local tone mapping has no effect. */
+    /* [PLTM_NPRESET][PLTM_PRESET_COLS] from the device firmware (pltm_presets.c);
+     * NULL = neutral, local tone mapping has no effect. */
     const int32_t *presets;
 } pltm_clean_tables_t;
 
@@ -198,12 +185,8 @@ int            pltm_set_default_result(pltm_entity_t *e,
 int  pltm_clean_get_start_frame(void);
 void pltm_clean_set_start_frame(int frame);
 
-/* Carried strength state (spec 5/6).  The clean core keeps the applied
- * (`old_strength`) and newly computed (`next_strength`) values on the entity
- * across frames; the SDK carries the same two values in pltm_result_t
- * (`pltm_old_stren`/`pltm_next_stren`).  An integration layer seeds this from
- * the SDK result before each run so the clean core reads the state the vendor
- * object reads, then publishes the result back afterwards. */
+/* Carried strength state (spec 5/6), mirrored from the SDK's pltm_old_stren /
+ * pltm_next_stren; the integration layer seeds it before each run. */
 void pltm_clean_set_strength_state(pltm_entity_t *e, uint16_t old_strength,
                                    uint16_t next_strength);
 
@@ -212,16 +195,14 @@ void pltm_clean_set_strength_state(pltm_entity_t *e, uint16_t old_strength,
 void pltm_clean_preset(int index, int *oripic_ratio, int *order,
                        int *clip, int *gain);
 
-/* Full strength -> (ratio, order, last-order, clip, gain) mapping used by the
- * strength path (spec 7.7), exposed so the interpolation and modulation can be
- * checked directly. */
+/* Strength -> (ratio, order, last-order, clip, gain) mapping (spec 7.7), exposed
+ * for testing. */
 void pltm_clean_strength_map(const pltm_clean_params_t *p, uint16_t strength,
                              int *oripic_ratio, int *order,
                              int *last_order_ratio, int *clip, int *gain);
 
-/* Build the merge half-tables for explicit tile spans into a result's table
- * (diagnostic; spec 8.1).  nw/nh are the tile counts per axis; the per-frame
- * geometry path derives them from the sensor size and block counts. */
+/* Diagnostic: build the merge half-tables for nw x nh tiles into a result's
+ * table (spec 8.1). */
 void pltm_clean_merge_build(pltm_clean_result_t *result, int nw, int nh);
 
 #ifdef __cplusplus

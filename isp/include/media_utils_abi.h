@@ -1,23 +1,9 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
-/*
- * media_utils_abi.h - clean-room ABI surface shared by the media-utils units
- * (frame_size, pixel_format, frame_pool).
- *
- * This header carries interoperability facts only: type tags, field order,
- * numeric enum values, fourcc values and exported symbol signatures.  It
- * reproduces the deployed 32-bit ARM EABI5 layout at which the VI/OSD glue is
- * compiled.  Translation units that include it MUST NOT be built with
- * -fshort-enums: the enums below are required to be the default 4-byte enum.
- *
- * Layering note: this header is self-contained and must never include a vendor
- * media header.
- *
- * Third-party notice: the V4L2 macro expansions and fourcc values below restate
- * Linux UAPI interface facts and are used under that UAPI's BSD-3-Clause option;
- * the required copyright notice, conditions and disclaimer are reproduced in the
- * top-level CREDITS.md.  The list operations are this project's own.
- */
+/* media_utils_abi.h - ABI shared by the media-utils units (32-bit ARM EABI5 layout,
+ * 4-byte enums: never build with -fshort-enums). Self-contained, no vendor headers.
+ * V4L2 macros and fourcc values restate Linux UAPI facts under its BSD-3-Clause
+ * option; the notice is in CREDITS.md. */
 #ifndef MEDIA_UTILS_ABI_H
 #define MEDIA_UTILS_ABI_H
 
@@ -58,21 +44,8 @@ typedef int ERRORTYPE;
 /* Pixel / frame format enums (4-byte ABI)                             */
 /* ------------------------------------------------------------------ */
 
-/*
- * fwm_pixel_format_e.  The full enum is contiguous from 0 with
- * FWM_MM_PIXEL_FORMAT_RGB_1BPP = 0 and FWM_MM_PIXEL_FORMAT_BUTT = 49; only the
- * enumerators referenced by the media-utils units are spelled out here.  The
- * numeric values are the ABI.
- *
- * Guarded by FWM_MEDIA_ENUM_H (fwm_media_enum.h's own include guard, not
- * defined here): when a translation unit combines this self-contained header
- * with the generated fwm_media_abi.h (mediad app boundary, mw_headers/media/),
- * fwm_media_enum.h's real definitions win instead of colliding with these.
- * The values agree wherever both enums define the same enumerator (pixel
- * format, compress mode, video format); this header used alone (media-utils'
- * own frame_size/pixel_format/frame_pool units and their tests) is unaffected
- * and keeps defining these itself, per the no-vendor-media-header rule above.
- */
+/* Only the enumerators the media-utils units use; values are the ABI. Skipped when
+ * fwm_media_enum.h (same values) is already included, e.g. with fwm_media_abi.h. */
 #ifndef FWM_MEDIA_ENUM_H
 typedef enum {
 	FWM_MM_PIXEL_FORMAT_RGB_1BPP = 0,
@@ -104,9 +77,8 @@ typedef enum {
 	FWM_MM_PIXEL_FORMAT_BUTT = 49
 } fwm_pixel_format_e;
 
-/* Companion enums embedded by value in VIDEO_FRAME_S / BITMAP_S.  Only their
- * 4-byte width is fixed by the media-utils ABI; no live media-utils unit maps
- * their individual values, so a minimal placeholder enumerator is enough. */
+/* Embedded by value in VIDEO_FRAME_S / BITMAP_S: only the 4-byte width matters,
+ * so one placeholder enumerator is enough. */
 typedef enum { FWM_VIDEO_FIELD_NONE = 0 } fwm_video_field_e;
 typedef enum { FWM_VIDEO_FORMAT_LINEAR = 0 } fwm_video_format_e;
 typedef enum { FWM_COMPRESS_MODE_NONE = 0 } fwm_compress_mode_e;
@@ -214,11 +186,8 @@ typedef enum { FWM_COMPRESS_MODE_NONE = 0 } fwm_compress_mode_e;
 /* Intrusive doubly-linked list (target layout {next, prev})           */
 /* ------------------------------------------------------------------ */
 
-/*
- * Only the node layout and the operation names are fixed by the platform ABI
- * (the VI/OSD glue embeds this node).  The operations below are this project's
- * own; they are not reproduced from any upstream list header.
- */
+/* Only the node layout and operation names are ABI (the VI/OSD glue embeds this
+ * node); the operations are this project's own. */
 struct list_head {
 	struct list_head *next;
 	struct list_head *prev;
@@ -351,13 +320,11 @@ typedef struct {
 } cdx_sem_t;
 
 /* ------------------------------------------------------------------ */
-/* Channel descriptor and message queue (media-utils phase 2)          */
+/* Channel descriptor and message queue                               */
 /* ------------------------------------------------------------------ */
 
-/* fwm_mod_id_e is a 4-byte enum; only the struct copy crosses the boundary, so a
- * single named sentinel fixes the width without restating the vendor list.
- * Guarded the same way as the pixel/frame enums above: skipped when
- * fwm_media_enum.h's real fwm_mod_id_e is already in scope. */
+/* 4-byte enum; only the struct copy crosses the boundary, so one sentinel fixes
+ * the width. Skipped when fwm_media_enum.h is in scope, as above. */
 #ifndef FWM_MEDIA_ENUM_H
 typedef enum { FWM_MOD_ID_PLACEHOLDER = 0 } fwm_mod_id_e;
 #endif
@@ -464,9 +431,8 @@ int map_PIXEL_FORMAT_E_to_V4L2_PIX_FMT(fwm_pixel_format_e format);
 VideoBufferManager *VideoBufMgrCreate(int frmNum, int frmSize);
 void VideoBufMgrDestroy(VideoBufferManager *pMgr);
 
-/* Shared diagnostic seam.  The default definition is weak so a consumer or a
- * host test can substitute a no-op or capture hook.  The message text is not
- * part of any contract. */
+/* Diagnostic seam; the default definition is weak so a consumer or test can
+ * override it. The message text is not a contract. */
 void media_utils_log_error(const char *reason, unsigned int detail);
 
 #ifdef __cplusplus

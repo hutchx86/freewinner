@@ -399,7 +399,7 @@ This subsection is proposal text only — no `yi-mediad` file is changed by it.
 ### A9. `module_cfg` SDK-ABI shim — fixes the black-video ABI mismatch
 
 The clean `src/reg/module_cfg.c` operates on `include/module_cfg.h`'s
-private `isp_module_config_t` (**67204 B = 0x10684 on the 32-bit ARM target**;
+private `fwi_mod_config_t` (**67204 B = 0x10684 on the 32-bit ARM target**;
 payload tables embedded as arrays — a 64-bit host compiler sees 67224 B = 0x10698,
 the same struct with an `unsigned long`-sized lead member and a trailing `void *`
 widened, not a different ABI). The
@@ -467,10 +467,10 @@ pointer-buffer diffs) — the harness catches the bug the old `reg_cfg` missed.
 ### A10. `base` SDK-ABI shim — replaces the last vendor object (`isp_base.o`)
 
 The clean `src/reg/base.c` + `comp_ref.c` are differential-green against
-`isp_base.o` but use a private `isp_lib_context_t`; the framework calls the 12
+`isp_base.o` but use a private `fwi_base_ctx_t`; the framework calls the 12
 `isp_base.h` entry points with the real SDK `struct isp_lib_context` (0x42cc0 on the
 32-bit target; a 64-bit host sees 0x42e00 for the same struct), while the clean tier
-expects its own `isp_lib_context_t` (0x218a0 = 137376 B on the 32-bit target;
+expects its own `fwi_base_ctx_t` (0x218a0 = 137376 B on the 32-bit target;
 0x218c8 = 137416 B on a 64-bit host — same struct, wider pointers). `shim/base/base_shim.c` is the
 adapter, mirroring A9:
 it exports the SDK entry points, translates the SDK context → clean context, calls
@@ -740,7 +740,7 @@ vendor algorithms:
 | module_cfg tier, **real SDK ABI** (shim, A9) | **Validated (host/qemu)** | the private SDK-ABI module_cfg harness, 540 cases, 0 mismatches, 0 pointer-buffer diffs (distinct `linear_table`/`fe_table`), sensitivity detected (withheld golden); catches the `isp_reg_prepare_linear` direction bug the layout-agnostic differential missed. No on-camera run yet. |
 | AE / PLTM WDR path | **Validated at the SDK boundary (host/qemu); on-camera NOT run** | the private WDR-flow harness (clean AE + vendor `config_*`, real per-frame flow, 19 cases, 0 mismatches) found and fixed the missing `ae_result.ae_wdr_ratio` feedback (clean core kept a private result block); the private advanced-PLTM harness found and fixed the out-of-bounds strength/converge bank indices in the strength-curve build, the convergence decision and the speed-row walk, and the tile divisor. |
 | AFS shim | **NOT SDK-differentially verified** | ABI-adapted; standalone host + ARM shim test passes; no SDK-boundary differential against the vendor object |
-| `freeisp_shim_tables_from_rmm` (locator path) | **Validated host+qemu+on-device** | `test_shim_tables`: host 132 checks / 0 failures and ARM+qemu 132 / 0 against the two stock `rmm` images; on-camera y623 `/home/app/rmm` (2243776 B, md5 `1738b853…`) → 65 checks / 0 failures. Note: reads the device's stock `rmm` **file** (the daemon actually running on y623 is `mediad`); see the table-source note in (b). |
+| `freeisp_shim_tables_from_rmm` (locator path) | **Validated host+qemu+on-device** | `test_shim_tables`: host 130 checks / 0 failures against the two stock `rmm` images (ARM+qemu 132 / 0 before the vendor-value aperture/TABLEDEF checks became structural ones); on-camera y623 `/home/app/rmm` (2243776 B, md5 `1738b853…`) → 65 checks / 0 failures. Note: reads the device's stock `rmm` **file** (the daemon actually running on y623 is `mediad`); see the table-source note in (b). |
 | Cached bundle (`freeisp_shim_tables_save_cache` / `freeisp_shim_tables_from_cache` / `freeisp_shim_tables_from_rmm_or_cache`) | **Validated host+qemu (+ cross-arch)** | `test_table_bundle`: host 116 checks / 0 failures and ARM+qemu 116 / 0 against the same two images — bundle round-trip equals the located set, the missing/bad-magic/bad-version/bad-count/bad-layout-CRC/corrupt-payload/truncated/header-only/empty matrix is rejected fail-closed, and locator fallback re-seeds the cache. Cross-arch: a 64-bit-host-written bundle loads on 32-bit short-enum ARM under qemu-arm and is byte-identical to the ARM-written one. |
 | On-camera run of the shim build | **NOT run** | link-only on this host; the on-device run above exercised the table-feed test binary, not a shim-built `mediad`. |
 | Enum-ABI warnings (`uses variable-size enums … 32-bit enums`) | Pre-existing | identical to the current vendor-archive link |
@@ -750,7 +750,7 @@ SDK stats, and the pass-through of their results into the framework. Treat a
 camera deploy of this patch as a bring-up requiring the ISO module first, then
 one non-ISO module at a time.
 
-## Cross-project notes for Hutch
+## Cross-project notes
 
 - This makes `yi-mediad` depend on a sibling checkout of this repository
   (freewinner, AGPL-3.0-only). If that coupling

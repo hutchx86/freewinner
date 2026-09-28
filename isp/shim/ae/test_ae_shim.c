@@ -1,12 +1,7 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
-/*
- * test_ae_shim.c - host test for the AE integration shim.
- *
- * Includes the SDK ABI header and the shim, drives the full
- * init/get/set/run cycle with synthetic ae_param_t and isp_ae_stats_s, and
- * checks the clean -> SDK result translation end to end.
- */
+/* test_ae_shim.c - host test for the AE shim: init/get/set/run with synthetic
+ * params and stats, checking the clean -> SDK result translation. */
 #include <stdio.h>
 #include <string.h>
 
@@ -14,9 +9,8 @@
 #include "freeisp/isp_dims.h"
 #include "ae_shim.h"
 
-/* The shim's exported 3A entry points (fwi vtable shape; the framework
- * declares them in framework_isp.h).  Not in ae_shim.h: TUs that also see
- * ae_clean.h have a clean-core ae_init of a different type. */
+/* Shim entry points (declared by framework_isp.h, not ae_shim.h: TUs seeing
+ * ae_clean.h have a clean ae_init of another type). */
 void *ae_init(fwi_ae_core_ops_t **ae_core_ops);
 void  ae_exit(void *ae_core_obj);
 
@@ -27,11 +21,8 @@ static fwi_sensor_settings_t *ev_sets(fwi_sensor_setting_t *s)
     return (fwi_sensor_settings_t *)s;
 }
 
-/*
- * musl's libm objects (pulled in by the shim's placeholder log2 table)
- * reference the ARM EH personality routines.  This test never unwinds; weak
- * definitions close the static link under the OpenWrt toolchain.
- */
+/* musl libm (for the placeholder log2 table) references ARM EH personality
+ * routines; weak stubs close the static link, as this test never unwinds. */
 #if defined(__arm__)
 #define SHIM_WEAK __attribute__((weak))
 SHIM_WEAK int __aeabi_unwind_cpp_pr0(void) { return 0; }
@@ -381,8 +372,7 @@ static void test_null_stats(void)
     CHECK_EQ(ev_sets(&res.sensor_set)->ev_set_curr.ev_analog_gain, 256);
     CHECK_EQ(ev_sets(&res.sensor_set)->ev_set_curr.ev_digital_gain, 1024);
 
-    /* Null stats data (the fwi vtable passes the data pointer, so the old
-     * "null inner pointer" case is the same input) is defended the same way. */
+    /* Null stats data (the fwi vtable passes the data pointer itself). */
     empty.ae_stats = NULL;
     memset(&res, 0, sizeof(res));
     CHECK_EQ(ops->ae_run(h, empty.ae_stats, &res), -1);
@@ -393,7 +383,7 @@ static void test_null_stats(void)
 
 int main(void)
 {
-    /* Table provider: NULL selects the built-in pilot defaults. */
+    /* Table provider: NULL selects the built-in placeholder defaults. */
     ae_shim_set_tables(NULL);
 
     test_lifecycle();

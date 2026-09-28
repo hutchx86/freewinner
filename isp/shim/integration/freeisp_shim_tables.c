@@ -1,20 +1,8 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
-/*
- * freeisp_shim_tables.c - adapt stock-`rmm` libisp tables onto the clean-room
- * per-module table-provider contracts.
- *
- * No tuning bytes are compiled in here: the freewinner locator finds the two
- * anchors and slices the 36 vendor tables, and this file only points each
- * clean module's `*_clean_tables_t` at the located buffers (copying the one
- * descriptor that needs a different element type) and installs them through
- * the shims' setters.
- *
- * Table provenance is documented in shim/DESIGN.md and
- * include/freeisp/tables_layout.h.  The vendor tables that are shared
- * across modules (AwbProbData, AeGammaPre, AeHistData, AeConverData) are
- * deliberately single-sourced from the one located copy.
- */
+/* freeisp_shim_tables.c - point each clean module's *_clean_tables_t at the
+ * located rmm tables (no tuning bytes compiled in) and install them.
+ * Field mapping: docs/shim-mappings.md#integration */
 #include "freeisp_shim_tables.h"
 
 #include <stdlib.h>
@@ -24,15 +12,12 @@
  * view and `freeisp_tables_load_rmm`/`_locate`/`_free` do all location work. */
 #include "freeisp/rmm_tables.h"
 #include "freeisp/pltm_presets.h"
+#include "freeisp/ae_out_bias.h"
 
 #include <stdio.h>
 
-/*
- * Per-module clean table types.  Every clean header declares its own
- * `freeisp_tables_t`; rename the tag, the typedef and the provider function
- * out of the way so all six headers can coexist in this one translation unit.
- * The `*_clean_tables_t` shapes themselves are unique per module.
- */
+/* Every clean header declares its own freeisp_tables_t; rename each so all six
+ * headers can coexist in this TU. */
 #define freeisp_tables      freeisp_shadow_iso_tag
 #define freeisp_tables_t    freeisp_shadow_iso_t
 #define freeisp_get_tables  freeisp_shadow_iso_get
@@ -83,11 +68,8 @@
 #include "../gtm/gtm_shim.h"
 #include "../pltm/pltm_shim.h"
 
-/*
- * Shape guards against drift in either side of the mapping.  AeTblDef is the
- * vendor `ae_table_info` (252 bytes); the clean `ae_desc_t` must remain
- * byte-compatible for the whole-descriptor copy.
- */
+/* Shape guards; AeTblDef (vendor ae_table_info, 252 bytes) is copied whole into
+ * ae_desc_t, so the two must stay byte-compatible. */
 typedef char freeisp_shim_ae_desc_size_check[(sizeof(ae_desc_t) == 252) ? 1 : -1];
 typedef char freeisp_shim_iso_shape_check[(ISO_CURVE_N == 350 && ISO_BP_N == 14) ? 1 : -1];
 typedef char freeisp_shim_awb_shape_check[
@@ -152,16 +134,46 @@ static void presets_from_cache(const char *cache)
     presets_note(g_presets_ok ? "from cache" : "neutral, no valid cache", why);
 }
 
+/* AE output biases: resolved like the presets, NULL-injected when unresolved. */
+static freeisp_ae_out_bias_t  g_bias;
+static int                    g_bias_ok;
+static char                   g_bias_status[96] = "not resolved";
+
+static void bias_note(const char *src, const char *why)
+{
+    snprintf(g_bias_status, sizeof(g_bias_status), "%s (%s)", src, why);
+}
+
+static void bias_from_image(const void *image, size_t len, const char *path,
+                            const char *cache)
+{
+    const char *why = "no image";
+    int ok = image ? freeisp_ae_out_bias_extract(image, len, g_bias, &why) == 0
+                   : freeisp_ae_out_bias_extract_file(path, g_bias, &why) == 0;
+
+    g_bias_ok = ok;
+    if (!ok) {
+        bias_note("not found, backlight network disabled", why);
+        return;
+    }
+    bias_note("extracted from firmware", "ok");
+    if (cache && cache[0] != '\0' && freeisp_ae_out_bias_save_text(cache, g_bias) != 0)
+        bias_note("extracted from firmware", "cache write failed");
+}
+
+static void bias_from_cache(const char *cache)
+{
+    const char *why = "no cache file";
+
+    g_bias_ok = freeisp_ae_out_bias_load_text(cache, g_bias, &why) == 0;
+    bias_note(g_bias_ok ? "from cache" : "not found, backlight network disabled", why);
+}
+
 /* Whole-descriptor copy target (the vendor pointer is `const HW_S32 *`). */
 static ae_desc_t           g_ae_table_default;
 
-/*
- * Optional base-tier hook.  The clean base tier (src/reg/base.c) needs five
- * compiled-in defaults that have no runtime-tuning source; the base shim
- * exposes base_shim_set_locator() for them.  Declared weak so this feed builds
- * and links unchanged when the base shim is not linked in (the current
- * integration); the call is inert until base_shim.o is added to the link.
- */
+/* Feeds src/reg/base.c five defaults that have no tuning source; weak, so it
+ * is inert unless base_shim.o is linked. */
 extern void base_shim_set_locator(const void *anti_gamma_table,
                                   const void *rgb2yuv_matrix,
                                   const void *lsc_trig_cfg_def,
@@ -194,6 +206,7 @@ static void populate(void)
     memcpy(&g_ae_table_default, v->AeTblDef, sizeof(g_ae_table_default));
     g_ae.table_default = &g_ae_table_default;
     g_ae.auxprob     = v->AwbProbData;        /* shared with AWB */
+    g_ae.net_out_bias = g_bias_ok ? g_bias : NULL;
 
     memset(&g_awb, 0, sizeof(g_awb));
     g_awb.trust       = v->AwbProbData;
@@ -201,15 +214,8 @@ static void populate(void)
     g_awb.class_label = v->AwbLightClassName;
     g_awb.std_trust   = v->AwbStdTempWeight;
     g_awb.temp_bright = v->AwbTempLvWeightDef;
-    /*
-     * The rmm image carries no no-statistics fallback gain quadruple, so the
-     * feed leaves this NULL.  The clean core reads NULL as "not supplied" and
-     * skips its fallback on this path (awb_clean.c: `if (sg != NULL)`).  A
-     * caller that wants it set must point its own installed table at the
-     * quadruple: awb_shim_set_safe_gain() exists, but it writes the shim's
-     * built-in default table, so it is effective only when no external tables
-     * are installed.
-     */
+    /* Not in the rmm image; NULL makes the clean core skip its no-stats
+     * fallback (awb_shim_set_safe_gain() only affects the built-in table). */
     g_awb.safe_gain   = NULL;
 
     memset(&g_afs, 0, sizeof(g_afs));
@@ -221,13 +227,8 @@ static void populate(void)
     g_iso.gain_point_default = v->iso_gain_point;
     g_iso.lum_point_default  = v->iso_lum_point;
     g_iso.af_square_table    = v->af_square_lut;
-    /*
-     * The rmm image carries no AF IIR feedback coefficients, so the feed
-     * leaves this NULL.  The clean core reads NULL as "not supplied" and
-     * programs zero IIR feedback coefficients (iso_clean.c blk_af_cfg).  A caller that wants it set must point
-     * its own installed table at the recovered quadruple; this tree exports no
-     * ISO setter for the field.
-     */
+    /* Not in the rmm image; NULL makes the clean core program zero AF IIR
+     * feedback coefficients (iso_clean.c blk_af_cfg). */
     g_iso.af_iir_s           = NULL;
 
     memset(&g_gtm, 0, sizeof(g_gtm));
@@ -278,6 +279,7 @@ int freeisp_shim_tables_from_memory(const void *image, size_t len)
     if (freeisp_tables_locate(image, len, &g_vendor) != 0)
         return -1;
     presets_from_image(image, len, NULL, NULL);
+    bias_from_image(image, len, NULL, NULL);
 
     populate();
     install();
@@ -294,6 +296,7 @@ int freeisp_shim_tables_from_rmm(const char *path)
     if (freeisp_tables_load_rmm(path, &g_vendor) != 0)
         return -1;
     presets_from_image(NULL, 0, path, NULL);
+    bias_from_image(NULL, 0, path, NULL);
 
     populate();
     install();
@@ -301,10 +304,7 @@ int freeisp_shim_tables_from_rmm(const char *path)
     return 0;
 }
 
-/*
- * Cache path: load a pre-located bundle and install it, never touching a
- * vendor image.  Fail-closed via freeisp_tables_load_bundle().
- */
+/* Never touches a vendor image; fail-closed via freeisp_tables_load_bundle(). */
 int freeisp_shim_tables_from_cache(const char *path)
 {
     freeisp_shim_tables_free();
@@ -314,6 +314,7 @@ int freeisp_shim_tables_from_cache(const char *path)
     if (freeisp_tables_load_bundle(path, &g_vendor) != 0)
         return -1;
     presets_from_cache(FREEISP_PLTM_PRESETS_PATH);
+    bias_from_cache(FREEISP_AE_OUT_BIAS_PATH);
 
     populate();
     install();
@@ -334,13 +335,16 @@ int freeisp_shim_tables_from_rmm_or_cache(const char *rmm_path,
     const char *bp = (bundle_path != NULL) ? bundle_path
                                            : FREEISP_TABLE_BUNDLE_PATH;
 
-    /* 1. cache first: a valid bundle means the vendor image is never read,
-     *    unless the PLTM preset cache is missing: then extract only those
-     *    (the PLTM shim holds &g_pltm, so updating the field is enough). */
+    /* 1. cache first; the image is read only for missing presets/biases (the
+     *    shims hold &g_pltm / &g_ae, so updating the field is enough). */
     if (bp[0] != '\0' && freeisp_shim_tables_from_cache(bp) == 0) {
         if (!g_presets_ok && rmm_path != NULL && rmm_path[0] != '\0') {
             presets_from_image(NULL, 0, rmm_path, FREEISP_PLTM_PRESETS_PATH);
             g_pltm.presets = g_presets_ok ? &g_presets[0][0] : NULL;
+        }
+        if (!g_bias_ok && rmm_path != NULL && rmm_path[0] != '\0') {
+            bias_from_image(NULL, 0, rmm_path, FREEISP_AE_OUT_BIAS_PATH);
+            g_ae.net_out_bias = g_bias_ok ? g_bias : NULL;
         }
         return 0;
     }
@@ -357,6 +361,8 @@ int freeisp_shim_tables_from_rmm_or_cache(const char *rmm_path,
             freeisp_pltm_presets_save_text(FREEISP_PLTM_PRESETS_PATH,
                 (const int32_t (*)[FREEISP_PLTM_PRESET_COLS])g_presets) != 0)
             presets_note("extracted from firmware", "cache write failed");
+        if (g_bias_ok && freeisp_ae_out_bias_save_text(FREEISP_AE_OUT_BIAS_PATH, g_bias) != 0)
+            bias_note("extracted from firmware", "cache write failed");
     }
     return 0;
 }
@@ -399,4 +405,9 @@ const void *freeisp_shim_tables_get(freeisp_shim_table_id_t id)
 const char *freeisp_shim_pltm_presets_status(void)
 {
     return g_presets_status;
+}
+
+const char *freeisp_shim_ae_out_bias_status(void)
+{
+    return g_bias_status;
 }

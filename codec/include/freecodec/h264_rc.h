@@ -1,13 +1,9 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
 
-/* Frame-level H.264 rate control (spec 10-rate-control.md, r4): a pure
- * computation unit, no device access and no I/O. Before a picture is coded it
- * is asked for a slice QP; after the picture is coded it is told how many
- * bits it cost and how much picture content changed; it can report the bit
- * budget assigned to the picture in progress at any point after the QP
- * request. Call order (spec 10 section 2): configure, then start_sequence,
- * then any number of (start_picture -> target -> finish_picture) triples. */
+/* Frame-level H.264 rate control (spec 10): pure computation, no I/O. Call
+ * order (spec 10 s2): configure, start_sequence, then per picture
+ * start_picture -> target -> finish_picture. */
 
 #ifndef FREECODEC_H264_RC_H
 #define FREECODEC_H264_RC_H
@@ -21,9 +17,8 @@ typedef enum freecodec_rc_pic_type {
     FC_RC_PIC_P = 1
 } freecodec_rc_pic_type;
 
-/* Opaque to callers; laid out here only so the unit needs no heap allocation.
- * Every field is reset by freecodec_rc_start_sequence() except the
- * configuration block, which only freecodec_rc_configure() touches. */
+/* Opaque; laid out here to avoid heap allocation. start_sequence() resets all
+ * but the configuration block, which only configure() touches. */
 typedef struct freecodec_rc {
     /* ---- configuration (freecodec_rc_configure) ---- */
     double       bit_rate;
@@ -68,12 +63,8 @@ int freecodec_rc_start_picture(freecodec_rc *rc, freecodec_rc_pic_type type);
  * (spec 10 section 3 item 8). Valid any time after start_picture. */
 long long freecodec_rc_target(const freecodec_rc *rc);
 
-/* Tell the unit how the picture in progress actually came out: bits produced
- * (whole coded-slice payload, in bits) and picture activity A (spec 10
- * section 5 -- the sum of per-macroblock mean absolute differences from
- * encoder register 0x50, or 0 if that path is unavailable/disabled). A zero
- * activity is replaced internally by the neutral fallback
- * width_mb * height_mb * 8. */
+/* Report the coded slice payload in bits and activity A (register 0x50, spec 10
+ * s5); A == 0 is replaced by the neutral width_mb * height_mb * 8. */
 void freecodec_rc_finish_picture(freecodec_rc *rc, long long bits,
                                  unsigned int activity);
 

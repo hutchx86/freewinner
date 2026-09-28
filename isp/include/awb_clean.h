@@ -1,16 +1,7 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
-/*
- * awb_clean.h - clean-room auto white-balance module.
- *
- * Behaviour-only reimplementation of the AWB module described in
- * spec/awb.md.  No tuning data is compiled in: the trust table,
- * smoothing-weight table, class labels, standard-trust row and the
- * brightness/temperature matrix all arrive at runtime through the table
- * provider declared here (freeisp_get_tables()).
- *
- * Own names and structures; the spec's neutral names are used directly.
- */
+/* awb_clean.h - auto white-balance module (behaviour per isp/spec/awb.md). No tuning
+ * data is compiled in: every table arrives at runtime via freeisp_get_tables(). */
 #ifndef AWB_CLEAN_H
 #define AWB_CLEAN_H
 
@@ -190,9 +181,8 @@ int           awb_clean_is_night(const awb_entity_t *e);
 int           awb_clean_color_temp(const awb_entity_t *e);
 uint32_t      awb_clean_frame_count(const awb_entity_t *e);
 
-/* Per-window classification diagnostics (spec 5.1 / 6.3); no effect on
- * gains.  The window index is 0..AWB_NWIN-1.  For any out-of-range index
- * or null entity the accessors return 0. */
+/* Per-window classification diagnostics (spec awb.md 5.1/6.3), index 0..AWB_NWIN-1;
+ * out-of-range index or NULL entity returns 0. */
 int           awb_clean_window_class(const awb_entity_t *e, int i);
 int           awb_clean_window_dist(const awb_entity_t *e, int i);
 int           awb_clean_window_temp(const awb_entity_t *e, int i);

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-/* systime.c - unit U timed condition wait and clock helpers (21-utils.md §2) */
+/* systime.c - timed condition wait and clock helpers */
 #include "utils/systime.h"
 #include <errno.h>
 #include <time.h>

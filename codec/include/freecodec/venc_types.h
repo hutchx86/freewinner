@@ -1,15 +1,10 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
 
-/* Records, value sets and the device table shared by the encoder device
- * interface (vencoder.h), the encoder framework (src/fenc/fenc_abi.h) and the
- * daemon (mw_headers/vencoder.h forwards here), as specified in spec r2/05
- * part B.
- *
- * Sizes, offsets and numeric values are binary facts of the 32-bit ARM EABI
- * target and are asserted at the end of this file under __arm__. Every C
- * identifier here is local to this project; the link symbols are declared by
- * the header that owns them. */
+/* Spec r2/05 part B records, value sets and device table, shared by
+ * vencoder.h, src/fenc/fenc_abi.h and mw_headers/vencoder.h. Layouts are
+ * 32-bit ARM EABI facts asserted at the end under __arm__; C identifiers are
+ * local, link symbols are declared by the header that owns them. */
 
 #ifndef FREECODEC_VENC_TYPES_H
 #define FREECODEC_VENC_TYPES_H

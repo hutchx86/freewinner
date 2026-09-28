@@ -1,11 +1,9 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
 
-/* Black-box vectors for the encoder API framework (package C), cleanroom/
- * middleware/fenc/SPEC.md §9. The seam (tests/fenc/fenc_seam.c) supplies the
- * imported device tables, VE ops, adapter calls and a malloc-backed memory-ops
- * table; the real picture-queue manager (src/base/vb_frames.c) is linked so the
- * queue semantics are exercised, not mocked. */
+/* Behaviour tests for the encoder API framework. The seam (fenc_seam.c) fakes
+ * the imports with malloc-backed memory ops; the real picture-queue manager
+ * (src/base/vb_frames.c) is linked so queue semantics are exercised. */
 
 #include <stdint.h>
 #include <stdio.h>

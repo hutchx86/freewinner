@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
 
-/* Host-test seam for the capture runtime (package A).  See fcap_seam.h. */
+/* Host-test seam for the capture runtime (fcap_).  See fcap_seam.h. */
 
 #define _GNU_SOURCE
 
@@ -15,10 +15,8 @@
 #include <sys/sysmacros.h>
 #include <time.h>
 
-/* SoC "FT zone" ioctl on /dev/sunxi_soc_info (20-framework.md §4.5).  Unit F's
- * isp_dev_uapi.c now issues the raw ioctl number (5) rather than a named
- * macro from the public header; the seam mock keeps a private alias so this
- * file stays readable. */
+/* SoC "FT zone" ioctl on /dev/sunxi_soc_info; isp_dev_uapi.c issues the raw
+ * number, this alias just keeps the mock readable. */
 #define CHECK_SOC_FT_ZONE 5
 
 /* ------------------------------------------------------------------ */
@@ -111,7 +109,7 @@ struct hw_isp_device fcap_seam_isp;
 int fcap_seam_isp_init_n;
 int fcap_seam_isp_exit_n;
 int fcap_seam_resolver_n;
-struct isp_video_device *(*fcap_seam_resolver_ptr)(int);
+struct fwi_video_device *(*fcap_seam_resolver_ptr)(int);
 
 /* ------------------------------------------------------------------ */
 /* Canned DQBUF responses                                              */
@@ -180,7 +178,7 @@ static int seam_feed_pop(struct seam_feed *out)
 
 static int g_channel_expire;
 
-static int seam_video_wait(struct isp_video_device *video, int timeout_ms)
+static int seam_video_wait(struct fwi_video_device *video, int timeout_ms)
 {
 	struct timespec ts;
 
@@ -330,7 +328,7 @@ static int mock_stat(const char *path, struct stat *st)
 	return -1;
 }
 
-static const struct isp_uapi_sys g_mock_sys = {
+static const struct fwi_uapi_sys g_mock_sys = {
 	mock_open, mock_close, mock_ioctl, mock_mmap, mock_munmap, mock_select,
 	mock_access, mock_system, mock_readlink, mock_stat,
 };
@@ -540,7 +538,7 @@ static int mock_ioctl(int fd, unsigned long req, void *arg)
 }
 
 /* ------------------------------------------------------------------ */
-/* Package-B and framework externals                                   */
+/* fisp_ and framework externals                                   */
 /* ------------------------------------------------------------------ */
 
 AW_S32 AW_MPI_ISP_Init(void)
@@ -555,7 +553,7 @@ AW_S32 AW_MPI_ISP_Exit(void)
 	return SUCCESS;
 }
 
-void fisp_set_video_resolver(struct isp_video_device *(*resolver)(int))
+void fisp_set_video_resolver(struct fwi_video_device *(*resolver)(int))
 {
 	fcap_seam_resolver_n++;
 	fcap_seam_resolver_ptr = resolver;

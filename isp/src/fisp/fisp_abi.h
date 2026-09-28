@@ -1,15 +1,9 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
 
-/* ISP runtime (package B, `fisp_`): the interoperability surface this package
- * implements and consumes. Every symbol, scalar alias, error macro, device
- * count and companion seam here is a fact recorded in
- * cleanroom/middleware/fisp/SPEC.md sections 2, 4, 5 and 6. This header is the
- * interim stand-in for package D's public `media/mpi_isp.h`: when that lands it
- * supplies the same 25 declarations and this file can defer to it.
- *
- * Nothing here is derived from the vendor implementation. The exported names
- * are the public symbols the media daemon was compiled against. */
+/* fisp_abi.h - ISP runtime (fisp_) interoperability surface: exported symbols, scalar
+ * aliases, error macros, device count and companion seams; an interim stand-in for
+ * media/mpi_isp.h. The names are the public symbols the media daemon was built against. */
 
 #ifndef FREEISP_FISP_ABI_H
 #define FREEISP_FISP_ABI_H
@@ -19,7 +13,7 @@ extern "C" {
 #endif
 
 /* ------------------------------------------------------------------ */
-/* Scalar aliases (SPEC 2.1 / 5.1)                                     */
+/* Scalar aliases                                                      */
 /* ------------------------------------------------------------------ */
 
 typedef int AW_S32;
@@ -34,9 +28,8 @@ typedef int ISP_DEV;                    /* mm_common.h */
 #define FAILURE (-1)
 #endif
 
-/* Negative platform error macros. The exact vendor numerics for the invalid-id
- * and efuse cases are not recorded in the spec (open questions 4); callers test
- * only the sign, so a documented placeholder is used. See NOT-IMPLEMENTED.md. */
+/* Negative platform errors. The vendor numerics for the invalid-id and efuse cases are
+ * unknown; callers test only the sign, so placeholders are used (NOT-IMPLEMENTED.md). */
 #ifndef AW_ERR_VI_INVALID_CHN
 #define AW_ERR_VI_INVALID_CHN  (-2)     /* VI invalid id / channel */
 #endif
@@ -47,12 +40,12 @@ typedef int ISP_DEV;                    /* mm_common.h */
 #define AW_ERR_ISP_EFUSE_ERROR (-2)     /* ISP efuse error macro */
 #endif
 
-/* Device counts (SPEC 5.1). */
+/* Device counts. */
 #define FISP_HW_ISP_DEVICE_NUM  1       /* HW_ISP_DEVICE_NUM */
 #define FISP_VI_ISP_NUM_MAX     2       /* VI_ISP_NUM_MAX */
 
 /* ------------------------------------------------------------------ */
-/* Exported entry points (SPEC 2.1) -- the 25 AW_MPI_ISP_* symbols      */
+/* Exported entry points -- the 25 AW_MPI_ISP_* symbols                 */
 /* ------------------------------------------------------------------ */
 
 /* Lifecycle (4). */
@@ -100,32 +93,18 @@ AW_S32 AW_MPI_ISP_SetSharpness(ISP_DEV IspDev, int Value);
 /* Documented companions                                               */
 /* ------------------------------------------------------------------ */
 
-/*
- * ISP id -> VI video device resolver (SPEC 6.4). The capture runtime (`fcap_`)
- * owns the VI media device; this seam is how the V4L2-control path reaches the
- * device bound to an ISP id. The default implementation scans the clean device
- * layer's `media_params.video_dev[]` and matches `video_to_isp_id()`. `fcap_`
- * may install its own resolver with fisp_set_video_resolver(); NULL restores the
- * default. The resolver must return NULL before any vipp has been started.
- */
-struct isp_video_device;
-typedef struct isp_video_device *(*fisp_video_resolver_t)(int isp_dev);
+/* ISP id -> VI video device resolver. The default scans media_params.video_dev[] by
+ * video_to_isp_id() and returns NULL before any vipp starts; NULL restores the default. */
+struct fwi_video_device;
+typedef struct fwi_video_device *(*fisp_video_resolver_t)(int isp_dev);
 
 extern fisp_video_resolver_t fisp_video_resolver;
 void fisp_set_video_resolver(fisp_video_resolver_t resolver);
 
-/*
- * Load-register hook companion (SPEC 4.3). Applies the documented D3D / 3DNR
- * bit edit to the framework's register-program buffer: offset 0x1a0 is the
- * 32-bit module-enable word, bit 5 (mask 0x20) is the D3D feature bit. With
- * `on` false the bit is cleared, but only when it is currently set; with `on`
- * true the buffer is left byte-identical. A buffer shorter than 0x1a4 bytes is
- * left untouched. Returns 1 if the word changed, 0 if it did not, -1 if the
- * buffer was too small or invalid. The `--wrap=isp_set_load_reg` shim itself
- * belongs to the consumer (mediad), not this package.
- */
-struct isp_table_reg_map;
-int fisp_load_reg_set_3dnr(struct isp_table_reg_map *reg, int on);
+/* Clear the D3D/3DNR bit (0x20 in the module-enable word at 0x1a0) when `on` is false;
+ * `on` true leaves it. Returns 1 changed, 0 unchanged, -1 if NULL or under 0x1a4 bytes. */
+struct fwi_table_reg_map;
+int fisp_load_reg_set_3dnr(struct fwi_table_reg_map *reg, int on);
 
 #ifdef __cplusplus
 }

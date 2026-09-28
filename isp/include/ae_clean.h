@@ -1,14 +1,7 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
-/*
- * ae_clean.h - clean-room auto-exposure module.
- *
- * Behaviour-only reimplementation of the AE module described in
- * spec/ae.md.  No tuning data is compiled in: every constant table
- * arrives at runtime through the table provider (freeisp_get_tables()).
- *
- * Own names and structures; neutral names from the spec are used directly.
- */
+/* ae_clean.h - auto-exposure module (behaviour per isp/spec/ae.md). No tuning data
+ * is compiled in: every table arrives at runtime via freeisp_get_tables(). */
 #ifndef AE_CLEAN_H
 #define AE_CLEAN_H
 
@@ -225,6 +218,7 @@ typedef struct ae_clean_tables {
                                     /* fno_ladder when NULL               */
     const ae_desc_t  *table_default;/* 15.11 descriptor                   */
     const uint8_t    *auxprob;      /* 15.12 96*256                       */
+    const int32_t    *net_out_bias; /* 15.9  2 (B0, B1); NULL = net off   */
 } ae_clean_tables_t;
 
 typedef struct freeisp_tables {
@@ -271,25 +265,12 @@ int          ae_isr(ae_entity_t *e, const ae_stats_t *stats, ae_result_t *result
 /* Section 12 helper; not called by the per-frame entry point. */
 int          ae_flash_strength(const ae_entity_t *e, int32_t flash_expect_lum);
 
-/*
- * Override the internal frame counter that the run path advances.  The SDK
- * supplies the frame id in the parameter block; the shim applies it here each
- * frame so the clean core tracks the framework's count exactly.
- */
+/* Override the internal frame counter; the shim applies the SDK's frame id here
+ * each frame so the core tracks the framework's count exactly. */
 void         ae_set_frame_index(ae_entity_t *e, int32_t index);
 
-/*
- * Replay the framework WDR configuration step's between-run rewrite of the
- * blend-ratio slots into the core's own WDR record.
- *
- * In the deployed build that step writes the shared result block in place, so
- * the following AE run reads the new sensor / hardware / tmp / last ratios
- * (the exposure path arms its delay when last != tmp and aligns the short/long
- * pair from the ratio).  The clean core keeps a private record, so the shim
- * calls this with the framework's values before each run; feeding the clean
- * result's own values back is a no-op, leaving the standalone harnesses
- * untouched.  A NULL entity is ignored.
- */
+/* Replay the framework WDR step's in-place rewrite of the blend ratios (the next run
+ * reads them) into the core's own record before each run; own values = no-op, NULL ignored. */
 void         ae_apply_wdr_feedback(ae_entity_t *e, int32_t sensor,
                                    int32_t hw_ratio, int32_t tmp, int32_t last);
 

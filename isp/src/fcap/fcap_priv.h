@@ -1,18 +1,10 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
 
-/*
- * fcap_priv.h - internal objects and seams of the capture runtime (package A,
- * `fcap_`).  Not part of the exported ABI: the four objects of SPEC 4.1
- * (process singleton, vipp object, channel object, capture worker) and the
- * replaceable clock seam of SPEC 7.
- *
- * The clock seam is the SPEC 7.2 hook: the capture worker's buffer wait and the
- * per-channel frame wait are driven through `fcap_clock` so a host test needs
- * never sleep the production 2000 ms.  A NULL field falls back to the built-in
- * implementation (the clean device layer's `video_wait_buffer` and the clean
- * `cdx_sem_*`), so a test may override just the wait it cares about.
- */
+/* fcap_priv.h - capture runtime internals (not exported): process singleton, vipp and
+ * channel objects, capture worker, and the fcap_clock seam that drives the buffer and
+ * frame waits so host tests never sleep the 2000 ms timeout. A NULL seam field falls
+ * back to the built-in wait (video_wait_buffer, cdx_sem_*). */
 
 #ifndef FREEWINNER_FCAP_PRIV_H
 #define FREEWINNER_FCAP_PRIV_H
@@ -28,7 +20,7 @@
 extern "C" {
 #endif
 
-/* Component states (SPEC 3.3): Loaded -> Idle -> Executing <-> Pause. */
+/* Component states: Loaded -> Idle -> Executing <-> Pause. */
 enum fcap_state {
 	FCAP_ST_INVALID = 0,
 	FCAP_ST_LOADED,
@@ -46,7 +38,7 @@ enum fcap_cmd {
 struct fcap_vipp;
 struct fcap_channel;
 
-/* Minimal one-channel-per-vipp component facade (SPEC 4.1/4.3). */
+/* Minimal one-channel-per-vipp component facade. */
 struct fcap_component {
 	message_queue_t      cmdq;
 	cdx_sem_t            done;
@@ -58,7 +50,7 @@ struct fcap_component {
 	struct fcap_channel *chan;
 };
 
-/* Per-channel long-exposure bookkeeping (SPEC 3.2.7, channel half). */
+/* Per-channel long-exposure bookkeeping. */
 struct fcap_le {
 	int     active;
 	int     fps;           /* sensor fps captured at entry */
@@ -68,7 +60,7 @@ struct fcap_le {
 	int     have_last_pts;
 };
 
-/* Channel object (SPEC 4.1 item 3). */
+/* Channel object. */
 struct fcap_channel {
 	int                  dev;
 	int                  chn;
@@ -83,10 +75,10 @@ struct fcap_channel {
 	struct fcap_le       le;
 };
 
-/* Vipp object (SPEC 4.1 item 2). */
+/* Vipp object. */
 struct fcap_vipp {
 	int                       dev;
-	struct isp_video_device  *video;
+	struct fwi_video_device  *video;
 	VI_ATTR_S                 attr;
 	int                       have_attr;
 	int                       enabled;
@@ -101,7 +93,7 @@ struct fcap_vipp {
 	unsigned int              top_clk;
 	int                       top_clk_pending;
 
-	/* Occupancy table indexed by driver buffer index (SPEC 4.3). */
+	/* Occupancy table indexed by driver buffer index. */
 	struct {
 		int                inuse;
 		VIDEO_FRAME_INFO_S frame;
@@ -109,16 +101,15 @@ struct fcap_vipp {
 };
 
 /* ------------------------------------------------------------------ */
-/* Replaceable clock / wait seam (SPEC 7)                              */
+/* Replaceable clock / wait seam                                       */
 /* ------------------------------------------------------------------ */
 
 struct fcap_clock_ops {
 	/* Wait up to timeout_ms for a captured buffer: 0 ready, -1 timeout.
 	 * Default: clean `video_wait_buffer`. */
-	int  (*video_wait)(struct isp_video_device *video, int timeout_ms);
-	/* Wait for a channel frame: 0 signalled, -1 timeout/expired; a negative
-	 * timeout means block indefinitely.  Default: the channel frame
-	 * semaphore. */
+	int  (*video_wait)(struct fwi_video_device *video, int timeout_ms);
+	/* Wait for a channel frame: 0 signalled, -1 timeout/expired; a negative timeout blocks
+	 * indefinitely. Default: the channel frame semaphore. */
 	int  (*channel_wait)(struct fcap_channel *chan, int timeout_ms);
 	/* Millisecond delay.  Default: nanosleep. */
 	void (*delay_ms)(unsigned int ms);

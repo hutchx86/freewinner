@@ -1,11 +1,7 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
-/*
- * ae_clean.c - clean-room auto-exposure module.
- *
- * Implements the behaviour specified in spec/ae.md.  All tuning
- * tables are injected at runtime; this file contains no table data.
- */
+/* ae_clean.c - auto-exposure module (spec/ae.md). All tuning tables are injected at
+ * runtime; this file contains no table data. */
 #include "ae_clean.h"
 
 #include <stdlib.h>
@@ -177,9 +173,8 @@ void ae_default_result(ae_result_t *result)
     result->setting_curr.digital_gain = 1024;
     result->wdr_ratio.sensor = 96;
     result->wdr_ratio.hw_ratio = 96;
-    /* The object seeds the short companion from the emitted setting, then
-     * divides its exposure/line by the fixed 96 ratio, and copies the current
-     * setting unchanged into the short-current slot. */
+    /* Short companion: seeded from the emitted setting with exposure/line divided by the
+     * fixed ratio 96; the current setting is copied unchanged into the short-current slot. */
     result->setting_short = result->setting;
     result->setting_short.exposure_time /= 96;
     result->setting_short.sensor_exp_line /= 96;
@@ -492,6 +487,8 @@ static int32_t ae_backlight_centroid(ae_entity_t *e, const ae_stats_t *st,
                 backlight = picked > 0 ? picked : 0;
             }
         }
+    } else if (t->net_out_bias == NULL) {
+        backlight = 32;                 /* no output biases: network disabled */
     } else {
         int32_t x[64], h[10];
         int64_t s0 = 0, s1 = 0;
@@ -507,8 +504,8 @@ static int32_t ae_backlight_centroid(ae_entity_t *e, const ae_stats_t *st,
             s0 += (int64_t)h[pidx] * t->net_out[pidx];
             s1 += (int64_t)h[pidx] * t->net_out[10 + pidx];
         }
-        s0 = s0 / 100 + 3561;
-        s1 = s1 / 100 + 6438;
+        s0 = s0 / 100 + t->net_out_bias[0];
+        s1 = s1 / 100 + t->net_out_bias[1];
         if (s0 < s1)
             backlight = CLAMP(40 - (int32_t)(s1 / 800), 0, 32);
         else
@@ -920,12 +917,8 @@ static void ae_configure_sensor(ae_entity_t *e, int32_t index)
     if (j >= e->idx_max)
         j = e->idx_max;
     if (j < 0) {
-        /*
-         * The probe index is below the table.  The deployed object reads the
-         * entry before the array; in its layout that location is zero, and the
-         * observed boundary output is 0.  Model the out-of-range read as zero
-         * rather than substituting table row 0.
-         */
+        /* Probe index below the table: the deployed object reads the (zero) word before the
+         * array, so the out-of-range read is modelled as 0, not as row 0. */
         e->lv_adj = 0;
     } else {
         if (j >= AE_IDX_MAX)
@@ -1161,10 +1154,8 @@ static void compute_exposure_from_table(ae_entity_t *e, const ae_stats_t *st,
     int32_t metering = p->metering_mode;
 
     weighted = ae_meter(e, st, r, &avg_lum_q8);
-    /*
-     * Section 7.4 consumes the Q8 luminance returned by section 7.1 (the
-     * spatial weighted value); result.avg_lum keeps the unweighted mean.
-     */
+    /* Section 7.4 consumes the spatially weighted Q8 luminance of section 7.1;
+     * result.avg_lum keeps the unweighted mean. */
     (void)avg_lum_q8;
 
     /* Section 11: target and compensation */
@@ -1311,11 +1302,8 @@ static void ae_run_mode(ae_entity_t *e, const ae_stats_t *st, ae_result_t *r)
         p->exposure_locked == 0) {
         if (p->exposure_mode == 1) {
             ae_configure_manual(e);
-            /*
-             * Manual exposure with automatic ISO: the gain is not under
-             * manual control, so the configured manual gain is overridden
-             * (the deployed code warns and forces the base analog gain).
-             */
+            /* Manual exposure with automatic ISO: gain is not under manual control, so the manual
+             * gain is overridden with the base analog gain (the deployed code warns and forces it). */
             if (p->iso_control != 0)
                 e->set_cur.analog_gain = 256;
         } else {
@@ -1405,12 +1393,8 @@ static void ae_apply_test_ramp(ae_entity_t *e)
 {
     ae_setting_t *s = &e->set_cur;
 
-    /*
-     * Open-loop test emission: fixed gain/line values, a digital gain of 1024
-     * and a synthetic index of 10; the remaining fields (exposure time,
-     * aperture, LV, EV) keep their previous values, as the deployed code does,
-     * and the whole setting is mirrored into the last/current slots.
-     */
+    /* Open-loop test emission: fixed gain/line, digital gain 1024, index 10; exposure time,
+     * aperture, LV and EV keep their previous values; mirrored into the last/current slots. */
     s->total_gain = e->p.test_gain;
     s->analog_gain = e->p.test_gain;
     s->sensor_exp_line = e->p.test_exp_line;
@@ -1586,12 +1570,8 @@ int ae_set_params(ae_entity_t *e, const ae_param_req_t *req, ae_result_t *r)
         ae_set_line_table(e);
         return 0;
     case AE_PARAM_SET_INDEX:
-        /*
-         * Section 14.7: the frame path snapshots setting_last before loading
-         * the new entry; this direct path is documented as not doing that
-         * extra snapshot.  The distinction is not reproduced here yet; the
-         * common configure path (which does snapshot) is used.
-         */
+        /* Section 14.7: this direct path should skip the setting_last snapshot the frame path
+         * takes; not modelled yet, so the common (snapshotting) configure path is used. */
         e->cur_delta = 0;
         ae_configure_sensor(e, req->line_index);
         return 0;
@@ -1654,15 +1634,8 @@ void ae_apply_wdr_feedback(ae_entity_t *e, int32_t sensor, int32_t hw_ratio,
     if (e == NULL)
         return;
 
-    /*
-     * The deployed core shares its result block with the framework, so the
-     * WDR configuration step's between-run rewrite of these four slots lands
-     * in the core's own state.  The clean core owns a private block, so the
-     * shim replays that rewrite here before the next run.  Keeping the four
-     * fields in the core's blend-ratio record is what lets the exposure path's
-     * delay arming (last != tmp) and short/long alignment see the framework's
-     * values.
-     */
+    /* The deployed core shares these four slots with the framework's WDR step; replay its
+     * between-run rewrite so delay arming (last != tmp) and short/long alignment see it. */
     ratio = &e->wdr_ratio;
     ratio->sensor   = sensor;
     ratio->hw_ratio = hw_ratio;

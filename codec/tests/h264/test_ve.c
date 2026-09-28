@@ -12,9 +12,8 @@
 #include "freecodec/ve_iface.h"
 #include "freecodec/ve_port.h"
 
-/* The operations table has one layout only: 24 slots, the encoder enable
- * at slot 16 (spec r2/05 A.3). ve_iface.h asserts every slot offset for the
- * 32-bit target; here the slot order is re-checked on the host as well. */
+/* One ops-table layout: 24 slots, encoder enable at slot 16 (spec r2/05 A.3);
+ * ve_iface.h asserts it for 32-bit, this re-checks the slot order on the host. */
 _Static_assert(sizeof(fc_ve_ops) == 24 * sizeof(void (*)(void)),
                "operations table has 24 slots");
 _Static_assert(offsetof(fc_ve_ops, wait_irq) == 5 * sizeof(void (*)(void)),

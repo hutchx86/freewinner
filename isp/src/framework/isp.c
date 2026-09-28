@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-/* isp.c - context record, seed, per-frame pipeline and 3A feeds (20 §7, §12.2) */
+/* isp.c - context record, seed, per-frame pipeline and 3A feeds */
 #include "framework_internal.h"
 #include <stdlib.h>
 #include <math.h>
@@ -7,7 +7,7 @@
 
 fwi_isp_ctx_t isp_ctx[1] = {
     [0] = {
-    /* 20 §8.7 seed: only these scalars are non-zero before any call */
+    /* seed: only these scalars are non-zero before any call */
     .tuning = {
         .enables = {
             .auto_exposure_en = 1,
@@ -29,15 +29,13 @@ fwi_isp_ctx_t isp_ctx[1] = {
     },
 };
 
-/* Owner Q9: an optional consumer hook (mediad provides a strong definition
- * that restores the denoise slider) called just before the per-frame hardware
- * update.  The weak default keeps standalone/host builds linkable. */
+/* Optional consumer hook run just before the per-frame hardware update (mediad's restores
+ * the denoise slider); the weak default keeps standalone and host builds linkable. */
 __attribute__((weak)) void isp_control_hook(fwi_hw_module_cfg_t *cfg)
 {
     (void)cfg;
 }
 
-/* 20 §7.2 */
 static fwi_ev_setting_t *ev_curr(fwi_ae_result_t *r)
 {
     fwi_sensor_settings_t *ss = (fwi_sensor_settings_t *)&r->sensor_set;
@@ -137,10 +135,8 @@ void isp_afs_feed(fwi_isp_ctx_t *ctx)
     p->afs_sensor_info = ctx->sensor;
 }
 
-/* 20 §12.2 ISO per-frame feed: platform id, the ISO frame counter, and the
- * fixed colour-to-gray thresholds (owner Q3: reproduce the reference values,
- * 130/25/30, as baseline behaviour).  The CEM field names are the frozen ABI
- * spellings of the spec's `cem_color2gray_*` names. */
+/* ISO per-frame feed: platform id, ISO frame counter and the fixed colour-to-gray
+ * thresholds 130/25/30 (reference values); CEM fields use the ABI spellings. */
 void isp_iso_feed(fwi_isp_ctx_t *ctx)
 {
     fwi_iso_param_t *p = ctx->iso_entity.iso_param;
@@ -247,7 +243,7 @@ static void awb_result_to_module(fwi_isp_ctx_t *ctx)
     ctx->stats.wb_gain_saved = r->wb_gain_output;
 }
 
-/* last exposure/gain successfully sent (20 §7 step 6) */
+/* last exposure/gain successfully sent */
 static struct {
     int32_t exp_val;
     int32_t gain_val;
@@ -267,7 +263,7 @@ void isp_frame_process(fwi_isp_ctx_t *ctx)
 
     pthread_mutex_lock((pthread_mutex_t *)&ctx->lock);
 
-    /* 20 §7 step 3: decode the statistics buffer before the algorithm pass.
+    /* decode the statistics buffer before the algorithm pass.
      * The buffer pointer was stored in ctx->stats_buf by the stats handler. */
     isp_handle_stats(ctx, ctx->stats_buf);
 
@@ -359,9 +355,8 @@ void isp_frame_process(fwi_isp_ctx_t *ctx)
 
     M->demosaic_cfg.min_rgb = T->dehaze_en ? 1023 : 0;
 
-    /* owner Q9: revive mediad's pre-hardware-update hook (restores the
-     * denoise slider); it is an import, so a weak no-op default is provided
-     * for host builds (see tests/fake_tiers.c). */
+    /* mediad's pre-hardware-update hook (restores the denoise slider); a weak no-op
+     * default covers host builds (tests/fake_tiers.c). */
     isp_control_hook(M);
 
     isp_hardware_update(M);
@@ -378,7 +373,7 @@ void isp_frame_process(fwi_isp_ctx_t *ctx)
 
     pthread_mutex_unlock((pthread_mutex_t *)&ctx->lock);
 
-    /* Steps 6 and 7 run outside the ctx lock (20 §7): the exposure/gain ioctl
+    /* Steps 6 and 7 run outside the ctx lock: the exposure/gain ioctl
      * on change, then the register program load. */
     {
         struct hw_isp_device *dev = media_params.isp_dev[ctx->isp_index];
@@ -411,7 +406,7 @@ void isp_frame_process(fwi_isp_ctx_t *ctx)
         }
 
         if (dev != NULL) {
-            struct isp_table_reg_map reg;
+            struct fwi_table_reg_map reg;
             reg.addr = ctx->reg_image;
             reg.size = ISP_LOAD_DRAM_SIZE;
             isp_set_load_reg(dev, &reg);

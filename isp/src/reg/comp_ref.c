@@ -1,23 +1,9 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
-/*
- * comp_ref: per-window radial-distance reference used by the MSC table
- * builders (the deployment keeps it as a 256-entry double table in its
- * read-only data and memcpy's it to a stack array).
- *
- * The deployment's table is the distance from the centre of a 16x16 window:
- *
- *     ref[r][c] = sqrt(dr^2 + dc^2),   d(i) = 7 - i for i < 8, else i - 8
- *
- * rounded to five decimal places.  We re-derive the values from that geometry
- * instead of reproducing the vendor's bytes.
- *
- * This is deliberately NOT bit-identical to the deployment: nine of its 256
- * literals disagree with the re-derivation by 1e-5, because the deployment's
- * own literals are internally inconsistent (e.g. its [0][0] and [0][15] must
- * be equal and are not).  The private differential harness (config_msc_table)
- * is the arbiter for the difference across the tested envelope.
- */
+/* comp_ref.c - per-window radial-distance reference for the MSC table builders:
+ * ref[r][c] = sqrt(d(r)^2 + d(c)^2), d(i) = 7 - i for i < 8 else i - 8, rounded to 1e-5.
+ * Re-derived from that geometry; nine of the deployed 256 literals differ by 1e-5
+ * because they are internally inconsistent (e.g. [0][0] != [0][15]). */
 
 #include <math.h>
 

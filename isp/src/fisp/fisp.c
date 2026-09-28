@@ -1,20 +1,10 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
 
-/* ISP runtime (package B, `fisp_`): the `AW_MPI_ISP_*` API layer that sits
- * between the media daemon and the clean libisp framework tier. It owns the 25
- * ISP symbols the deployed build references -- the lifecycle wrappers, the AE
- * setters/getters, the luminance and flicker controls, the noise/WDR attribute
- * wrappers and the four picture-control setters. Behaviour is defined by
- * cleanroom/middleware/fisp/SPEC.md; this is original clean-room code.
- *
- * The package boundary is the symbol, not the vendor file: the picture-control
- * and AE setters physically live in the vendor's mpi_vi.c but are owned here.
- *
- * Deliberately not implemented (see NOT-IMPLEMENTED.md): the 42 defined but
- * unreferenced AW_MPI_ISP_* symbols, the compiled-out attribute-form setters,
- * the whole mpi_ae/mpi_awb unit, and the load-reg `--wrap` shim (a consumer
- * concern; the bit-edit helper is provided). */
+/* fisp.c - ISP runtime (fisp_): the 25 AW_MPI_ISP_* symbols the daemon references
+ * (lifecycle, AE, luminance/flicker, noise/WDR attributes, picture controls) over the clean
+ * framework tier; the picture-control and AE setters sit in the vendor's mpi_vi.c but are
+ * owned here. Deliberate omissions are listed in NOT-IMPLEMENTED.md. */
 
 #define _GNU_SOURCE
 
@@ -28,16 +18,12 @@
 #define FISP_LOG(...) fprintf(stderr, "fisp: " __VA_ARGS__)
 
 /* ------------------------------------------------------------------ */
-/* ISP id -> VI video device resolver (SPEC 6.4)                       */
+/* ISP id -> VI video device resolver                                  */
 /* ------------------------------------------------------------------ */
 
-/*
- * Default resolver: scan the clean device layer's video devices and match the
- * one whose video_to_isp_id() equals the requested ISP id. The array is filled
- * by the capture runtime; before any vipp has started every slot is NULL and
- * the resolver returns NULL.
- */
-static struct isp_video_device *fisp_resolver_scan(int isp_dev)
+/* Default resolver: the video device whose video_to_isp_id() matches. The capture runtime
+ * fills the array, so this returns NULL before any vipp has started. */
+static struct fwi_video_device *fisp_resolver_scan(int isp_dev)
 {
 	unsigned int i;
 
@@ -45,7 +31,7 @@ static struct isp_video_device *fisp_resolver_scan(int isp_dev)
 		return NULL;
 
 	for (i = 0; i < HW_VIDEO_DEVICE_NUM; i++) {
-		struct isp_video_device *video = media_params.video_dev[i];
+		struct fwi_video_device *video = media_params.video_dev[i];
 
 		if (video != NULL && video_to_isp_id(video) == isp_dev)
 			return video;
@@ -76,14 +62,11 @@ static int fisp_vi_id_ok(int isp_dev)
 	return isp_dev >= 0 && isp_dev < FISP_VI_ISP_NUM_MAX;
 }
 
-/*
- * Resolve the video device for a V4L2-control operation. The caller has already
- * validated the id against the VI range. Returns NULL (and the caller returns
- * FAILURE) when no device is bound to the ISP.
- */
-static struct isp_video_device *fisp_video_dev_for(int isp_dev)
+/* Video device for a V4L2-control operation (id already range-checked); NULL, and the
+ * caller returns FAILURE, when no device is bound to the ISP. */
+static struct fwi_video_device *fisp_video_dev_for(int isp_dev)
 {
-	struct isp_video_device *video = fisp_video_resolver(isp_dev);
+	struct fwi_video_device *video = fisp_video_resolver(isp_dev);
 
 	if (video == NULL)
 		FISP_LOG("no VI video device bound to isp %d\n", isp_dev);
@@ -93,7 +76,7 @@ static struct isp_video_device *fisp_video_dev_for(int isp_dev)
 /* Single VIDIOC_S_CTRL write; SUCCESS on success, FAILURE on ioctl failure. */
 static AW_S32 fisp_ctrl_write(int isp_dev, int cid, int value)
 {
-	struct isp_video_device *video = fisp_video_dev_for(isp_dev);
+	struct fwi_video_device *video = fisp_video_dev_for(isp_dev);
 
 	if (video == NULL)
 		return FAILURE;
@@ -103,7 +86,7 @@ static AW_S32 fisp_ctrl_write(int isp_dev, int cid, int value)
 /* Single VIDIOC_G_CTRL read; stores through *value and returns SUCCESS. */
 static AW_S32 fisp_ctrl_read(int isp_dev, int cid, int *value)
 {
-	struct isp_video_device *video;
+	struct fwi_video_device *video;
 
 	if (value == NULL)
 		return FAILURE;
@@ -116,7 +99,7 @@ static AW_S32 fisp_ctrl_read(int isp_dev, int cid, int *value)
 }
 
 /* ------------------------------------------------------------------ */
-/* Lifecycle (SPEC 3.2)                                                */
+/* Lifecycle                                                           */
 /* ------------------------------------------------------------------ */
 
 AW_S32 AW_MPI_ISP_Init(void)
@@ -158,12 +141,12 @@ AW_S32 AW_MPI_ISP_Exit(void)
 }
 
 /* ------------------------------------------------------------------ */
-/* AE setters (SPEC 3.3)                                               */
+/* AE setters                                                          */
 /* ------------------------------------------------------------------ */
 
 AW_S32 AW_MPI_ISP_AE_SetMode(ISP_DEV IspDev, int Value)
 {
-	struct isp_video_device *video;
+	struct fwi_video_device *video;
 
 	if (!fisp_vi_id_ok(IspDev))
 		return AW_ERR_VI_INVALID_CHN;
@@ -201,7 +184,7 @@ AW_S32 AW_MPI_ISP_AE_SetExposureBias(ISP_DEV IspDev, int Value)
 }
 
 /* ------------------------------------------------------------------ */
-/* AE getters (SPEC 3.5)                                               */
+/* AE getters                                                          */
 /* ------------------------------------------------------------------ */
 
 AW_S32 AW_MPI_ISP_AE_GetMode(ISP_DEV IspDev, int *Value)
@@ -247,7 +230,7 @@ AW_S32 AW_MPI_ISP_AE_GetGain(ISP_DEV IspDev, int *Value)
 	return fisp_ctrl_read(IspDev, V4L2_CID_GAIN, Value);
 }
 
-/* Telemetry, not a V4L2 control (SPEC 3.6). */
+/* Telemetry, not a V4L2 control. */
 AW_S32 AW_MPI_ISP_AE_GetEvIdx(ISP_DEV IspDev, int *Value)
 {
 	AW_S32 ret;
@@ -259,7 +242,7 @@ AW_S32 AW_MPI_ISP_AE_GetEvIdx(ISP_DEV IspDev, int *Value)
 }
 
 /* ------------------------------------------------------------------ */
-/* Luminance (SPEC 3.6)                                                */
+/* Luminance                                                           */
 /* ------------------------------------------------------------------ */
 
 /* No id validation of its own; isp_get_lv returns -1 for a null device. The
@@ -270,7 +253,7 @@ int AW_MPI_ISP_GetEnvLV(ISP_DEV IspDev)
 }
 
 /* ------------------------------------------------------------------ */
-/* Flicker (SPEC 3.3)                                                  */
+/* Flicker                                                             */
 /* ------------------------------------------------------------------ */
 
 AW_S32 AW_MPI_ISP_SetFlicker(ISP_DEV IspDev, int Value)
@@ -290,7 +273,7 @@ AW_S32 AW_MPI_ISP_GetFlicker(ISP_DEV IspDev, int *Value)
 }
 
 /* ------------------------------------------------------------------ */
-/* ISP_CTRL_* attribute setters/getters (SPEC 3.4)                     */
+/* ISP_CTRL_* attribute setters/getters                                */
 /* ------------------------------------------------------------------ */
 
 /* The framework's attribute path owns id validation; the wrapper passes its
@@ -328,11 +311,11 @@ AW_S32 AW_MPI_ISP_GetPltmWDR(ISP_DEV IspDev, int *Value)
 }
 
 /* ------------------------------------------------------------------ */
-/* Picture controls (SPEC 3.3 / 3.7)                                   */
+/* Picture controls                                                    */
 /* ------------------------------------------------------------------ */
 
 /* The enforced ranges below are the behaviour; the public header's trailing
- * comments advertise different ones (SPEC 3.3 note). */
+ * comments advertise different ones. */
 
 AW_S32 AW_MPI_ISP_SetBrightness(ISP_DEV IspDev, int Value)
 {

@@ -1,12 +1,7 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
-/*
- * test_base.c - host tests for the clean-room ISP base tier (spec/reglayer2.md
- * section 3, spec/interfaces.md table contract).
- *
- * No vendor output is compared.  Every expected value is derived independently
- * from the formulas in the specification with small, hand-checkable inputs.
- */
+/* test_base.c - host tests for the ISP base tier (spec/reglayer2.md 3); all
+ * expected values are hand-derived from the spec formulas. */
 #include "base.h"
 #include "freeisp/sdiv.h"
 
@@ -84,14 +79,11 @@ const freeisp_tables_t *freeisp_get_tables(void)
 
 /* ---- fixtures ----------------------------------------------------- */
 
-static isp_lib_context_t ctx;
+static fwi_base_ctx_t ctx;
 static uint8_t g_buf[0x10000];
 
-/* ---- test doubles for the register-writer collaborators -----------
- * The base tier is linked on its own here; the validated writers live in
- * reg_writers.c (with their own test).  Of the base entry points only
- * config_band_step drives a writer directly; the remaining payloads are
- * produced as module_cfg fields (module_cfg.c owns their writer calls). */
+/* Register-writer doubles: only config_band_step calls a writer directly; the
+ * other payloads are module_cfg fields (module_cfg.c owns those calls). */
 
 static int      g_lsc_calls, g_dg_calls, g_band_calls, g_wdr_calls;
 static uint32_t g_lsc_arg[3];
@@ -106,10 +98,8 @@ void isp_reg_map_load_addr(unsigned long id, void *base)
     g_last_id = id;
 }
 
-/* The AE hook the base tier calls to update the AE core; this standalone test
- * only needs the call to resolve (the SDK-ABI dispatch is covered by the
- * private differential harness). */
-void freeisp_ae_set_params(isp_ae_entity_ctx_t *ae_ctx, int32_t cmd_type)
+/* AE hook the base tier calls; this test only needs it to resolve. */
+void freeisp_ae_set_params(fwi_base_ae_entity_ctx_t *ae_ctx, int32_t cmd_type)
 {
     (void)ae_ctx;
     (void)cmd_type;
@@ -386,10 +376,8 @@ static void test_wdr(void)
     config_wdr(&ctx, 0);
     CHECK_EQ(ctx.ae_settings.ae_mode, ISP_AE_MODE_NORM);
 
-    /* Threshold config only (flag=0 builds no table).  The reported hi/lo
-     * thresholds are divided by the ISP hardware ratio, which defaults to
-     * 0x100 when the sensor/tmp ratios are zero, so hi becomes 0x30 and the
-     * output-select chain picks exp_ratio (iso_c2g_th <= iso_lum_idx). */
+    /* Threshold config only (flag=0 builds no table); hi/lo are divided by the
+     * default 0x100 ratio (hi=0x30) and the output select picks exp_ratio. */
     fresh();
     ctx.isp_test_settings.wdr_en = 1;
     ctx.ae_settings.ae_mode = 7;                  /* must stay untouched */
@@ -483,9 +471,8 @@ static void test_colormatrix(void)
 
     fresh();
     ctx.isp_test_settings.cm_en = 1;
-    /* Interpolate the adjacent tuning blocks selected by the colour
-     * temperature (isp_test_mode 0 -> awb_color_temp_output).  Each block is
-     * 12 words: 9 matrix entries then 3 offsets. */
+    /* Interpolate the tuning blocks selected by awb_color_temp_output; each
+     * block is 9 matrix words then 3 offsets. */
     g_cm_trig[0] = 2500;
     g_cm_trig[1] = 4000;
     g_cm[0] = 256; g_cm[4] = 256; g_cm[8] = 256;
@@ -542,9 +529,8 @@ static void test_dynamic_judge(void)
     CHECK_EQ(ctx.stats_ctx.dynamic_stats.mov, 0);
     CHECK_EQ(ctx.stats_ctx.dynamic_stats.tdnf_comp_target, 1);
 
-    /* Large motion saturates the history clamp and selects level 3.  The
-     * 7-deep median must already hold large values, otherwise the current
-     * (saturated) estimate is outvoted by the zero history. */
+    /* Large motion saturates the clamp -> level 3; the 7-deep median must hold
+     * large values or the zero history outvotes the current estimate. */
     fresh();
     ctx.isp_test_settings.ae_en = 1;
     ctx.stats_ctx.dynamic_stats.enable = 1;
@@ -596,9 +582,8 @@ static void test_handle_stats(void)
     CHECK(ctx.stats_attach.ae_stats == &ctx.stats_ctx.stats.ae);
     CHECK(ctx.stats_attach.awb_stats == &ctx.stats_ctx.stats.awb);
 
-    /* Dual-buffer merge: AE columns 0..11 come from the first capture and
-     * columns 12..23 from the second, each window averaging its two 12-byte
-     * records within that capture. */
+    /* Dual-buffer merge: AE columns 0..11 from capture 1, 12..23 from capture 2,
+     * each window averaging its two 12-byte records. */
     fresh();
     ctx.isp_test_settings.ae_en = 1;
     ctx.stats_ctx.pic_w = 24;
@@ -631,14 +616,8 @@ static void test_handle_stats(void)
 }
 
 
-/*
- * Zero-divisor regression (on-camera SIGFPE, 2026-09-20 (7)).
- *
- * A data-dependent divisor of zero reaches __aeabi_idiv/__aeabi_uidiv, which
- * raises SIGFPE; the deployed object uses the ARM divide instructions, which
- * return 0.  Every such site now goes through freeisp_sdiv/freeisp_udiv, so
- * these calls must return normally.  Pre-fix the test process died here.
- */
+/* Zero divisors: __aeabi_idiv/uidiv raise SIGFPE while ARM SDIV/UDIV return 0,
+ * so every data-dependent division goes through freeisp_sdiv/udiv. */
 static void test_zero_divisor_paths(void)
 {
     /* 1. The helper contract: ARM SDIV/UDIV saturation, not a trap. */

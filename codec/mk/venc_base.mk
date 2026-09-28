@@ -39,10 +39,8 @@ $(VENC_BASE_MAP): include/freecodec/venc_base_abi.h | $(BUILD)
 	  | awk 'BEGIN { print "{"; print "  global:" } { print "    " $$0 ";" } \
 	         END { print "  local:"; print "    *;"; print "};" }' > $@
 
-# -nostartfiles: the library has no C++/ctor needs, and musl's crti would
-# otherwise export _init/_fini; -static-libgcc keeps libgcc_s out of NEEDED
-# (SPEC §6: libc and libpthread only). Constructors, if ever added, still run
-# through .init_array.
+# -nostartfiles: musl's crti would export _init/_fini (ctors still run via
+# .init_array); -static-libgcc keeps NEEDED to libc/libpthread (spec 6).
 VENC_BASE_SO_LDFLAGS := -shared -pthread -nostartfiles -static-libgcc \
     -Wl,-soname,libvenc_base.so -Wl,--version-script=$(VENC_BASE_MAP)
 

@@ -2,52 +2,47 @@
 
 # freecodec
 
-An independent, clean implementation of the two remaining Allwinner proprietary
-codec blobs linked into the Yi-camera media daemon (`mediad`), for
+An independent, clean implementation of the Allwinner proprietary codec
+libraries linked into the Yi-camera media daemon (`mediad`), for
 sun8iw19p1 / V833-class hardware:
 
 - **AAC-LC encoder** — replacement for `libaacenc.a`, built on upstream FAAC
   (LGPL-2.1-or-later).
 - **H.264 hardware encoder** — replacement for `libvenc_codec.a` + `libVE.a`,
   a clean-room driver/encoder that talks to `/dev/cedar_dev` directly.
+- **Encoder support library and API framework** — replacements for
+  `libvenc_base` and the `VideoEnc*` entry points the daemon calls.
 
 This is the codec subproject of `freewinner`; the sibling `isp/` subproject
-holds the clean-room libisp 3A replacement. The consumer of both is the Yi
-camera's `media_daemon`.
+holds the clean-room libisp 3A replacement. The consumer of both is the
+camera's media daemon (`mediad`).
 
 Licence: **AGPL-3.0-only** (see `LICENSE`). FAAC is LGPL-2.1-or-later and is kept
 as a separate library; see `CREDITS.md`.
 
 ## Status
 
-| Unit | State |
-|---|---|
-| Vendor interface surface (both codecs) | documented — `spec/00-vendor-interface-surface.md` |
-| AAC-LC wrapper (`libaacenc` replacement) | implemented, host-tested, decodes, link-accepted |
-| `ve` driver (`libVE` replacement) | implemented, mock-port tested, ABI-verified vs SDK |
-| H.264 header generation (SPS/PPS/IDR/P) | implemented; golden-verified against goldens withheld from this repository (see Build and test) |
-| H.264 rate control (CBR) | implemented; golden-verified against goldens withheld from this repository (see Build and test) |
-| H.264 register layer (shadow, slice regs, `freecodec_h264_config_registers`) | implemented; golden-verified against goldens withheld from this repository (see Build and test) |
-| H.264 `fwm_venc_device_t` assembly (`enc`) | implemented over the units; encoder-internal ISP implemented, only advanced ISP features + advanced GOP stubbed (`src/h264/enc/README.md`) |
-| Link substitution (no vendor codec blobs) | **passes** — link acceptance in the private analysis workspace |
-| On-device validation | H.264 **validated on the y623**: the clean encoder emits a single contiguous SPS/PPS/IDR/P stream for both channels and ffmpeg decodes both extracted streams with zero macroblock errors (2304x1296 high + 640x360 low, Main L5.1). The 2-channel encoder-interrupt wait stall is root-caused and **fixed** (per-frame VE reset pulse + frame offset 0, the vendor's own envelope — see `spec/h264-two-channel.md`). AAC host-decode + link verified; device pending. Remaining: a non-CBR rate control that produces very large P frames, the `0x1c` status write-back / `0x1c & 2` re-encode path, and the resulting fshare-ring churn. See `src/h264/enc/README.md`. |
-
-`make check` runs the SDK-free host units (aac, ve, headers, regs, rc, h264_isp,
-h264_gop). The `enc` unit and the link acceptance need the consumer SDK + cross
-toolchain, so they run in the private analysis workspace rather than from this
-repo.
+| Unit | Source | State |
+|---|---|---|
+| AAC-LC wrapper (`libaacenc` replacement) | `src/aac/` | implemented, host-tested (needs a FAAC tree), link-accepted |
+| VE engine driver (`libVE` replacement, `GetVeOpsS`) | `src/h264/ve/` | implemented, mock-port tested |
+| H.264 headers, register layer, rate control, encoder-internal ISP, GOP | `src/h264/{headers,regs,rc,isp,gop}/` | implemented; verified against differential vectors that are not shipped |
+| H.264 encoder device (`fwm_venc_device_t`, `libvenc_codec` replacement) | `src/h264/enc/` | implemented; host-tested against a fake engine |
+| Encoder support library (`libvenc_base` replacement) | `src/base/` | implemented; static archive + shared library, host-tested |
+| Encoder API framework (`VideoEnc*` entry points) | `src/fenc/` | implemented; host-tested; omissions in `src/fenc/NOT-IMPLEMENTED.md` |
+| On-device | | the fully vendor-free media daemon streams both H.264 channels (high 2304x1296 and low 640x360) and both decode with zero macroblock errors |
 
 ## Layout
 
-- behaviour specs — kept in the private clean-room workspace, not in this
-  repository; source comments cite them as `spec/<name>.md`.
-- `src/aac/` — the AAC encoder wrapper.
-- `src/h264/` — the H.264 driver/encoder (in progress).
-- `include/freecodec/` — interoperability headers (the ABI we implement).
-- `tests/` — behavioural tests.
-- `mk/` — per-module build fragments; `Makefile` wires them together.
-- the private analysis workspace (never published) holds the differential
-  harnesses, the withheld golden vectors and link acceptance.
+- `include/freecodec/` - interoperability headers (the ABI we implement).
+- `src/aac/`, `src/h264/`, `src/base/`, `src/fenc/` - the units above.
+- `tests/` - behavioural host tests; `tests/h264/data/` holds the one shipped
+  data file (see `docs/provenance.md`, "Shipped test data").
+- `mk/` - per-module build fragments; `Makefile` wires them together.
+- `docs/` - provenance (`docs/provenance.md`), integration notes and prior art.
+- The behaviour specs, the differential harnesses and their vectors are kept
+  in the private clean-room workspace, not in this repository; source comments
+  cite the specs by name and section.
 
 ## Build and test (host)
 
@@ -55,24 +50,28 @@ repo.
 make check
 ```
 
-The AAC build needs a FAAC source tree. Point `FAAC_DIR` at one (the upstream
-tree, or a sibling checkout); a host `faac` also works for the differential:
+`make check` builds and runs every host test: the VE driver, overlay packer,
+support library, API framework, encoder device, MB-RC and aux-plane buffer
+units, and rate control. It needs no SDK and no vendor material.
+
+The AAC unit needs a FAAC source tree and is skipped without one:
 
 ```
 make check FAAC_DIR=/path/to/faac
 ```
 
-The differential suites compare our output against recorded golden vectors,
-which are withheld from this repository. Without them those suites report
-`SKIP`. To run them, put the vectors in `$(GOLDEN_DIR)` (default
-`$(CURDIR)/golden`) and ask for them explicitly:
+Tests driven by vectors that are not shipped print `SKIP` and pass without
+them. To run them against a private copy:
 
 ```
-make check ALLOW_GOLDENS=1
+make check RC_VECTOR_DIR=/path/to/vectors      # test_rc
+make check MBRC_VECTORS=/path/to/mbrc_table.csv # test_mbrc
+make check ORACLE_TESTS=/path/to/tests GOLDEN_DIR=/path/to/golden ALLOW_GOLDENS=1
 ```
 
-`GOLDEN_DIR` is compiled into each test binary, so run `make clean` after
-changing it.
+The last form builds the private differential suites (headers, register layer,
+encoder ISP, GOP) against recorded golden vectors. Paths are compiled into the
+test binaries, so run `make clean` after changing them.
 
 ## Provenance
 

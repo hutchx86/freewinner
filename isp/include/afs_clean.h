@@ -1,17 +1,8 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
-/*
- * afs_clean.h - clean-room auto-flicker (mains-ripple) detection module.
- *
- * Behaviour is defined by spec/afs.md. This header is the public API and the
- * ABI-shaped types consumed/produced by the module. Per-instance state is
- * opaque; use the entry points below.
- *
- * The module owns no tuning tables. Two 32-entry integer trig tables are
- * obtained at initialisation time through the registered table-provider
- * contract; a provider that yields no tables is a programming error and
- * initialisation fails.
- */
+/* afs_clean.h - auto-flicker (mains-ripple) detection (behaviour per isp/spec/afs.md).
+ * Per-instance state is opaque. The two 32-entry trig tables come from the table
+ * provider at init; a provider with no tables makes init fail. */
 #ifndef AFS_CLEAN_H
 #define AFS_CLEAN_H
 

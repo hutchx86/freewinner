@@ -1,12 +1,10 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
 
-/* Host-test seam for the encoder API framework (package C), same link-time
- * substitution style as tests/base/fake_memops.h. It supplies everything the
- * framework imports and scripts: the video-engine ops table, the adapter
- * calls, the memory-ops table, and the four codec device tables (fakes whose
- * slots record arguments and return scripted results). The real picture-queue
- * manager (src/base/vb_frames.c) is linked, not mocked. */
+/* Host-test seam for the encoder API framework (link-time substitution, like
+ * tests/base/fake_memops.h): fake VE ops, adapter calls, memory ops and the
+ * four device tables, which record arguments and return scripted results. The
+ * real picture-queue manager (src/base/vb_frames.c) is linked. */
 
 #ifndef FREECODEC_TEST_FENC_SEAM_H
 #define FREECODEC_TEST_FENC_SEAM_H

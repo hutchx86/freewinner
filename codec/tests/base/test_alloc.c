@@ -1,8 +1,8 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
 
-/* Behavioural test of the venc_base allocator (SPEC §1), adapter functions (§2)
- * and ION helpers (§3), with the kernel and video engine replaced through the
+/* Behavioural test of the venc_base allocator, adapter functions
+ * and ION helpers, with the kernel and video engine replaced through the
  * vb_sys seam. */
 
 #include <errno.h>

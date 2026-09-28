@@ -1,12 +1,7 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
-/*
- * test_module_cfg.c - host tests for the clean-room module dispatch tier.
- *
- * The fixed mk link line provides only module_cfg.c and this file, so the
- * already-validated writer tier is compiled in here; the config routines are
- * then checked end-to-end against the register block they poke.
- */
+/* test_module_cfg.c - host tests for the module dispatch tier, linked with the
+ * writer tier and checked end-to-end against the register block. */
 #include "module_cfg.h"
 
 #include "../src/reg/reg_writers.c"
@@ -36,7 +31,7 @@ static int g_checks, g_failures;
 
 static uint8_t  g[0x1000];
 static uint8_t  g2[0x1000];
-static isp_module_config_t cfg;
+static fwi_mod_config_t cfg;
 static uint16_t msc_words[4 * ISP_MSC_LUT_WORDS];
 
 #define R(o)  (*(uint32_t *)(g + (o)))
@@ -137,7 +132,7 @@ static void test_enables(void)
         }
         isp_module_attrs[i].enable(&cfg, ISP_MODULE_DISABLE);
         /* Deployed: MSC's disable clears the CONTRAST bit too, so every
-         * module's bypass bit is clear after disable (differential-blind). */
+         * module's bypass bit is clear after disable. */
         EQ(R(0x1a0), 0u, "disable clears the bit");
         if (i == 25u)
             EQ(R(0x100), 0u, "dg disable clears isp_s1_cfg bit 2");
@@ -354,14 +349,13 @@ static void test_gated_dispatch(void)
 
 static void test_config_details(void)
 {
-    isp_module_config_t *c = &cfg;
+    fwi_mod_config_t *c = &cfg;
 
     reset();
     c->isp_dev_id = 0;
 
     /* Both source probes (tbl[0xbff], tbl[0x2ff]) are zero, so the deployed
-     * object emits the gamma-2.2 ramp, not the normal pack.  Differential-blind
-     * branch; the expectation was corrected to the deployed behaviour. */
+     * object emits the gamma-2.2 ramp, not the normal pack. */
     c->gamma_cfg.gamma_tbl[0] = 0x3ffu;
     c->gamma_cfg.gamma_tbl[ISP_GAMMA_PLANE] = 1u;
     c->gamma_cfg.gamma_tbl[2u * ISP_GAMMA_PLANE] = 2u;
@@ -402,9 +396,8 @@ static void test_config_details(void)
     isp_reg_prepare_saturation(c);
     EQ(R(0x490), 0u, "saturation nibbles still zero with caller values");
     EQ((R(0x1b0) >> 1) & 1u, 1u, "saturation mode written");
-    /* Deployed raises the update bit only when the saturation source pointer is
-     * non-NULL; corrected from the previous unconditional expectation
-     * (differential-blind). */
+    /* The update bit is raised only when the saturation source pointer is
+     * non-NULL (deployed behaviour). */
     EQ(c->table_update & ISP_TABLE_UPDATE_SATU, 0u,
        "saturation update bit clear with a NULL source");
     {
@@ -427,10 +420,8 @@ static void test_config_details(void)
             if (c->satu_cfg.table[i] != embed[i])
                 embed_ok = 0;
         }
-        /* Deployed direction: the embedded table is copied into the pointer
-         * target and the embedded array is left untouched.  Corrected after
-         * black-box probing of the deployed object (the old expectation encoded
-         * the inverted direction; differential-blind). */
+        /* Deployed direction: embedded table -> pointer target; the embedded
+         * array is left untouched. */
         CHECK(dst_ok, "saturation copied embedded -> pointer target");
         CHECK(embed_ok, "saturation embedded table untouched");
     }

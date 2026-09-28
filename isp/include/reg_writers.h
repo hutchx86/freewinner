@@ -1,32 +1,9 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
-/*
- * reg_writers.h - clean-room ISP register/hardware writer tier.
- *
- * Behaviour-only reimplementation of the vendor register layer described in
- * spec/reglayer2.md section 1.  Only the spec's interface facts (entry-point
- * names, register-map field names and offsets, bitfield layouts) are
- * reproduced; see docs/provenance.md for the full provenance record.
- *
- * Model
- * -----
- * Each ISP instance owns a register-pointer descriptor (one member per named
- * register field).  isp_reg_map_load_addr() fills every member with the
- * absolute address base + hardware offset.  Every per-register writer takes the
- * instance id, looks up its descriptor and read-modify-writes the 32-bit
- * register at that member.
- *
- * The descriptor here is a host-build model: members are plain uint32_t*
- * (the target uses memory-mapped volatile words, same layout).  The struct's
- * byte layout is deliberately not the vendor's 0x270-byte layout - only the
- * pointed-to register addresses and their offsets are the interop facts.
- *
- * Field names are the spec's descriptor names.  Some spec rows give a field
- * shift that overlaps another field in the same register; those rows are
- * resolved to the unique non-overlapping packing that fits the register and
- * are flagged "layout resolved" in reg_writers.c.  Bitfield masks used here
- * are the field widths from the spec.
- */
+/* reg_writers.h - ISP register writer tier (isp/spec/reglayer2.md section 1). Each
+ * instance's descriptor holds base + offset pointers per named field; writers do a
+ * 32-bit read-modify-write. Only the addresses/offsets are interop facts, not the
+ * struct layout. Overlapping spec shifts are marked "layout resolved" in reg_writers.c. */
 #ifndef REG_WRITERS_H
 #define REG_WRITERS_H
 
@@ -123,7 +100,7 @@ enum isp_af_enable_bits {
 /* register field; map_load fills it with base + hardware offset.      */
 /* ------------------------------------------------------------------ */
 
-typedef struct isp_reg_map {
+typedef struct fwi_reg_map {
     /* address map / control                                    off */
     uint32_t *isp_global_cfg0;          /* 0x000 */
     uint32_t *isp_global_cfg1;          /* 0x004 */
@@ -241,35 +218,35 @@ typedef struct isp_reg_map {
     uint32_t *isp_lca_pf_satu_lut;      /* 0xb18 */
     uint32_t *isp_lca_gf_satu_lut;      /* 0xb3c */
     uint32_t *isp_f00;                  /* 0xf00 */
-} isp_reg_map_t;
+} fwi_reg_map_t;
 
 /* ------------------------------------------------------------------ */
 /* Composite payloads for the multi-field writers                      */
 /* ------------------------------------------------------------------ */
 
-typedef struct isp_gca_para {
+typedef struct fwi_reg_gca_para {
     uint8_t  para0;
     uint16_t para1;     /* 10-bit */
     uint16_t para2;     /* 10-bit */
     uint8_t  int_cns;
-} isp_gca_para_t;
+} fwi_reg_gca_para_t;
 
-typedef struct isp_gca_cfg {
+typedef struct fwi_reg_gca_cfg {
     uint16_t ct_h;
     uint16_t ct_w;
-    isp_gca_para_t r;
-    isp_gca_para_t b;
-} isp_gca_cfg_t;
+    fwi_reg_gca_para_t r;
+    fwi_reg_gca_para_t b;
+} fwi_reg_gca_cfg_t;
 
-typedef struct isp_ctc_cfg {
+typedef struct fwi_reg_ctc_cfg {
     uint16_t th_max;    /* 12-bit */
     uint16_t th_min;    /* 12-bit */
     uint16_t slope;
     uint8_t  dir_wt;    /* 7-bit  */
     uint16_t dir_th;    /* 12-bit */
-} isp_ctc_cfg_t;
+} fwi_reg_ctc_cfg_t;
 
-typedef struct isp_lca_cfg {
+typedef struct fwi_reg_lca_cfg {
     uint16_t gf_cor_ratio;   /* 10-bit */
     uint16_t pf_cor_ratio;   /* 10-bit */
     uint16_t lum_th;         /* 12-bit */
@@ -281,18 +258,18 @@ typedef struct isp_lca_cfg {
     uint16_t pf_clrc_ratio;
     uint16_t gf_clrc_ratio;
     uint16_t pf_decr_ratio;
-} isp_lca_cfg_t;
+} fwi_reg_lca_cfg_t;
 
-typedef struct isp_d2d_cfg {
+typedef struct fwi_reg_d2d_cfg {
     uint8_t lf_ratio;
     uint8_t bf_ratio;
     uint8_t hf_ratio;
     uint8_t lp_core[4];
     uint8_t lp_side[3];
     uint8_t lp_pcnt[4];
-} isp_d2d_cfg_t;
+} fwi_reg_d2d_cfg_t;
 
-typedef struct isp_d3d_cfg {
+typedef struct fwi_reg_d3d_cfg {
     uint8_t  bright_diff;
     uint8_t  clip_ratio;
     uint8_t  lum_diff_clip;
@@ -305,9 +282,9 @@ typedef struct isp_d3d_cfg {
     uint16_t c_weight2;      /* 12-bit */
     uint16_t c_weight3;      /* 12-bit */
     uint16_t ltf_update_frm; /* 10-bit */
-} isp_d3d_cfg_t;
+} fwi_reg_d3d_cfg_t;
 
-typedef struct isp_pltm_cfg {
+typedef struct fwi_reg_pltm_cfg {
     uint8_t  lss_switch;
     uint8_t  cal_en;
     uint8_t  frm_sm_en;
@@ -324,9 +301,9 @@ typedef struct isp_pltm_cfg {
     uint8_t  block_v_num;      /* 5-bit */
     uint8_t  block_h_num;      /* 5-bit */
     uint32_t statistic_div;
-} isp_pltm_cfg_t;
+} fwi_reg_pltm_cfg_t;
 
-typedef struct isp_sharp_cfg {
+typedef struct fwi_reg_sharp_cfg {
     uint16_t edge_black_stren;  /* 12-bit */
     uint16_t edge_white_stren;  /* 12-bit */
     uint8_t  edge_scale;        /* 5-bit  */
@@ -346,9 +323,9 @@ typedef struct isp_sharp_cfg {
     uint16_t over_area;         /* 10-bit */
     uint16_t under_val;         /* 10-bit */
     uint16_t under_area;        /* 10-bit */
-} isp_sharp_cfg_t;
+} fwi_reg_sharp_cfg_t;
 
-typedef struct isp_af_filter {
+typedef struct fwi_reg_af_filter {
     uint16_t iir0_coef[6];   /* iir0_g0..g5, 10-bit */
     uint16_t iir0_s[4];      /* iir0_s0..s3, 10-bit */
     uint16_t fir0_coef[5];   /* fir0_g0..g4, 6-bit  */
@@ -375,7 +352,7 @@ typedef struct isp_af_filter {
     uint16_t r_offset;       /* 13-bit */
     uint16_t g_offset;       /* 13-bit */
     uint16_t b_offset;       /* 13-bit */
-} isp_af_filter_t;
+} fwi_reg_af_filter_t;
 
 /* ------------------------------------------------------------------ */
 /* Entry points (spec 4) - names are interface facts                   */
@@ -416,11 +393,11 @@ void isp_reg_set_wdr_cfg(unsigned long id, uint32_t lo_th, uint32_t hi_th,
                          uint32_t mv_scale, uint32_t out_sel);
 void isp_reg_set_dpc(unsigned long id, uint32_t r0, uint32_t r1, uint32_t r2,
                      uint32_t r3, uint32_t slope_th, uint32_t cold_abs_th);
-void isp_reg_set_ctc(unsigned long id, const isp_ctc_cfg_t *cfg);
-void isp_reg_set_gca(unsigned long id, const isp_gca_cfg_t *cfg);
-void isp_reg_set_lca(unsigned long id, const isp_lca_cfg_t *cfg);
-void isp_reg_set_d2d_cfg(unsigned long id, const isp_d2d_cfg_t *cfg);
-void isp_reg_set_d3d_cfg(unsigned long id, const isp_d3d_cfg_t *cfg);
+void isp_reg_set_ctc(unsigned long id, const fwi_reg_ctc_cfg_t *cfg);
+void isp_reg_set_gca(unsigned long id, const fwi_reg_gca_cfg_t *cfg);
+void isp_reg_set_lca(unsigned long id, const fwi_reg_lca_cfg_t *cfg);
+void isp_reg_set_d2d_cfg(unsigned long id, const fwi_reg_d2d_cfg_t *cfg);
+void isp_reg_set_d3d_cfg(unsigned long id, const fwi_reg_d3d_cfg_t *cfg);
 void isp_reg_set_sensor_offset(unsigned long id, uint32_t r, uint32_t gr,
                                uint32_t gb, uint32_t b);
 void isp_reg_set_dg_gain(unsigned long id, uint32_t r, uint32_t gr,
@@ -430,10 +407,10 @@ void isp_reg_set_wb_gain(unsigned long id, uint32_t r, uint32_t gr,
 void isp_reg_set_wb_clip(unsigned long id, uint32_t clip);
 void isp_reg_set_lsc(unsigned long id, uint32_t ct_x, uint32_t ct_y,
                      uint32_t rs_val);
-void isp_reg_set_pltm_cfg(unsigned long id, const isp_pltm_cfg_t *cfg);
+void isp_reg_set_pltm_cfg(unsigned long id, const fwi_reg_pltm_cfg_t *cfg);
 void isp_reg_set_cfa(unsigned long id, uint32_t dir_th, uint32_t interp_mode,
                      uint32_t zig_zag);
-void isp_reg_set_sharp(unsigned long id, const isp_sharp_cfg_t *cfg);
+void isp_reg_set_sharp(unsigned long id, const fwi_reg_sharp_cfg_t *cfg);
 void isp_reg_set_rgb2rgb_gain_offset(unsigned long id, const uint16_t gain[9],
                                      const uint16_t offset[3]);
 void isp_reg_set_cnr(unsigned long id, uint32_t c_th, uint32_t y_th,
@@ -449,7 +426,7 @@ void isp_reg_set_af_en(unsigned long id, uint32_t en_bits);
 void isp_reg_set_af_win(unsigned long id, uint32_t hor_num, uint32_t ver_num,
                         uint32_t width, uint32_t height, uint32_t hor_start,
                         uint32_t ver_start);
-void isp_reg_set_af_filter(unsigned long id, const isp_af_filter_t *f);
+void isp_reg_set_af_filter(unsigned long id, const fwi_reg_af_filter_t *f);
 void isp_reg_set_awb_satur_lim(unsigned long id, uint32_t lim_r, uint32_t lim_g,
                                uint32_t lim_b);
 void isp_reg_set_awb_win(unsigned long id, uint32_t width, uint32_t height,

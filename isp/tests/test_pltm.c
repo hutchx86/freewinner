@@ -1,12 +1,7 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
-/*
- * test_pltm.c - host unit tests for the clean-room PLTM module.
- *
- * The test owns the runtime table provider.  Every table the module consumes
- * is injected through freeisp_get_tables(); the fixtures below are synthetic,
- * not vendor tuning data.
- */
+/* test_pltm.c - host tests for the PLTM module. This file is the runtime table
+ * provider (freeisp_get_tables()); all tables are synthetic fixtures. */
 #include "pltm_clean.h"
 
 #include <math.h>
@@ -74,9 +69,8 @@ static void init_tables(void)
         for (d = 0; d < PLTM_CONV_COLS; d++)
             g_converge[r * PLTM_CONV_COLS + d] = (uint8_t)d;
 
-    /* Synthetic preset bank (made-up, rule-abiding; not device data):
-     * blend 255-17r (0 from row 15), order 5+r/2, clip 100+200r,
-     * gain 4096-200r. */
+    /* Synthetic preset bank: blend 255-17r (0 from row 15), order 5+r/2,
+     * clip 100+200r, gain 4096-200r. */
     for (r = 0; r < PLTM_NPRESET; r++) {
         int32_t *row = g_presets + r * PLTM_PRESET_COLS;
 
@@ -892,10 +886,8 @@ static void test_merge_odd_width_count(void)
 
 static void test_merge_geometry_golden(void)
 {
-    /* Expected entries taken from the withheld golden vectors.
-     * Cases are named block_width x block_height; the merge builder receives
-     * tile counts (block + 1) and derives the entry count from the span, so
-     * even spans (31x17, 7x15, 63x63, 119x66) pin the span-1 rule. */
+    /* Cases are block_width x block_height; the builder gets tile counts
+     * (block + 1), so even spans (31x17, 7x15, 63x63, 119x66) pin span-1. */
     pltm_clean_result_t res;
 
     pltm_clean_merge_build(&res, 31, 31); /* 30x30 */

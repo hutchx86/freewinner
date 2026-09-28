@@ -9,12 +9,11 @@ cameras, produced for interoperability with hardware we own.
 
 Copyright (C) 2026 freewinner contributors.
 
-**RELEASE STATUS (owner decision, 2026-09-20).** An engineering audit exists in
-the private project workspace; **no independent legal review has been completed,
-and none is required** — Hutch removed the counsel prerequisite for publication.
-The provenance caveats below stand as the risk record: accepted by the owner, not
-resolved. Before publishing, run the publish guard (private workspace tooling) on
-a clean export of this repository and require it to report `RESULT: PASS`.
+**Release status.** An internal engineering audit has been done; **no independent
+legal review has been completed**, and publication does not wait for one. The
+provenance caveats below stand as the accepted risk record, not as resolved
+items. Every publication is checked by a publish guard run on a clean export of
+this repository, which must report `RESULT: PASS`.
 
 Provenance
 ----------
@@ -29,13 +28,37 @@ Two provenance caveats, stated rather than hidden:
 1. **Register tier — re-produced and verified 2026-09-16.** An earlier
    `src/reg/{base,module_cfg,reg_writers}.c` was written with direct access to the
    vendor binary in the same working sessions, so the strict
-   spec-team/implementation-team separation described in
-   `../reimplementation/README.md` was not
-   maintained for that tier. That record was superseded: a behaviour-only spec
+   spec-team/implementation-team separation was not maintained for that tier.
+   That implementation was superseded: a behaviour-only spec
    (`spec/reglayer2.md`) was written, and all three units (`base.c`, `module_cfg.c`,
    `reg_writers.c`) were then re-produced by implementation-role agents with no
-   binary access and independently re-verified. See the private engineering
-   audit §3 and `reimplementation/README.md`.
+   binary access and independently re-verified (0 tool-generated identifiers,
+   0 verbatim comments, 0 vendor strings, 0.000% normalized-line overlap with
+   the analysis output).
+
+   - **Implementation-role access.** May read: `spec/reglayer2.md`,
+     `include/*.h` (the interface contract: struct layouts and entry-point names
+     are interoperability facts), the private differential harness and its
+     goldens, `tests/**`, and the sibling units it calls. Must not read: the
+     vendor binary or anything transcribed from it, the vendor SDK, the
+     superseded implementations, or any object file.
+   - **Arbiter.** The private differential harness links the candidate against
+     the deployed object and reports the first differing field per operation;
+     a pass is zero mismatches with sensitivity detected for every operation,
+     plus `make check`.
+   - **Limits of a green run.** It establishes equivalence only within the
+     tested envelope. Four items the harness cannot see are recorded in
+     `spec/reglayer2.md` §4/§6: the `config_gamma` upscale rounding (branch not
+     exercised); the deployment's `comp_ref` over-read for `msc_mode >= 4`
+     (neutralised in the harness); harness-blind vendor behaviours such as
+     `isp_reg_enable_msc` clearing a CONTRAST bit on disable and the
+     `config_band_step` register write; and the `isp_reg_enable_*` count being
+     29, not 30.
+   - **Defects the re-production found.** The `config_dig_gain` WB-fold
+     predicate (`linear_en && wdr_en && awb_en && !wb_en`) was not pinned by
+     the harness and is now covered by a 16-combination sweep; and
+     `spec/reglayer2.md` §3.11 wrongly said `config_band_step` writes no
+     register (corrected; the write is kept).
 
 2. **Numeric data — classified, and disclosed in full.** The former `comp_ref`
    literal table was found to be a geometric radial-distance table and is now
@@ -78,12 +101,9 @@ Two provenance caveats, stated rather than hidden:
      library; the rule excludes the whole class, so no individual fixture needs
      to be named.
 
-   An earlier draft of this document claimed there was only one such array; that
-   was wrong and is corrected here. See the private engineering audit §4.
-
    | Compiled-in table | Where | How it was obtained | Class |
    |---|---|---|---|
-   | AF filter coefficients `iir_g[6]` and `fir_g[5]` (two separate `static const` arrays in the AF-configuration block) | `src/iso/iso_clean.c` | **Observed** the same way, from the deployed AF-configuration path's output. The harness and output are private and are **not shipped**; the observed values are reproduced in full in this tree (`src/iso/iso_clean.c`, spec `spec/iso.md` §6.12). The private r1 spec (unit T, tables, item T1) recommends removing this block entirely, since no stock tuning we hold turns AF on; not yet acted on. | Observed platform default |
+   | AF filter coefficients `iir_g[6]` and `fir_g[5]` (two separate `static const` arrays in the AF-configuration block) | `src/iso/iso_clean.c` | **Observed** the same way, from the deployed AF-configuration path's output. The harness and output are private and are **not shipped**; the observed values are reproduced in full in this tree (`src/iso/iso_clean.c`, spec `spec/iso.md` §6.12). Removing this block entirely is proposed, since no stock tuning we hold turns AF on; not yet acted on. | Observed platform default |
    | Colour-effect matrices (`c_none`, `c_gray`, `c_neg`, `c_antique`, `c_r`, `c_g`, `c_b`), their dispatch arrays (`c_tbl`, `d_tbl`) and offsets (`d_neg`, `d_zero`) | `src/reg/base.c` | **Re-derived** in code from standard published colour maths: the identity (none); the canonical BT.601 luma-weighted grey (0.3/0.6/0.1); the canonical sepia matrix (antique); signed inversion with a +2.0 offset (negative); and per-channel scale maps of 1.5 and 2/3 (R/G/B). | Re-derived |
    | `src_bit[12]` / `hw_bit[12]` | `src/reg/reg_writers.c` | **Interface facts**: the API's bit order and the set bits of the AF register mask. | Interface fact |
    | `g_af_filter_off[19]` | `src/reg/reg_writers.c` | **Interface facts**: the AF filter register offsets. | Interface fact |
@@ -94,8 +114,11 @@ Two provenance caveats, stated rather than hidden:
    | `default_sys`, `g_ops` | `src/framework/isp_dev_uapi.c`, `src/afs/afs_clean.c` | **Dispatch tables** of our own function pointers. `default_sys` is the default target of the injectable syscall seam `isp_uapi_sys` (our thin libc wrappers: open, close, ioctl, mmap, munmap, select, access, system, readlink, stat); the pointer itself is excluded above. `g_ops` is the AFS core's ops table. No vendor data. | Dispatch/lookup |
    | `ctrl_ids[]` (44 V4L2 control ids) | `src/framework/events.c` | **Interface facts**: the V4L2 control ids this ISP thread subscribes to for change events, as specified in unit F §4.7. Replaces the former `isp_cid_array`/`cid_routes` tables; control handling is now a `switch` in `helper.c`. | Interface fact |
    | `iso[7]` (ISO sensitivity menu), `bias[9]` (exposure-bias menu) | `src/framework/helper.c` | **Interface facts**: the menu-index-to-value mapping for the V4L2 ISO sensitivity (100..6400) and exposure-bias (-4..+4) controls. Replaces the former `iso_qmenu`/`exp_bias_qmenu` tables. | Interface fact |
-   | `map[]` (two `struct fmt_scalar_map` arrays, one per direction) | `src/framework/isp_dev_uapi.c` | **Our own struct-offset copy table**: `offsetof` pairs between our own `struct isp_video_device` and `struct video_fmt`, consumed by `fmt_copy_scalars`. No vendor data. | Dispatch/lookup |
-   | Library-default dynamic-stats thresholds and compensation tables: `k[6]` (movement threshold base), `tdnf_comp[4]`/`tdnf_diff[4]` (temporal denoise), `lp_ratio[4]` (low-pass threshold ratio), `sharp_hf[4]`/`sharp_edge[4]`/`sharp_us[4]` (sharpen high-frequency/edge/undershoot) | `src/framework/tuning.c`, `isp_library_defaults` | **Vendor reference values**: constants of the deployed framework's full-configuration reset, not tuning data from the camera. The analyst recorded them in the private r1 spec (unit F §8.5). Owner decision Q3 was to reproduce them, because changing them changes image output. | Vendor-recovered constant |
+   | `map[]` (two `struct fmt_scalar_map` arrays, one per direction) | `src/framework/isp_dev_uapi.c` | **Our own struct-offset copy table**: `offsetof` pairs between our own `struct fwi_video_device` and `struct video_fmt`, consumed by `fmt_copy_scalars`. No vendor data. | Dispatch/lookup |
+   | Library-default dynamic-stats thresholds and compensation tables: `k[6]` (movement threshold base), `tdnf_comp[4]`/`tdnf_diff[4]` (temporal denoise), `lp_ratio[4]` (low-pass threshold ratio), `sharp_hf[4]`/`sharp_edge[4]`/`sharp_us[4]` (sharpen high-frequency/edge/undershoot) | `src/framework/tuning.c`, `isp_library_defaults` | **Vendor reference values**: constants of the deployed framework's full-configuration reset, not tuning data from the camera. The analyst recorded them in the framework behaviour spec (not shipped); they are reproduced because changing them changes image output. | Vendor-recovered constant |
+   | Scalar `fwi_isp_ctx` seed values set by `isp_library_defaults`: picture-control levels (sharpness and saturation 100, denoise and 3D denoise 50), unity white-balance gains (256) for the manual and saved gains, the 3A metering windows (`H3A_PIC_OFFSET` .. `H3A_PIC_OFFSET + H3A_PIC_SIZE`), the saved driver statistics `min_rgb_saved = 1023` and `c_noise_saved = 20`, and the default 3A modes (auto exposure/white balance/ISO, matrix metering, continuous AF) | `src/framework/tuning.c`, `isp_library_defaults` | **Vendor reference values**: the deployed framework's full-configuration reset, recorded by the analyst in the same framework behaviour spec section as the tables above and reproduced for the same reason. The modes and window bounds are interface enum values and constants; the levels and gains are the reset's neutral mid-scale / unity settings; `1023` and `20` are the reset's saved-statistics seeds (1023 is the 10-bit maximum). The base shim's per-call seeding of the clean context (3A windows, WDR table, RGB2YUV matrix) copies live framework values and compiles in none. | Vendor-recovered constant |
+   | Fallback exposure descriptor `g_table_default` (`ae_desc_t`, 2 segments) | `shim/ae/ae_shim.c` | **Our own neutral value**, not vendor data: used only when the camera's `AeTblDef` is not found at runtime. Shutter 1/10000..1/50 s at unity gain, then gain 1x..16x at 1/50 s, fixed aperture code 200 (f/2.0); rationale in `spec/ae.md` §15.11. The vendor default descriptor and aperture ladder (§15.10) are not compiled in anywhere; the AE unit test uses a synthetic descriptor and ladder. | Own constant |
+   | `k_neutral_preset[4]` = `{0xFF, 5, 0, 4096}` | `src/pltm/pltm_clean.c` | **Our own neutral value**, not vendor data: the PLTM row used for every step when no preset table was extracted. Full original blend (255), the lowest order (5), no clip and unity Q12 gain, chosen so local tone mapping has no visible effect. The order and gain bounds are the ones the preset validator enforces (`src/tables/pltm_presets.c`). | Own constant |
    | `bits[3]` (`HW_ISP_CFG_TUNING_CCM_LOW/MID/HIGH`, two local iteration arrays) | `src/framework/tuning.c` | **Interface facts**: the three CCM-tier feature-bit macros from the tuning-blob ABI, gathered into a local array purely so the three tiers can be decoded in a loop. The bit values are interface facts; the array is our own convenience. | Interface fact |
 
    The "observed" row (`iir_g`/`fir_g`) is a platform default: not
@@ -121,6 +144,24 @@ Two provenance caveats, stated rather than hidden:
    verified against every stock daemon build we hold (7 builds, 5 camera
    models); the function is byte-identical in all of them.
 
+   **AE network output biases (2026-09-28): no longer compiled in.** The two
+   output biases of the backlight network (spec `spec/ae.md` §8.5, §15.9)
+   were previously literals in `src/ae/ae_clean.c`. The stock daemon holds
+   them as instruction immediates, each split over two `add` instructions
+   after a signed `/100`; `src/tables/ae_out_bias.c` finds exactly two such
+   sites in the executable segment of the device's own `rmm`, requires the
+   `/100` multiplier before each, assigns the roles from the `cmp; bge` that
+   consumes both scores (with the `/800`, `+40` and `+20` tails of the
+   classifier around it) and accepts the pair only if both values lie in a
+   plausibility window, are ordered and are not single A32 immediates. The
+   result is cached on the device (`isp_cfg/ae_out_bias.txt`) and never
+   leaves it. The source contains no bias values; its unit test uses a
+   synthetic image with made-up values. Without an extracted pair the
+   network is skipped and the classifier returns 32 (its neutral midpoint).
+   Verified against every stock daemon build we hold (7 builds, 5 camera
+   models, 11 copies); another stock daemon without the classifier yields no
+   sites.
+
 Runtime data
 ------------
 
@@ -145,8 +186,8 @@ runtime); they are labels only, not tuning-table bytes.
 **No AWB illuminant roster is compiled in.** Earlier versions of this
 document listed a 9-entry roster (`awb_light_info`, inside `isp_ini_cfg`) as an
 "observed" platform default seed. That label was wrong: the roster was the
-vendor SDK's own default context data. It was deleted when the r1 framework
-replaced the old one (private r1 spec, unit T item T2). The roster now comes
+vendor SDK's own default context data. It was deleted when the re-produced
+framework replaced the old one. The roster now comes
 only from the camera's own tuning: the caller (mediad) imports the device 3A
 section from the stock `rmm` image and passes `light_num`/`light_info` in
 through the AWB parameters. If that import is skipped or fails, the roster
@@ -157,7 +198,7 @@ code by `isp_library_defaults` (`src/framework/tuning.c`).
 The OTP golden-ratio path is a separate matter and is **not** populated here or
 in the deployed image: `isp_sensor_otp_init`, which would fill `otp_enable`,
 `pmsc_table` and the white-balance `pwb_table`, is dead in the deployed object
-(private r1 spec, unit F, OTP), and the `rmm` feed maps a different field
+(framework behaviour spec, OTP), and the `rmm` feed maps a different field
 (`otp_msc_golden`, `shim/base/base_shim.c`). In this tree `otp_enable` and
 `pwb_table` have no writer at all; `pmsc_table` is written only by the
 neutral-value path in `src/framework/tuning.c:242-247`, which fills all 768
@@ -173,8 +214,8 @@ Framework and utils clean-room provenance (units F, U, H)
 The framework (`src/framework/`: `events`, `helper`, `manage`, `tuning`, `isp`,
 `isp_dev_uapi`) and the utilities (`src/utils/`) are a second clean-room
 production, separate from the register tier above. They were written from
-behaviour-only specs (unit F: framework, unit U: utilities; private r1 spec
-set) by implementation-role agents without vendor-binary access, tested in a
+behaviour-only specs (framework and utilities; not shipped) by
+implementation-role agents without vendor-binary access, tested in a
 private workspace and against a private replay harness, and wired into this
 tree on **2026-09-26**. They replace the earlier, audit-flagged
 `src/framework/*.c`.
@@ -215,18 +256,24 @@ reference behaviour, and an implementer with only that spec and
 harnesses (reference and new code linked into one ARM binary, exhaustive
 format x dimension sweeps, sabotage runs) pass for all three. The longest
 token run shared with the reference sources is the entry-point signature (at
-most 12 tokens). They are kept by owner decision (Q-U1) even though nothing
+most 12 tokens). They are kept deliberately even though nothing
 in the current link calls them. `tests/test_utils_live.c` is the spec-based
 host test; the older `test_bitmap`, `test_frame_size` and `test_media_helpers`
 also pass against the new code.
 
 **Open items:**
-- `iir_g`/`fir_g` (AF) are still compiled in; unit T item T1 proposes removing
-  them, since no stock tuning enables AF.
+- `iir_g`/`fir_g` (AF) are still compiled in; removing them is proposed, since
+  no stock tuning enables AF.
 - `mw_headers/media/`: whether its declaration text is sufficiently
   re-expressed is a judgement call that has not had an independent review.
   (`mw_headers/vencoder.h` now only forwards to the codec's
-  `freecodec/venc_types.h`, which uses this project's own names.)
+  `freecodec/venc_types.h`.) The same open question covers the **member
+  names** of `include/media_utils_abi.h` (it keeps the consumer-visible
+  vendor-style spellings such as `mPixelFormat`, `mOffsetTop`, which the
+  consumer's source uses) and of `codec/include/freecodec/venc_types.h` (type,
+  enum and member names are this project's own snake_case, but the records
+  follow the vendor records member for member, in the same order and meaning).
+  Neither has had an independent review.
 
 Not distributable from this tree
 --------------------------------
@@ -235,7 +282,7 @@ Vendor objects used by the private differential harness, the vendor-derived
 `*_tables_gen.c` arrays, build output and the bundled GPL-2.0-or-later qemu tree
 are **not part of this repository**: they live in the private analysis workspace,
 outside this tree, and are rejected by the publish guard. They are development
-references only; see the private engineering audit §8.
+references only.
 
 Trademarks and related names are the property of their respective owners and are
 used only for identification and interoperability.

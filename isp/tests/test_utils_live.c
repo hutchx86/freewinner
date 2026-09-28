@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 /* Copyright (C) 2026 freewinner contributors */
-/* Host test for the live media-utility entry points (spec 24 §5). */
+/* Host test for the live media-utility entry points. */
 #include <limits.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -127,7 +127,7 @@ static void test_frame_size(void)
 		{ 65536, 65536, 0, 0, 0, 0, 0 },
 		{ 100000, 100000, 1410065408u, 705032704u, 352516352u,
 		  151969024u, 504485376u },
-		/* beyond the judges: wrapped area >= 2^31 (24 §5) */
+		/* beyond the judges: wrapped area >= 2^31 */
 		{ 0x80000000u, 1, 0x80000000u, 0x40000000u, 0x20000000u,
 		  0u, 0u },
 	};
@@ -175,7 +175,7 @@ static void test_frame_size(void)
 		}
 	}
 
-	/* Explicit sign checks from 24 §3 / §5. */
+	/* Explicit sign checks. */
 	CHECK(fsz(33, 5, 5, strides[2], &o) == SUCCESS);
 	CHECK(o.mYSize == -1 && o.mUSize == INT_MIN && o.mVSize == 1);
 	CHECK(fsz(23, 0x80000000u, 1, strides[0], &o) == SUCCESS);

@@ -1,13 +1,7 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
-/*
- * test_afs_shim.c - host test for the AFS integration shim.
- *
- * Includes the SDK ABI header and the shim, drives the full
- * init/get/set/run cycle with synthetic afs_param_t and afs_stats_t, and
- * checks the clean -> SDK result translation (flicker type) and the
- * mode/auto/alternation behaviour end to end.
- */
+/* test_afs_shim.c - host test for the AFS shim: full init/get/set/run cycle
+ * on synthetic params/stats, checking result translation and mode behaviour. */
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -17,17 +11,13 @@
 #include "freeisp/isp_dims.h"
 #include "afs_shim.h"
 
-/* The shim's exported 3A entry points (fwi vtable shape; the framework
- * declares them in framework_isp.h).  Not in afs_shim.h: TUs that also see
- * afs_clean.h have a clean-core afs_init of a different type. */
+/* Declared here, not in afs_shim.h: TUs that also see afs_clean.h have a
+ * clean-core afs_init of a different type. */
 void *afs_init(fwi_afs_core_ops_t **core_ops);
 void  afs_exit(void *core_obj);
 
-/*
- * musl's libm objects (pulled in by the shim's analytic default tables)
- * reference the ARM EH personality routines.  This test never unwinds; weak
- * definitions close the static link under the OpenWrt toolchain.
- */
+/* musl libm references the ARM EH personality routines; this test never
+ * unwinds, so weak stubs close the static link. */
 #if defined(__arm__)
 #define SHIM_WEAK __attribute__((weak))
 SHIM_WEAK int __aeabi_unwind_cpp_pr0(void) { return 0; }
@@ -397,7 +387,7 @@ static void test_custom_trig(void)
 
 int main(void)
 {
-    /* Table provider: NULL selects the built-in pilot defaults. */
+    /* Table provider: NULL selects the built-in analytic defaults. */
     afs_shim_set_trig_tables(NULL);
 
     test_lifecycle();

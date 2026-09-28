@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-/* semaphore.c - unit U counting semaphore (21-utils.md §1) */
+/* semaphore.c - counting semaphore */
 #include "utils/semaphore.h"
 #include <errno.h>
 #include <time.h>

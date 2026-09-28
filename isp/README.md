@@ -33,15 +33,20 @@ facts) restate the layouts, enum values and entry points required to match the
 deployed interface; those are interface facts, not copied implementation.
 
 The large constant tables the algorithms need are not compiled in: they are
-located at runtime inside the camera's own stock `rmm` image and then cached to
-the SD card, so only the first boot reads the vendor image. The library does
-carry a small set of compiled-in tables — the platform's default configuration
-seed (the 3A control values and the 9-entry AWB illuminant roster), two observed
-platform-default tables (the PLTM preset bank and the AF filter defaults), a
+located at runtime inside the camera's own stock media daemon image (`rmm`) and
+then cached to the SD card, so only the first boot reads the vendor image. The
+PLTM preset bank is no longer compiled in either: `src/tables/pltm_presets.c`
+extracts it from the same `rmm` image at first boot and caches it; when no
+valid bank is found the PLTM core runs neutral (`k_neutral_preset`: full
+original blend, unity gain). The AE backlight-network output biases are handled
+the same way by `src/tables/ae_out_bias.c`; without them the network is off
+and the backlight class stays at its midpoint (32). The library does carry a small set of compiled-in
+tables — the platform's default configuration seed (the 3A control values),
+one observed platform-default table (the AF filter defaults), a
 vendor-recovered constant (the CM colour-temperature interpolation knots), and
 interface, dispatch and re-derived tables — and the device-specific sensor
-calibration is read from the camera's own `rmm` image at first boot; the
-compiled-in set is itemised with its class in `docs/provenance.md`.
+calibration and AWB illuminant roster are read from the camera's own `rmm`
+image; the compiled-in set is itemised with its class in `docs/provenance.md`.
 Test fixtures under `tests/` and `shim/` embed small expected values used to
 verify the modules in isolation. See `CREDITS.md` and
 `shim/integration/README.md`.
@@ -57,8 +62,7 @@ verify the modules in isolation. See `CREDITS.md` and
 | `shim/` | SDK-boundary adapters and the `rmm` table feed |
 | `tests/`, `mk/` | unit tests and their build fragments |
 | `spec/` | behaviour-only clean-room specifications, one per module (spec-team output) |
-| `reimplementation/` | the register-tier re-production record and the implementation-role access rules |
-| `docs/` | provenance and deviations (`docs/provenance.md`) |
+| `docs/` | provenance and deviations, incl. the register-tier re-production record (`docs/provenance.md`), shim field mappings (`docs/shim-mappings.md`) |
 
 ## Build and test
 
@@ -72,7 +76,7 @@ The clean modules, the register tier, the table locator and the tests build and
 run with **no SDK and no vendor material**.
 
 Two test expectations were taken from the private differential harness's golden
-vectors, which are withheld from this repository by a standing owner default: the
+vectors, which are not published with this repository: the
 merge-geometry cases in `tests/test_pltm.c` and the AWB tie-break case in
 `tests/test_awb.c`. Those tests still run here because the expected values are
 written into the test source; the harness and its goldens are not shipped.
@@ -81,7 +85,8 @@ The `shim/` layer presents the clean cores to the framework: each 3A module's
 `*_init` returns its `fwi_*_core_ops_t` vtable, which the framework calls
 directly, and `shim/base/` and `shim/module_cfg/` translate the framework's
 `struct fwi_isp_ctx` / `struct fwi_hw_module_cfg` to and from the clean register
-tier. It builds against the generated `fwi_*` headers in `include/`; it is still
+tier; the field-by-field mappings are in `docs/shim-mappings.md`. It builds
+against the generated `fwi_*` headers in `include/`; it is still
 **not** part of the default `check`. Build it separately (add `CROSS=<prefix>`
 for the ARM targets):
 
@@ -113,8 +118,8 @@ standalone, but running its test needs stock `rmm` images, which are not shipped
   and the `rmm` table feed. On camera, the **fully vendor-free `mediad`** (this
   tree's clean 3A, register tier, framework and media-utils, plus the clean
   `codec/` H.264 encoder — no vendor libisp or codec archive in the link)
-  streams both channels, and both decode with zero macroblock errors
-  (2026-09-20 (7), fc70). The clean tier divides with the deployed objects'
+  streams both channels, and both decode with zero macroblock errors. The
+  clean tier divides with the deployed objects'
   hardware `sdiv`/`udiv` semantics through `include/freeisp/sdiv.h`; GCC's
   `__aeabi_idiv` helpers raise SIGFPE where the hardware returns `0`, which was
   the last bring-up blocker — see `spec/divide-semantics.md` for the

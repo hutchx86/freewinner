@@ -1,11 +1,11 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-only -->
 <!-- Copyright (C) 2026 freewinner contributors -->
 
-# fenc_ (package C): what is deliberately not implemented
+# fenc_: what is deliberately not implemented
 
 This package is a drop-in for the SDK's encoder framework `vencoder.c`. It
-defines the 23 `VideoEnc*` entry points listed in `cleanroom/middleware/fenc/
-SPEC.md` §2.1 and nothing else. The following are left out on purpose; each is
+defines the 23 `VideoEnc*` entry points the middleware links against and
+nothing else. The following are left out on purpose; each is
 in the spec's scope-and-non-goals list.
 
 | Area | Behaviour here |

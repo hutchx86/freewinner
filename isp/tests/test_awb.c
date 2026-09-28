@@ -1,13 +1,7 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
-/*
- * test_awb.c - host-side tests for the clean-room AWB module.
- *
- * This file owns the runtime table provider.  The module under test contains
- * no table data of its own; every table below is injected through
- * freeisp_get_tables().  The values are synthetic test fixtures, not vendor
- * tuning data.
- */
+/* test_awb.c - host tests for the AWB module. This file is the runtime table
+ * provider (freeisp_get_tables()); all tables are synthetic fixtures. */
 #include "awb_clean.h"
 
 #include <stdio.h>
@@ -120,11 +114,8 @@ static void base_params(awb_params_t *p)
     put_ref(&p->light_info[2 * AWB_REF_INTS], cool, 1, 6000, 200, 100);
 }
 
-/*
- * A configuration whose warm class spans a long chromaticity segment: a
- * window can sit close to an interpolated curve point while every class
- * anchor is far away, which is what exposes the 16-bit distance clamp.
- */
+/* Warm class on a long chromaticity segment: a window near an interpolated
+ * curve point but far from every anchor exposes the 16-bit distance clamp. */
 static void sat_params(awb_params_t *p)
 {
     static const int32_t warm_a[3] = {0, 256, 0};
@@ -141,16 +132,8 @@ static void sat_params(awb_params_t *p)
     put_ref(&p->light_info[3 * AWB_REF_INTS], cool,   1, 6000, 200, 100);
 }
 
-/*
- * A configuration whose second-nearest class choice depends on the tie
- * rule (spec 6.3 step 2).  Classes 1, 3 and 4 all sit exactly 40000 away
- * from the window while class 0 is 20000 away, so the nearest class is 0.
- * Class 4's interpolated curve then passes much closer to the window than
- * class 0's or class 1's, so the winner is class 4 only if the tie for
- * second place resolves to the later index.  The corresponding withheld
- * golden vector has the same shape (distance 79, temperature 5370, segment
- * 38, level 1952).
- */
+/* Tie rule (spec 6.3 step 2): classes 1/3/4 tie at 40000, class 0 is nearest;
+ * class 4's curve wins only if the tie for second resolves to the later index. */
 static const int32_t tie_a0a[3] = {200, 256, 200};
 static const int32_t tie_a0b[3] = {600, 256, 300};
 static const int32_t tie_a1f[3] = {300, 256, 500};
@@ -419,11 +402,8 @@ static void test_smoothing_warmup_taps(void)
     run_frames(e, &st, 3, 8, &res);
 
     CHECK(awb_clean_frame_count(e) == 8, "warm-up advanced eight frames");
-    /*
-     * Only the taps that actually hold history are averaged, so a constant
-     * scene reaches its grey-world gain immediately.  Averaging the full 48
-     * taps would blend in the unity-seeded ring entries and tint the result.
-     */
+    /* Only taps holding history are averaged; averaging all 48 would blend in
+     * the unity-seeded ring and tint a constant scene. */
     CHECK(res.gain_out.r == 256 && res.gain_out.gr == 256 &&
           res.gain_out.gb == 256 && res.gain_out.b == 326,
           "warm-up averages only the available taps");
@@ -446,13 +426,8 @@ static void test_class_distance_saturation(void)
     req.params = &par;
     awb_set_params(e, &req, NULL);
 
-    /*
-     * Every class anchor is more than 65535 away from this window
-     * (kr=320, kb=3).  The 16-bit accumulator clamps them all to 65535, so
-     * the first class is selected and its interpolated warm curve is close
-     * (distance 21).  Keeping 32-bit distances would select the mid class
-     * and report a saturated 255 instead.
-     */
+    /* All anchors are >65535 away (kr=320, kb=3); the 16-bit clamp ties them so
+     * class 0 wins (distance 21); 32-bit distances would pick the mid class. */
     fill_scene(&st, 250, 200, 2);
     run_frames(e, &st, 5, 1, &res);
 
@@ -462,9 +437,8 @@ static void test_class_distance_saturation(void)
           "16-bit clamp keeps the curve-refined distance");
     CHECK(awb_clean_window_temp(e, 4) == 2300,
           "16-bit clamp colour temperature");
-    /* Segment index is now the first curve entry at-or-above the window
-     * temperature (audit A2b: non-strict comparison), so an entry exactly
-     * equal to the temperature is selected instead of the following one. */
+    /* Segment = first curve entry at-or-above the window temperature
+     * (non-strict), so an exact match selects that entry. */
     CHECK(awb_clean_window_seg(e, 4) == 8,
           "16-bit clamp segment");
     CHECK(awb_clean_window_level(e, 4) == 320,

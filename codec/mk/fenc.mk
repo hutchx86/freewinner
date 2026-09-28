@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 # Copyright (C) 2026 freewinner contributors
 #
-# Encoder API framework (package C, `fenc_`): the `VideoEnc*` entry points, a
+# Encoder API framework (`fenc_`): the `VideoEnc*` entry points, a
 # drop-in for the SDK's vencoder.c. Built as a static archive the mediad link
 # consumes (link it in place of the vendor vencoder object); host tests replay
-# the SPEC §9 black-box vectors against fake device, VE and adapter seams.
+# the black-box vectors against fake device, VE and adapter seams.
 #
 # The host test links only the real picture-queue manager from the support
 # library (src/base/vb_frames.c) plus the seam; the VE, adapter and device

@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
 
-/* Bitstream ring of the encoder support library (cleanroom/venc-base SPEC §4): one
+/* Bitstream ring of the encoder support library (support-library spec s4): one
  * contiguous DMA buffer that the encoder writes frames into, plus a FIFO of frame
  * descriptors. Every frame occupies its length rounded up to 64 bytes. */
 

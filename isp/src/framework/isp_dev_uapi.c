@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-/* isp_dev_uapi.c - project device layer (20-framework.md §4, §4.5, §4.6).
+/* isp_dev_uapi.c - project device layer.
  * Compiled as the long-enum translation unit.
  */
 #include "isp_dev_uapi.h"
@@ -59,19 +59,19 @@ static int d_stat(const char *p, struct stat *st)
     return stat(p, st);
 }
 
-static const struct isp_uapi_sys default_sys = {
+static const struct fwi_uapi_sys default_sys = {
     d_open, d_close, d_ioctl, d_mmap, d_munmap,
     d_select, d_access, d_system, d_readlink, d_stat,
 };
 
-const struct isp_uapi_sys *isp_uapi_sys = &default_sys;
+const struct fwi_uapi_sys *isp_uapi_sys = &default_sys;
 
-void isp_uapi_set_sys(const struct isp_uapi_sys *sys)
+void isp_uapi_set_sys(const struct fwi_uapi_sys *sys)
 {
     isp_uapi_sys = sys ? sys : &default_sys;
 }
 
-const struct isp_uapi_sys *isp_uapi_get_sys(void)
+const struct fwi_uapi_sys *isp_uapi_get_sys(void)
 {
     return isp_uapi_sys;
 }
@@ -385,7 +385,7 @@ int isp_dev_open(struct hw_isp_media_dev *md, int id)
 {
     struct hw_isp_device *dev;
     struct media_entity *sensor, *subdev, *stat;
-    struct isp_h3a_cfg cfg;
+    struct fwi_h3a_cfg cfg;
     char name[32];
 
     if (md == NULL || md->mdev == NULL || id != 0)
@@ -494,7 +494,7 @@ void isp_md_close(struct hw_isp_media_dev *md)
 
 int isp_video_open(struct hw_isp_media_dev *md, unsigned int id)
 {
-    struct isp_video_device *video;
+    struct fwi_video_device *video;
     struct media_entity *entity;
     char name[32];
 
@@ -533,7 +533,7 @@ int isp_video_open(struct hw_isp_media_dev *md, unsigned int id)
 
 void isp_video_close(struct hw_isp_media_dev *md, unsigned int id)
 {
-    struct isp_video_device *video;
+    struct fwi_video_device *video;
     if (md == NULL || id >= HW_VIDEO_DEVICE_NUM || md->video_dev[id] == NULL)
         return;
     video = md->video_dev[id];
@@ -550,12 +550,12 @@ void isp_video_close(struct hw_isp_media_dev *md, unsigned int id)
 /* ------------------------------------------------------------------ */
 /* video operations                                                    */
 /* ------------------------------------------------------------------ */
-int video_to_isp_id(struct isp_video_device *video)
+int video_to_isp_id(struct fwi_video_device *video)
 {
     return video ? video->isp_id : -1;
 }
 
-static int soc_check(struct isp_video_device *video)
+static int soc_check(struct fwi_video_device *video)
 {
     int fd;
     unsigned char buf[9];
@@ -589,14 +589,8 @@ static int soc_check(struct isp_video_device *video)
     return 0;
 }
 
-/* 20 §4.5: video_set_fmt/video_get_fmt exchange the same set of 32-bit
- * scalars between `struct video_fmt` and `struct isp_video_device`, but the two
- * records order that set differently (`video_fmt` keeps fps next to
- * capturemode; the device record keeps fps after the buffer pool).  Copy
- * field-to-field through an explicit destination/source offset map so the
- * transfer is order-independent and each member is still a plain byte copy of
- * its own 32-bit scalar.  The record's `format` member is a struct and is
- * handled separately by the callers. */
+/* video_fmt and fwi_video_device hold the same 32-bit scalars in different orders, so
+ * copy them through an explicit offset map; the `format` struct is copied by the callers. */
 struct fmt_scalar_map {
     size_t dst;
     size_t src;
@@ -611,7 +605,7 @@ static void fmt_copy_scalars(void *dst, const void *src,
                sizeof(uint32_t));
 }
 
-int video_set_fmt(struct isp_video_device *video, struct video_fmt *vfmt)
+int video_set_fmt(struct fwi_video_device *video, struct video_fmt *vfmt)
 {
     struct v4l2_input input;
     struct v4l2_streamparm parm;
@@ -659,21 +653,21 @@ int video_set_fmt(struct isp_video_device *video, struct video_fmt *vfmt)
 
     {
         static const struct fmt_scalar_map map[] = {
-            { offsetof(struct isp_video_device, type),
+            { offsetof(struct fwi_video_device, type),
               offsetof(struct video_fmt, type) },
-            { offsetof(struct isp_video_device, memtype),
+            { offsetof(struct fwi_video_device, memtype),
               offsetof(struct video_fmt, memtype) },
-            { offsetof(struct isp_video_device, capturemode),
+            { offsetof(struct fwi_video_device, capturemode),
               offsetof(struct video_fmt, capturemode) },
-            { offsetof(struct isp_video_device, use_current_win),
+            { offsetof(struct fwi_video_device, use_current_win),
               offsetof(struct video_fmt, use_current_win) },
-            { offsetof(struct isp_video_device, wdr_mode),
+            { offsetof(struct fwi_video_device, wdr_mode),
               offsetof(struct video_fmt, wdr_mode) },
-            { offsetof(struct isp_video_device, nbufs),
+            { offsetof(struct fwi_video_device, nbufs),
               offsetof(struct video_fmt, nbufs) },
-            { offsetof(struct isp_video_device, fps),
+            { offsetof(struct fwi_video_device, fps),
               offsetof(struct video_fmt, fps) },
-            { offsetof(struct isp_video_device, drop_frame_num),
+            { offsetof(struct fwi_video_device, drop_frame_num),
               offsetof(struct video_fmt, drop_frame_num) },
         };
         fmt_copy_scalars(video, vfmt, map, sizeof(map) / sizeof(map[0]));
@@ -684,30 +678,30 @@ int video_set_fmt(struct isp_video_device *video, struct video_fmt *vfmt)
     return 0;
 }
 
-int video_get_fmt(struct isp_video_device *video, struct video_fmt *vfmt)
+int video_get_fmt(struct fwi_video_device *video, struct video_fmt *vfmt)
 {
     if (video == NULL || vfmt == NULL)
         return -1;
     {
         static const struct fmt_scalar_map map[] = {
             { offsetof(struct video_fmt, type),
-              offsetof(struct isp_video_device, type) },
+              offsetof(struct fwi_video_device, type) },
             { offsetof(struct video_fmt, memtype),
-              offsetof(struct isp_video_device, memtype) },
+              offsetof(struct fwi_video_device, memtype) },
             { offsetof(struct video_fmt, nbufs),
-              offsetof(struct isp_video_device, nbufs) },
+              offsetof(struct fwi_video_device, nbufs) },
             { offsetof(struct video_fmt, nplanes),
-              offsetof(struct isp_video_device, nplanes) },
+              offsetof(struct fwi_video_device, nplanes) },
             { offsetof(struct video_fmt, capturemode),
-              offsetof(struct isp_video_device, capturemode) },
+              offsetof(struct fwi_video_device, capturemode) },
             { offsetof(struct video_fmt, use_current_win),
-              offsetof(struct isp_video_device, use_current_win) },
+              offsetof(struct fwi_video_device, use_current_win) },
             { offsetof(struct video_fmt, wdr_mode),
-              offsetof(struct isp_video_device, wdr_mode) },
+              offsetof(struct fwi_video_device, wdr_mode) },
             { offsetof(struct video_fmt, fps),
-              offsetof(struct isp_video_device, fps) },
+              offsetof(struct fwi_video_device, fps) },
             { offsetof(struct video_fmt, drop_frame_num),
-              offsetof(struct isp_video_device, drop_frame_num) },
+              offsetof(struct fwi_video_device, drop_frame_num) },
         };
         fmt_copy_scalars(vfmt, video, map, sizeof(map) / sizeof(map[0]));
     }
@@ -715,7 +709,7 @@ int video_get_fmt(struct isp_video_device *video, struct video_fmt *vfmt)
     return 0;
 }
 
-struct buffers_pool *buffers_pool_new(struct isp_video_device *video)
+struct buffers_pool *buffers_pool_new(struct fwi_video_device *video)
 {
     struct buffers_pool *pool;
     unsigned int i, j;
@@ -753,7 +747,7 @@ err:
     return NULL;
 }
 
-void buffers_pool_delete(struct isp_video_device *video)
+void buffers_pool_delete(struct fwi_video_device *video)
 {
     struct buffers_pool *pool;
     unsigned int i;
@@ -768,7 +762,7 @@ void buffers_pool_delete(struct isp_video_device *video)
     video->pool = NULL;
 }
 
-int video_req_buffers(struct isp_video_device *video, struct buffers_pool *pool)
+int video_req_buffers(struct fwi_video_device *video, struct buffers_pool *pool)
 {
     struct v4l2_requestbuffers req;
     unsigned int i, j;
@@ -817,7 +811,7 @@ int video_req_buffers(struct isp_video_device *video, struct buffers_pool *pool)
     return 0;
 }
 
-int video_free_buffers(struct isp_video_device *video)
+int video_free_buffers(struct fwi_video_device *video)
 {
     struct buffers_pool *pool;
     struct v4l2_requestbuffers req;
@@ -842,7 +836,7 @@ int video_free_buffers(struct isp_video_device *video)
     return 0;
 }
 
-int video_wait_buffer(struct isp_video_device *video, int timeout_ms)
+int video_wait_buffer(struct fwi_video_device *video, int timeout_ms)
 {
     fd_set r;
     struct timeval tv, *ptv = NULL;
@@ -861,7 +855,7 @@ int video_wait_buffer(struct isp_video_device *video, int timeout_ms)
     return ret > 0 ? 0 : -1;
 }
 
-int video_dequeue_buffer(struct isp_video_device *video,
+int video_dequeue_buffer(struct fwi_video_device *video,
                          struct video_buffer *buffer)
 {
     struct v4l2_plane planes[VIDEO_MAX_PLANES];
@@ -893,7 +887,7 @@ int video_dequeue_buffer(struct isp_video_device *video,
     return 0;
 }
 
-int video_queue_buffer(struct isp_video_device *video, unsigned int buf_id)
+int video_queue_buffer(struct fwi_video_device *video, unsigned int buf_id)
 {
     struct v4l2_plane planes[VIDEO_MAX_PLANES];
     struct v4l2_buffer buf;
@@ -926,7 +920,7 @@ int video_queue_buffer(struct isp_video_device *video, unsigned int buf_id)
     return 0;
 }
 
-int video_stream_on(struct isp_video_device *video)
+int video_stream_on(struct fwi_video_device *video)
 {
     int type;
     if (video == NULL)
@@ -937,7 +931,7 @@ int video_stream_on(struct isp_video_device *video)
     return 0;
 }
 
-int video_stream_off(struct isp_video_device *video)
+int video_stream_off(struct fwi_video_device *video)
 {
     int type;
     if (video == NULL)
@@ -948,7 +942,7 @@ int video_stream_off(struct isp_video_device *video)
     return 0;
 }
 
-int video_set_control(struct isp_video_device *video, int cid, int value)
+int video_set_control(struct fwi_video_device *video, int cid, int value)
 {
     struct v4l2_control ctrl;
     if (video == NULL)
@@ -961,7 +955,7 @@ int video_set_control(struct isp_video_device *video, int cid, int value)
     return 0;
 }
 
-int video_get_control(struct isp_video_device *video, int cid, int *value)
+int video_get_control(struct fwi_video_device *video, int cid, int *value)
 {
     struct v4l2_control ctrl;
     if (video == NULL || value == NULL)
@@ -974,9 +968,9 @@ int video_get_control(struct isp_video_device *video, int cid, int *value)
     return 0;
 }
 
-int video_set_top_clk(struct isp_video_device *video, unsigned int rate)
+int video_set_top_clk(struct fwi_video_device *video, unsigned int rate)
 {
-    struct isp_top_clk clk;
+    struct fwi_top_clk clk;
     if (video == NULL)
         return -1;
     clk.clk_rate = rate;
@@ -1009,7 +1003,7 @@ int isp_sensor_get_temp(struct hw_isp_device *isp, struct sensor_temp *temp)
     return SYS->ioctl(isp->sensor.fd, VIDIOC_VIN_SENSOR_GET_TEMP, temp);
 }
 
-int isp_set_load_reg(struct hw_isp_device *isp, struct isp_table_reg_map *reg)
+int isp_set_load_reg(struct hw_isp_device *isp, struct fwi_table_reg_map *reg)
 {
     if (isp == NULL || reg == NULL)
         return -1;

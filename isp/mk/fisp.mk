@@ -1,15 +1,8 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 # Copyright (C) 2026 freewinner contributors
-#
-# ISP runtime (package B, `fisp_`): the 25 `AW_MPI_ISP_*` entry points, a
-# drop-in for the SDK's mpi_isp.c ISP surface (and the `AW_MPI_ISP_*` symbols
-# that physically live in mpi_vi.c; the package boundary is the symbol). Built
-# as a static archive the mediad link consumes in place of the vendor objects;
-# host tests replay the SPEC section 7 vectors against the recorder seam.
-#
-# The test links only the fisp_ objects and the seam (tests/fisp/fisp_seam.c):
-# the lifecycle, attribute and V4L2-control framework externals are scripted, so
-# no device, no framework tier and no camera are touched.
+# ISP runtime (fisp_): the 25 AW_MPI_ISP_* entry points, a static archive that
+# replaces the vendor mpi_isp.c/mpi_vi.c ISP objects in the mediad link.
+# Host test: fisp_ objects + scripted seam (tests/fisp/fisp_seam.c), no device.
 
 FISP_CFLAGS := -Isrc/fisp -DISP521_RTOS_ALGO=1 -DISP_VERSION=521 \
     -fshort-enums -pthread

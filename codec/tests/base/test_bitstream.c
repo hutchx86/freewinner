@@ -2,7 +2,7 @@
 /* Copyright (C) 2026 freewinner contributors */
 
 /* Behavioural test for the encoder support library's bitstream ring against a
- * fake memory-ops table (cleanroom/venc-base SPEC §4, §7). */
+ * fake memory-ops table (support-library spec s4, s7). */
 
 #include <stdint.h>
 #include <stdio.h>

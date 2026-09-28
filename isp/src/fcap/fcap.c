@@ -1,27 +1,10 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
 
-/*
- * fcap.c - capture runtime (package A, `fcap_`): the `AW_MPI_SYS_*` and
- * `AW_MPI_VI_*` entry points that sit between the media daemon and the clean
- * device layer.  It owns the process singleton, one vipp object per capture
- * port, one channel object per virtual channel, a per-vipp capture worker and
- * the per-buffer occupancy table.
- *
- * Behaviour is cleanroom/middleware/fcap/SPEC.md; this is original clean-room
- * code.  Every device interaction goes through `isp_dev_uapi.h` -- this unit
- * opens no node and issues no ioctl itself.
- *
- * The package boundary is the symbol: package A exports the 3 SYS and 16 VI
- * symbols of SPEC 2.1 (plus the documented clock seam in fcap_priv.h) and
- * defines none of the `AW_MPI_ISP_*` surface, which belongs to package B
- * (`fisp_`) and is referenced here only from SYS_Init / SYS_Exit.
- *
- * Deliberately not implemented (see NOT-IMPLEMENTED.md): the region/OSD
- * subsystem, the generic component framework and registry, the `AW_MPI_VI_Init`
- * / `Exit` exports, the debug/callback entry points, and every other vendor
- * global outside the 19-symbol surface.
- */
+/* fcap.c - capture runtime (fcap_): the 3 AW_MPI_SYS_* and 16 AW_MPI_VI_* entry
+ * points between the media daemon and the clean device layer. Device access goes only
+ * through isp_dev_uapi.h; AW_MPI_ISP_* belongs to the ISP runtime (fisp_). Deliberate
+ * omissions are listed in NOT-IMPLEMENTED.md. */
 
 #define _GNU_SOURCE
 
@@ -30,31 +13,27 @@
 #include <string.h>
 #include <time.h>
 
-#include "fisp_abi.h"      /* package B: AW_MPI_ISP_Init/Exit, resolver seam */
+#include "fisp_abi.h"      /* fisp_: AW_MPI_ISP_Init/Exit, resolver seam */
 #include "fcap_priv.h"
 
 #include "isp_dev_uapi.h"
 
 #define FCAP_LOG(...) fprintf(stderr, "fcap: " __VA_ARGS__)
 
-/*
- * The framework tier's shared media device (package B).  The capture path owns
- * its own `/dev/media0` handle for the video nodes (SPEC 3.2.1); the ISP
- * device -- needed only for the sensor-config and set-fps calls of
- * SetVippShutterTime -- is the one the framework opened for `ISP_Run`.
- */
+/* The framework's shared ISP media device (the one ISP_Run opened), used only by
+ * SetVippShutterTime; capture keeps its own /dev/media0 handle for the video nodes. */
 extern struct hw_isp_media_dev media_params;
 
 /* MOD_ID_VIU: the media-utils ABI fixes fwm_mod_id_e's width but not its member
  * list; nothing reads the value, so a documented constant is used. */
 #define FCAP_MOD_ID_VIU 16
 
-/* Bounds on the worker's shutdown wait while a channel survives DisableVipp
- * (SPEC 3.2.5 / 3.4.1); 100 ticks of 10 ms. */
+/* Bounds on the worker's shutdown wait while a channel survives DisableVipp:
+ * 100 ticks of 10 ms. */
 #define FCAP_SHUTDOWN_TICKS 100
 
 /* ------------------------------------------------------------------ */
-/* Process singleton (SPEC 4.1 item 1)                                 */
+/* Process singleton                                                   */
 /* ------------------------------------------------------------------ */
 
 enum fcap_sys_state {
@@ -82,10 +61,10 @@ static int fcap_valid_chn(int chn)
 }
 
 /* ------------------------------------------------------------------ */
-/* Replaceable clock / wait seam (SPEC 7)                              */
+/* Replaceable clock / wait seam                                       */
 /* ------------------------------------------------------------------ */
 
-static int fcap_default_video_wait(struct isp_video_device *video, int timeout_ms)
+static int fcap_default_video_wait(struct fwi_video_device *video, int timeout_ms)
 {
 	return video_wait_buffer(video, timeout_ms) == 0 ? 0 : -1;
 }
@@ -132,7 +111,7 @@ void fcap_set_clock(const struct fcap_clock_ops *ops)
 						       : fcap_default_delay_ms;
 }
 
-static int fcap_wait_video(struct isp_video_device *video, int timeout_ms)
+static int fcap_wait_video(struct fwi_video_device *video, int timeout_ms)
 {
 	return fcap_clock.video_wait ? fcap_clock.video_wait(video, timeout_ms)
 				     : fcap_default_video_wait(video, timeout_ms);
@@ -151,7 +130,7 @@ static void fcap_delay_ms(unsigned int ms)
 }
 
 /* ------------------------------------------------------------------ */
-/* Component facade (SPEC 4.1/4.3)                                     */
+/* Component facade                                                    */
 /* ------------------------------------------------------------------ */
 
 static void fcap_comp_set_state(struct fcap_component *c, int state)
@@ -275,7 +254,7 @@ static struct fcap_channel *fcap_find_chan(struct fcap_vipp *v, int chn)
 	return v->chans[chn];
 }
 
-/* Copy a caller VI_ATTR_S into the clean layer's format record (SPEC 3.2.3).
+/* Copy a caller VI_ATTR_S into the clean layer's format record.
  * The two guard fields default to 0; `index` is the vipp index. */
 static void fcap_attr_to_fmt(const VI_ATTR_S *attr, struct video_fmt *fmt,
 			     int index)
@@ -295,8 +274,8 @@ static void fcap_attr_to_fmt(const VI_ATTR_S *attr, struct video_fmt *fmt,
 	fmt->index = index;
 }
 
-/* Normalise a caller attribute exactly as SPEC 3.2.3 requires before it is
- * stored and re-applied. */
+/* Normalise a caller attribute exactly as the vendor path does before it
+ * is stored and re-applied. */
 static void fcap_attr_normalise(const VI_ATTR_S *in, VI_ATTR_S *out)
 {
 	*out = *in;
@@ -319,11 +298,11 @@ static struct hw_isp_device *fcap_isp_for(struct fcap_vipp *v)
 }
 
 /* ------------------------------------------------------------------ */
-/* Capture worker (SPEC 3.4.1)                                         */
+/* Capture worker                                                      */
 /* ------------------------------------------------------------------ */
 
-/* Build the frame descriptor handed to the channels from a dequeued buffer
- * (SPEC 3.4.3).  `mStride` carries the plane mapped length. */
+/* Build the frame descriptor handed to the channels from a dequeued buffer;
+ * `mStride` carries the plane mapped length. */
 static VIDEO_FRAME_INFO_S fcap_build_frame(struct fcap_vipp *v,
 					   struct video_buffer *vb)
 {
@@ -362,13 +341,8 @@ static VIDEO_FRAME_INFO_S fcap_build_frame(struct fcap_vipp *v,
 	return fi;
 }
 
-/*
- * Long-exposure channel bookkeeping (SPEC 3.2.7, channel half): the component
- * tracks the reset mode and frame count recorded when the vipp entered long
- * exposure; the first frame whose PTS interval exceeds the threshold is the
- * long frame and resets the mode to AUTO.  Only partly exercised by the daemon
- * (SPEC open question 5).
- */
+/* Long-exposure channel bookkeeping: the first frame whose PTS interval exceeds the
+ * threshold is the long frame and resets the mode to AUTO. Only partly used by the daemon. */
 static void fcap_le_check(struct fcap_vipp *v, struct fcap_channel *c,
 			  const VIDEO_FRAME_INFO_S *fi)
 {
@@ -399,7 +373,7 @@ static void fcap_capture_shutdown(struct fcap_vipp *v)
 	unsigned int i;
 
 	/* Wait for the channel list to drain, bounded: DisableVipp proceeds with
-	 * a surviving virchn (SPEC 3.2.5). */
+	 * a surviving virchn. */
 	for (i = 0; i < FCAP_SHUTDOWN_TICKS; i++) {
 		int k, any = 0;
 
@@ -497,7 +471,7 @@ static void *fcap_capture_entry(void *arg)
 }
 
 /* ------------------------------------------------------------------ */
-/* SYS (SPEC 3.1 / 3.2.1)                                              */
+/* SYS                                                                 */
 /* ------------------------------------------------------------------ */
 
 static int fcap_media_open(void)
@@ -516,15 +490,15 @@ static void fcap_media_close(void)
 	}
 }
 
-/* ISP id -> VI video device for the package-B control path (companion seam). */
-static struct isp_video_device *fcap_resolve_video(int isp_dev)
+/* ISP id -> VI video device for the fisp_ control path (companion seam). */
+static struct fwi_video_device *fcap_resolve_video(int isp_dev)
 {
 	unsigned int i;
 
 	if (g_sys.md == NULL || isp_dev < 0)
 		return NULL;
 	for (i = 0; i < HW_VIDEO_DEVICE_NUM; i++) {
-		struct isp_video_device *video = g_sys.md->video_dev[i];
+		struct fwi_video_device *video = g_sys.md->video_dev[i];
 
 		if (video != NULL && video_to_isp_id(video) == isp_dev)
 			return video;
@@ -559,10 +533,10 @@ AW_S32 AW_MPI_SYS_Init(void)
 	if (fcap_media_open() != SUCCESS)
 		return FAILURE;
 
-	/* Package B's ISP init; its result is not checked (SPEC 3.1). */
+	/* fisp_'s ISP init; its result is not checked. */
 	(void)AW_MPI_ISP_Init();
 
-	/* Package A's own infrastructure: bind the ISP control path to the video
+	/* fcap_'s own infrastructure: bind the ISP control path to the video
 	 * devices this package opens. */
 	fisp_set_video_resolver(fcap_resolve_video);
 
@@ -577,8 +551,8 @@ AW_S32 AW_MPI_SYS_Exit(void)
 	if (g_sys.state != FCAP_SYS_STARTED)
 		return SUCCESS;
 
-	/* Tear down any vipp the caller left behind, then the package-B ISP and
-	 * finally the media device (SPEC 3.2.1). */
+	/* Tear down any vipp the caller left behind, then the fisp_ ISP and
+	 * finally the media device. */
 	for (i = 0; i < VI_VIPP_NUM_MAX; i++)
 		if (g_vipp[i] != NULL)
 			(void)AW_MPI_VI_DestoryVipp((VI_DEV)i);
@@ -591,7 +565,7 @@ AW_S32 AW_MPI_SYS_Exit(void)
 }
 
 /* ------------------------------------------------------------------ */
-/* Vipp lifecycle (SPEC 3.2)                                           */
+/* Vipp lifecycle                                                      */
 /* ------------------------------------------------------------------ */
 
 AW_S32 AW_MPI_VI_CreateVipp(VI_DEV ViDev)
@@ -637,7 +611,7 @@ AW_S32 AW_MPI_VI_CreateVipp(VI_DEV ViDev)
 	return SUCCESS;
 }
 
-/* Close the video node and free the manager (SPEC 9). */
+/* Close the video node and free the manager. */
 static void fcap_vipp_teardown(struct fcap_vipp *v)
 {
 	if (v == NULL)
@@ -683,7 +657,7 @@ AW_S32 AW_MPI_VI_DestoryVipp(VI_DEV ViDev)
 			FCAP_LOG("DestoryVipp(%d): virchn %u still present\n",
 				 ViDev, i);
 			/* Drive it through a legal transition before destroying it,
-			 * so the component worker is always joined (SPEC 9). */
+			 * so the component worker is always joined. */
 			(void)AW_MPI_VI_DisableVirChn(ViDev, (VI_CHN)i);
 			(void)AW_MPI_VI_DestoryVirChn(ViDev, (VI_CHN)i);
 		}
@@ -710,7 +684,7 @@ AW_S32 AW_MPI_VI_SetVippAttr(VI_DEV ViDev, VI_ATTR_S *pstAttr)
 	fcap_attr_to_fmt(&norm, &fmt, ViDev);
 
 	if (video_set_fmt(v->video, &fmt) != 0) {
-		/* The one driver error the vendor path maps (SPEC 3.2.3): the
+		/* The one driver error the vendor path maps: the
 		 * soc-ft high-resolution 30 fps clamp. */
 		if (norm.format.width >= 3840u && norm.format.height >= 2160u &&
 		    norm.fps > 25u)
@@ -776,7 +750,7 @@ AW_S32 AW_MPI_VI_EnableVipp(VI_DEV ViDev)
 		goto fail;
 
 	/* Re-read the format: the device call that issues G_FMT and refreshes
-	 * the cached negotiated record (SPEC 3.2.5). */
+	 * the cached negotiated record. */
 	if (v->have_attr) {
 		fcap_attr_to_fmt(&v->attr, &fmt, ViDev);
 		if (video_set_fmt(v->video, &fmt) != 0)
@@ -848,7 +822,7 @@ AW_S32 AW_MPI_VI_DisableVipp(VI_DEV ViDev)
 }
 
 /* ------------------------------------------------------------------ */
-/* Orientation (SPEC 3.2.6)                                            */
+/* Orientation                                                         */
 /* ------------------------------------------------------------------ */
 
 static AW_S32 fcap_set_orientation(VI_DEV ViDev, int cid, int Value)
@@ -879,7 +853,7 @@ AW_S32 AW_MPI_VI_SetVippFlip(VI_DEV ViDev, int Value)
 }
 
 /* ------------------------------------------------------------------ */
-/* Shutter time (SPEC 3.2.7)                                           */
+/* Shutter time                                                        */
 /* ------------------------------------------------------------------ */
 
 /* Vipp-level application; caller holds no lock. */
@@ -1020,7 +994,7 @@ out:
 	return rc;
 }
 
-/* Channel-half bookkeeping for modes other than PREVIEW (SPEC 3.2.7). */
+/* Channel-half bookkeeping for modes other than PREVIEW. */
 static void fcap_shutter_record_chan(struct fcap_vipp *v, int chn,
 				     const VI_SHUTTIME_CFG_S *t, int fps)
 {
@@ -1098,7 +1072,7 @@ AW_S32 AW_MPI_VI_SetVippShutterTime(VI_DEV ViDev, VI_SHUTTIME_CFG_S *pTime)
 }
 
 /* ------------------------------------------------------------------ */
-/* Virtual channels (SPEC 3.3)                                         */
+/* Virtual channels                                                    */
 /* ------------------------------------------------------------------ */
 
 AW_S32 AW_MPI_VI_CreateVirChn(VI_DEV ViDev, VI_CHN ViCh, void *pAttr)
@@ -1107,7 +1081,7 @@ AW_S32 AW_MPI_VI_CreateVirChn(VI_DEV ViDev, VI_CHN ViCh, void *pAttr)
 	struct fcap_channel *c;
 	AW_S32 rc;
 
-	(void)pAttr;   /* ignored (SPEC 3.3.1) */
+	(void)pAttr;   /* ignored */
 
 	if (!fcap_valid_dev(ViDev) || !fcap_valid_chn(ViCh))
 		return ERR_VI_INVALID_CHNID;
@@ -1259,7 +1233,7 @@ AW_S32 AW_MPI_VI_SetVirChnAttr(VI_DEV ViDev, VI_CHN ViCh, void *pAttr)
 }
 
 /* ------------------------------------------------------------------ */
-/* Frame capture (SPEC 3.4)                                            */
+/* Frame capture                                                       */
 /* ------------------------------------------------------------------ */
 
 AW_S32 AW_MPI_VI_GetFrame(VI_DEV ViDev, VI_CHN ViCh,

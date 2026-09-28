@@ -1,15 +1,7 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
-/*
- * test_systime.c - host tests for the clean-room system-base time unit.
- *
- * Behaviour source: spec/media_utils/systime.md section 4.  The
- * timeout path is bounded and checked for expiry code and elapsed lower bound;
- * the signal path uses a helper thread with an explicit wakeup and a join; the
- * wall-clock helpers are checked for monotonicity, wall-clock basis and that
- * CDX_SetTimeUs leaves the clock untouched.  Exit status is non-zero on any
- * failed check.
- */
+/* test_systime.c - host tests for the time unit (spec media_utils/systime.md
+ * 4): bounded timeout, signal via helper thread, wall-clock helpers. */
 #define _GNU_SOURCE
 #include "utils/systime.h"
 
@@ -208,9 +200,8 @@ static void test_settime(void)
 	int64_t ret;
 	int64_t back;
 
-	/* r1 unit U: CDX_SetTimeUs is unreferenced by any link (21-utils §1,
-	 * kept per owner Q-U1) and never mutates the wall clock; it returns
-	 * the current time.  A far-past request must leave the clock alone. */
+	/* CDX_SetTimeUs never mutates the wall clock and returns the current time,
+	 * so a far-past request must leave the clock alone. */
 	now = CDX_GetTimeUs();
 	ret = CDX_SetTimeUs(1000000);
 	back = CDX_GetTimeUs();

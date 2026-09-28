@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 /* tuning.c - enable mapping, library defaults, module-config derivation,
- * per-module refresh, configuration entry points and the tuning store
- * (20 §8, §10).
- */
+ * per-module refresh, configuration entry points and the tuning store */
 #include "framework_internal.h"
 #include <stdlib.h>
 #include <string.h>
@@ -10,7 +8,7 @@
 unsigned int isp_lib_log_param;
 
 /* ------------------------------------------------------------------ */
-/* 20 §8.4 enable mapping                                              */
+/* enable mapping                                                      */
 /* ------------------------------------------------------------------ */
 static void set_bit(uint32_t *f, int en, uint32_t bit)
 {
@@ -70,7 +68,7 @@ void isp_enable_mapping(fwi_isp_ctx_t *ctx)
 }
 
 /* ------------------------------------------------------------------ */
-/* 20 §8.5 library defaults                                            */
+/* library defaults                                                    */
 /* ------------------------------------------------------------------ */
 void isp_library_defaults(fwi_isp_ctx_t *ctx)
 {
@@ -147,7 +145,7 @@ void isp_library_defaults(fwi_isp_ctx_t *ctx)
 }
 
 /* ------------------------------------------------------------------ */
-/* 20 §8.6 module-config derivation                                    */
+/* module-config derivation                                            */
 /* ------------------------------------------------------------------ */
 static int clamp4095(int v)
 {
@@ -158,7 +156,7 @@ static int clamp4095(int v)
     return v;
 }
 
-/* 20 §8.6 step 18: f(k, x) = clamp(k / max(x, 1), 0, 4095). */
+/* f(k, x) = clamp(k / max(x, 1), 0, 4095). */
 static uint16_t msc_delta(int k, int32_t x)
 {
     if (x < 1)
@@ -166,10 +164,8 @@ static uint16_t msc_delta(int k, int32_t x)
     return (uint16_t)clamp4095(k / x);
 }
 
-/* Fill a 12-entry delta LUT from the (copied) 12-entry module-config LUT.
- * msc_mode >= 4 covers i = 1..11 (entry 11 is the never-written 12th slot,
- * normally 0); otherwise i = 1..7 plus the special tail dlt[8] = f(4096,
- * lut[7]). */
+/* 12-entry delta LUT from the copied module-config LUT: msc_mode >= 4 covers i = 1..11 (11 is
+ * the unwritten 12th slot, normally 0); otherwise i = 1..7 plus dlt[8] = f(4096, lut[7]). */
 static void msc_fill_delta(const uint16_t *lut, uint16_t *dlt, int mode)
 {
     int i;
@@ -349,7 +345,7 @@ void isp_module_config_derive(fwi_isp_ctx_t *ctx)
 }
 
 /* ------------------------------------------------------------------ */
-/* per-module parameter refresh (20 §8.3 step 5 / §12.2)               */
+/* per-module parameter refresh                                        */
 /* ------------------------------------------------------------------ */
 void isp_module_refresh(fwi_isp_ctx_t *ctx)
 {
@@ -358,12 +354,8 @@ void isp_module_refresh(fwi_isp_ctx_t *ctx)
     fwi_tuning_modules_t *U = &ctx->tuning.modules;
     fwi_hw_module_cfg_t *M = &ctx->hw_cfg;
 
-    /* ISO config refresh (20 §12.2): P.gen = ctx; helper(ISP_ISO_UPDATE_PARAMS)
-     * (set param->type and call iso_set_params); then the 16 *_adjust = 1,
-     * af_cfg_adjust, test_cfg.test_mode and the four denoise ratios; then run
-     * ISO once.  Field names are the frozen ABI spellings of the spec's
-     * original names (cnr->chroma_denoise, cem->colour_enhance, dpc->
-     * defect_pixel, defog->dehaze, lca->lateral_ca). */
+    /* ISO refresh: set the param type and call iso_set_params, raise the 16 *_adjust flags,
+     * af_cfg_adjust, test_cfg.test_mode and the four denoise ratios, then run ISO once. */
     if (ctx->iso_entity.ops) {
         fwi_iso_cfg_core_ops_t *ops = fwi_iso_ops(ctx->iso_entity.ops);
         fwi_iso_param_t *p = ctx->iso_entity.iso_param;
@@ -433,7 +425,7 @@ void isp_module_refresh(fwi_isp_ctx_t *ctx)
         memcpy(p->ae_init.ae_f_number_step, A->ae_f_number_step,
                sizeof(p->ae_init.ae_f_number_step));
         memcpy(p->ae_init.wdr_cfg, A->wdr_cfg, sizeof(p->ae_init.wdr_cfg));
-        /* 20 §12.2: AE scene tables — scene 0 = preview, 1 = capture,
+        /* AE scene tables — scene 0 = preview, 1 = capture,
          * 2 = video; copy all 42 s32 of each source table. */
         p->ae_init.ae_tbl_scene[0].length = A->ae_table_preview_length;
         memcpy(p->ae_init.ae_tbl_scene[0].ae_tbl, A->ae_table_preview,
@@ -447,9 +439,7 @@ void isp_module_refresh(fwi_isp_ctx_t *ctx)
         memcpy(p->ae_init.ae_zone_weight, A->ae_zone_weight,
                sizeof(p->ae_init.ae_zone_weight));
         isp_ae_set_params_helper(&ctx->ae_entity, FWI_ISP_AE_INIT_DATA);
-        /* 20 §12.2 AE test_cfg; sources pinned by the fact file
-         * (fwi_ae_test_cfg note column). Written after INIT_DATA per the
-         * spec's refresh order. */
+        /* AE test_cfg, written after INIT_DATA (refresh order). */
         p->test_cfg.test_mode = T->bench_mode;
         p->test_cfg.gain = T->fixed_gain;
         p->test_cfg.exposure_line = T->fixed_exposure_lines;
@@ -553,7 +543,7 @@ void isp_module_refresh(fwi_isp_ctx_t *ctx)
 }
 
 /* ------------------------------------------------------------------ */
-/* 20 §8.3 full configuration / §8.3b partial configuration            */
+/* full configuration / partial configuration                          */
 /* ------------------------------------------------------------------ */
 int isp_config_init(fwi_isp_ctx_t *ctx)
 {
@@ -606,7 +596,7 @@ int isp_ctx_config_update(fwi_isp_ctx_t *ctx)
 }
 
 /* ------------------------------------------------------------------ */
-/* 20 §10 tuning store and set_cfg/get_cfg/update                      */
+/* tuning store and set_cfg/get_cfg/update                             */
 /* ------------------------------------------------------------------ */
 /* HW_ISP_CFG_* group/id values: public, fwi_isp_api.h */
 
@@ -627,7 +617,7 @@ struct sharp_record {
     uint8_t smap[33];
 };
 
-/* owner Q8 group-4 gamma shape */
+/* group-4 gamma shape */
 struct gamma_record {
     int32_t number;
     uint16_t value[5][3072];
@@ -637,7 +627,7 @@ struct gamma_record {
 int32_t isp_set_cfg(int dev_id, uint8_t group_id, uint32_t cfg_ids,
                     void *cfg_data)
 {
-    struct isp_tuning_store *st;
+    struct fwi_tuning_store *st;
     uint8_t *p = cfg_data;
     int32_t total = 0;
 
@@ -729,7 +719,7 @@ int32_t isp_set_cfg(int dev_id, uint8_t group_id, uint32_t cfg_ids,
 int32_t isp_get_cfg(int dev_id, uint8_t group_id, uint32_t cfg_ids,
                     void *cfg_data)
 {
-    struct isp_tuning_store *st;
+    struct fwi_tuning_store *st;
     uint8_t *p = cfg_data;
     int32_t total = 0;
 
@@ -821,7 +811,7 @@ int32_t isp_get_cfg(int dev_id, uint8_t group_id, uint32_t cfg_ids,
 
 int isp_update(int dev_id)
 {
-    struct isp_tuning_store *st;
+    struct fwi_tuning_store *st;
 
     if (dev_id >= HW_ISP_DEVICE_NUM || dev_id < 0)
         return -1;
@@ -839,7 +829,7 @@ int isp_update(int dev_id)
 
 int isp_reset(int dev_id, int mode_flag)
 {
-    struct isp_tuning_store *st;
+    struct fwi_tuning_store *st;
 
     if (dev_id >= HW_ISP_DEVICE_NUM || dev_id < 0)
         return -1;

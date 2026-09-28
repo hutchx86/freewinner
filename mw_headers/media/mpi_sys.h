@@ -1,11 +1,6 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
-/*
- * media/mpi_sys.h - clean-room interface declarations for the eyesee-mpp
- * middleware ABI (SYS MPI entry points).  Declarations only; re-authored from
- * cleanroom/middleware/headers/SPEC.md sections 2.6 and 3.2.  Nothing here is
- * copied from a vendor header.
- */
+/* SYS MPI entry points the daemon calls. Declarations only. */
 #ifndef FMW_MEDIA_MPI_SYS_H
 #define FMW_MEDIA_MPI_SYS_H
 

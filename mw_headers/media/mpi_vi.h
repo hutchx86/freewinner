@@ -1,12 +1,7 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
-/*
- * media/mpi_vi.h - clean-room interface declarations for the eyesee-mpp
- * middleware ABI (VI MPI entry points).  Declarations only; re-authored from
- * cleanroom/middleware/headers/SPEC.md sections 2.4 and 3.2.  These are the 16
- * AW_MPI_VI_* symbols the daemon calls; their implementations belong to the
- * capture runtime package.  Nothing here is copied from a vendor header.
- */
+/* The 16 AW_MPI_VI_* entry points the daemon calls; implemented by the
+ * capture runtime package. Declarations only. */
 #ifndef FMW_MEDIA_MPI_VI_H
 #define FMW_MEDIA_MPI_VI_H
 

@@ -1,16 +1,7 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
-/*
- * iso_clean.h - clean-room ISO gain/luminance switchboard.
- *
- * Behaviour-only reimplementation of the module specified in
- * spec/iso.md.  The gain index table, the two default breakpoint arrays and
- * the AF square seed arrive at runtime through the table-provider contract
- * (freeisp_get_tables()); see docs/provenance.md for the full provenance
- * record.
- *
- * Own names, own decomposition.
- */
+/* iso_clean.h - ISO gain/luminance switchboard (isp/spec/iso.md). Its tables arrive
+ * at runtime via freeisp_get_tables() (see isp/docs/provenance.md). */
 #ifndef ISO_CLEAN_H
 #define ISO_CLEAN_H
 
@@ -359,36 +350,20 @@ int           iso_set_params(iso_entity_t *e, const iso_params_t *in,
                              iso_result_t *result);
 int           iso_run(iso_entity_t *e, iso_result_t *result);
 
-/*
- * Override the frame counter the temporal-denoise block measures its warm-up
- * window against.  The framework mutates the frame id in its stored parameter
- * block in place every frame without re-entering set-parameters, so the shim
- * forwards the live value here before each run.
- */
+/* Frame counter for the temporal-denoise warm-up; the framework updates it in place
+ * without re-entering set-parameters, so the shim forwards it before each run. */
 void          iso_set_frame_id(iso_entity_t *e, int32_t frame_id);
 
-/*
- * Refresh the per-frame inputs the framework rewrites in its stored parameter
- * block in place without re-entering set-parameters: the per-block enable
- * gates, the 2D-denoise core ratios, the frame counter and the colour-to-gray
- * thresholds.  The interpolation arrays built by set-parameters are left
- * untouched (the framework rebuilds them only when it re-enters
- * set-parameters).  The shim calls this before each run so the core reads the
- * live mirror exactly as the deployed core does; without it the core keeps
- * whatever gates were latched at set-parameters time and skips every gated
- * block (spec 11).
- */
+/* Refresh the inputs the framework rewrites in place (enable gates, 2D-denoise ratios,
+ * frame counter, gray thresholds); else gated blocks stay latched off (spec iso.md 11). */
 void          iso_set_live_params(iso_entity_t *e, const iso_params_t *in);
 
 /* Diagnostics for tests: expose the built interpolation arrays. */
 int32_t iso_debug_gain_word(const iso_entity_t *e, int index, int word);
 int32_t iso_debug_lum_word(const iso_entity_t *e, int index, int word);
 
-/*
- * Diagnostics: copy the saturation block's selected dynamic-record words
- * (sat_cfg[0..6]) for the current saturation trigger into out[0..6].  Lets a
- * boundary probe compare the picked record with the value written back.
- */
+/* Diagnostics: copy the saturation block's selected sat_cfg[0..6] words for the
+ * current trigger into out[]. */
 void    iso_debug_sat_pick(const iso_entity_t *e, int32_t out[7]);
 
 #ifdef __cplusplus

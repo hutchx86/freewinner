@@ -1,13 +1,8 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
 
-/*
- * test_fcap_abi.c - target-ABI conformance for the capture runtime surface
- * (SPEC 2.2), compiled with FCAP_ABI_MODEL.  The pointer-sized members of
- * VIDEO_FRAME_S collapse to their 32-bit target width so the host reproduces
- * the measured 32-bit ARM EABI5 layout exactly; a mismatch fails the build via
- * the SA typedefs below.  Mirrors the fisp_ / isp_dev_uapi ABI conformance TUs.
- */
+/* test_fcap_abi.c - target-ABI conformance under FCAP_ABI_MODEL:
+ * pointer members collapse to 32 bits to reproduce the ARM EABI5 layout. */
 
 #define FCAP_ABI_MODEL 1
 
@@ -19,11 +14,8 @@
 
 typedef uint32_t fcap_model_ptr_t;
 
-/*
- * VIDEO_FRAME_S with 4-byte pointers and the same field order as
- * media_utils_abi.h; the two uint64_t fields keep their natural 8-byte
- * alignment, so on a 64-bit host this record has the target's 144-byte layout.
- */
+/* VIDEO_FRAME_S with 4-byte pointers, media_utils_abi.h field order; the two
+ * uint64_t fields keep 8-byte alignment, giving the target's 144 bytes. */
 typedef struct model_video_frame {
 	unsigned int   mWidth;
 	unsigned int   mHeight;
@@ -84,7 +76,7 @@ SA(sizeof(model_video_frame_info) == 152, frame_info_size);
 SA(offsetof(model_video_frame_info, VFrame) == 0, frame_info_vframe);
 SA(offsetof(model_video_frame_info, mId) == 144, frame_info_mid);
 
-/* Error codes (SPEC 7 / 8.1). */
+/* Error codes. */
 SA(ERR_SYS_ILLEGAL_PARAM == (int)0xA0028003u, e_sys_illegal);
 SA(ERR_SYS_NOT_PERM == (int)0xA0028009u, e_sys_notperm);
 SA(ERR_SYS_NOTREADY == (int)0xA0028010u, e_sys_notready);
@@ -95,7 +87,7 @@ SA(ERR_VI_UNEXIST == (int)0xA0108005u, e_vi_unexist);
 SA(ERR_VI_NOT_PERM == (int)0xA0108009u, e_vi_notperm);
 SA(ERR_VI_BUSY == (int)0xA0108012u, e_vi_busy);
 
-/* Constants (SPEC 2.3). */
+/* Constants. */
 SA(VI_VIPP_NUM_MAX == 4, vipp_max);
 SA(VI_VIRCHN_NUM_MAX == 4, virchn_max);
 SA(VI_ISP_NUM_MAX == 2, isp_max);

@@ -1,14 +1,7 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
-/*
- * test_awb_shim.c - host test for the AWB integration shim.
- *
- * Includes the SDK ABI header and the shim, drives the full
- * init/get/set/run cycle with synthetic awb_param_t and awb_stats_t, and
- * checks that the SDK mirror sits at entity offset 0, that get_params hands
- * the framework a live read/write pointer, and that run translates the clean
- * statistics/gain/colour-temperature result back to the SDK shape.
- */
+/* test_awb_shim.c - host test for the AWB shim: init/get/set/run on synthetic
+ * data; checks the offset-0 live mirror and clean -> SDK result translation. */
 #include <stdio.h>
 #include <string.h>
 
@@ -16,17 +9,13 @@
 #include "freeisp/isp_dims.h"
 #include "awb_shim.h"
 
-/* The shim's exported 3A entry points (fwi vtable shape; the framework
- * declares them in framework_isp.h).  Not in awb_shim.h: TUs that also see
- * awb_clean.h have a clean-core awb_init of a different type. */
+/* Declared here, not in awb_shim.h: TUs that also see awb_clean.h have a
+ * clean-core awb_init of a different type. */
 void *awb_init(fwi_awb_core_ops_t **core_ops);
 void  awb_exit(void *core_obj);
 
-/*
- * musl's libm objects (pulled in by the shim's analytic default tables)
- * reference the ARM EH personality routines.  This test never unwinds; weak
- * definitions close the static link under the OpenWrt toolchain.
- */
+/* musl libm references the ARM EH personality routines; this test never
+ * unwinds, so weak stubs close the static link. */
 #if defined(__arm__)
 #define SHIM_WEAK __attribute__((weak))
 SHIM_WEAK int __aeabi_unwind_cpp_pr0(void) { return 0; }
@@ -292,10 +281,8 @@ static void test_adaptive_translation(void)
 
     fill_scene(200, 200, 157, 100);   /* matches the mid illuminant */
 
-    /*
-     * The framework advances the frame counter through the mirror each frame;
-     * run must see it (and translate the clean result for a real capture).
-     */
+    /* The framework advances the frame counter through the mirror; run must
+     * see it. */
     for (fi = 3; fi < 63; fi++) {
         gp->awb_frame_id = fi;
         memset(&res, 0, sizeof(res));
@@ -408,8 +395,8 @@ static void test_null_stats(void)
     param.awb_frame_id = 5;
     CHECK_EQ(ops->awb_set_params(h, &param, NULL), 0);
 
-    /* Null SDK stats handle -> clean "no statistics": -1, and the deployed
-     * safe gains (not unity) are written because the supplied gains are 0. */
+    /* Null stats -> "no statistics": -1, and the installed safe gains (not
+     * unity) are written because the supplied gains are 0. */
     memset(&res, 0, sizeof(res));
     CHECK_EQ(ops->awb_run(h, NULL, &res), -1);
     CHECK_EQ(res.wb_gain_output.r_gain, 0x0180);
@@ -433,11 +420,8 @@ static void test_null_stats(void)
 
 int main(void)
 {
-    /*
-     * Table provider: NULL selects the built-in pilot defaults.  The
-     * no-statistics fallback quadruple is a harness copy (no vendor table
-     * carries it); supply it before any run.
-     */
+    /* NULL selects the built-in tables; the no-statistics fallback gains are
+     * test values (no vendor table carries them). */
     unsigned short safe_gain[4];
 
     safe_gain[0] = 0x0180;

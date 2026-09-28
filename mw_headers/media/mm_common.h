@@ -1,13 +1,7 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
-/*
- * media/mm_common.h - thin include-name shim (H "single source",
- * 31-abi-headers.md §5.5/§5.6): struct MPP_CHN_S is now declared once, in
- * freewinner's generated MPP boundary header (fwm_media_abi.h, as
- * struct fwm_chn / fwm_chn_t).  This file keeps only its name so mediad's
- * #include lines do not change; app code now spells the type fwm_chn_t
- * directly (Task 2 punch list) rather than through a local MPP_CHN_S alias.
- */
+/* Include-name shim plus MPI scalar aliases; the channel struct (fwm_chn_t)
+ * is declared in fwm_media_abi.h. */
 #ifndef FMW_MEDIA_MM_COMMON_H
 #define FMW_MEDIA_MM_COMMON_H
 

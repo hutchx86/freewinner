@@ -1,25 +1,9 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
 
-/*
- * fcap_seam.h - host-test seam for the capture runtime (package A).
- *
- * Two seams are provided:
- *
- *  - the clean device layer's injectable syscall table (`isp_uapi_set_sys`),
- *    so the real `isp_dev_uapi.c` runs against a scripted kernel: a
- *    media-controller topology, a `/dev/video0` node, and programmable
- *    VIDIOC_* responses.  The mock records every ioctl for the tests to
- *    decode (SPEC 7.1);
- *
- *  - the package-A clock seam (`fcap_set_clock`), which gates the capture
- *    worker's buffer wait and can expire the per-channel frame wait without a
- *    real sleep (SPEC 7.2).
- *
- * Package-B symbols (`AW_MPI_ISP_Init/Exit`, `fisp_set_video_resolver`) and the
- * framework's `media_params` global are scripted here so no ISP tier, device or
- * camera is touched.
- */
+/* fcap_seam.h - host-test seam for the capture runtime: a scripted syscall
+ * table for isp_dev_uapi.c, the fcap_set_clock seam
+ * and scripted fisp_/framework symbols, so no device is touched. */
 
 #ifndef FCAP_SEAM_H
 #define FCAP_SEAM_H
@@ -76,11 +60,11 @@ void fcap_seam_set_channel_expire(int on);
 /* ISP device bound to isp id 0 via media_params.isp_dev[0]. */
 extern struct hw_isp_device fcap_seam_isp;
 
-/* Package-B call counters recorded by the seam. */
+/* fisp_ call counters recorded by the seam. */
 extern int fcap_seam_isp_init_n;
 extern int fcap_seam_isp_exit_n;
 extern int fcap_seam_resolver_n;
-extern struct isp_video_device *(*fcap_seam_resolver_ptr)(int);
+extern struct fwi_video_device *(*fcap_seam_resolver_ptr)(int);
 
 /* Paths passed to the mock open(), in order. */
 int fcap_seam_open_n(void);

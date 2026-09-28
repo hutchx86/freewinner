@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-/* helper.c - attribute API and V4L2 control-event handling (20 §11) */
+/* helper.c - attribute API and V4L2 control-event handling */
 #include "framework_internal.h"
 #include <stdio.h>
 #include <string.h>
@@ -13,7 +13,7 @@ static int valid_dev(int id)
 }
 
 /* ------------------------------------------------------------------ */
-/* 20 §11.1 attribute path                                             */
+/* attribute path                                                      */
 /* ------------------------------------------------------------------ */
 int32_t isp_set_attr_cfg(int id, uint32_t ctrl_id, void *value)
 {
@@ -46,7 +46,7 @@ int32_t isp_set_attr_cfg(int id, uint32_t ctrl_id, void *value)
         ctx->awb_ctl.wb_gain_manual = *(fwi_wb_gain_t *)value;
         break;
     case ISP_CTRL_AGAIN_DGAIN:
-        /* 20 §11.1: store and flag only when the record differs. */
+        /* store and flag only when the record differs. */
         if (memcmp(&ctx->picture_ctl.gains, value,
                    sizeof(ctx->picture_ctl.gains)) != 0) {
             memcpy(&ctx->picture_ctl.gains, value,
@@ -154,7 +154,7 @@ int32_t isp_get_lv(int id)
 }
 
 /* ------------------------------------------------------------------ */
-/* 20 §11.2 V4L2 control events                                        */
+/* V4L2 control events                                                 */
 /* ------------------------------------------------------------------ */
 static void gated(int32_t *field, int32_t value, uint32_t flag,
                   fwi_isp_ctx_t *ctx)

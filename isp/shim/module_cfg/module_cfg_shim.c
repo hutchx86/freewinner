@@ -1,34 +1,10 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
-/*
- * module_cfg_shim.c - SDK-ABI adapter for the clean-room isp_module_cfg tier.
- *
- * The deployed framework hands `struct isp_module_config *` (its own aggregate
- * context member, SDK ABI, `libisp/include/isp_module_cfg.h`) to
- * `isp_hardware_update()` / `isp_map_addr()`.  The clean-room core
- * (src/reg/module_cfg.c) speaks its own `isp_module_config_t`, which
- * is a *different* struct: the same semantic fields re-laid-out, with the
- * table pointers replaced by embedded arrays and several sub-structs
- * decomposed differently.  Handing the SDK struct straight to the clean core
- * would corrupt per-frame ISP programming.
- *
- * This file is the only translation layer.  It translates SDK -> clean on
- * entry, calls the clean entry points, then translates the clean outputs back
- * into the SDK struct.  No algorithm lives here and neither core is modified.
- *
- * ------------------------------------------------------------------ */
-/* Header collisions                                                       */
-/* ------------------------------------------------------------------ */
-/*
- * The framework side (the generated fwi_* ABI) and `module_cfg.h` share three struct tags and three ISP_* macros
- * with *different* meanings (the clean ISP_DRC_TBL_SIZE is a byte count, the
- * SDK one an element count).  Include the SDK side first, drop the colliding
- * macros, rename the colliding clean tags for this TU only, then include the
- * clean header.  The clean entry points are renamed too, so this TU can define
- * the SDK `isp_hardware_update` / `isp_map_addr` without a duplicate-symbol
- * clash.  The clean TU is compiled separately with the same two entry-point
- * renames (see the Makefile).
- */
+/* module_cfg_shim.c - SDK-ABI adapter for the clean module_cfg tier:
+ * SDK -> clean on entry, clean entry points, mutated outputs back to the SDK.
+ * Field mapping: docs/shim-mappings.md#module_cfg */
+/* SDK and module_cfg.h share ISP_* macros with different meanings (clean
+ * ISP_DRC_TBL_SIZE is bytes, SDK elements) and two entry-point names. */
 #include <string.h>
 
 #include "fwi_isp_api.h"
@@ -38,33 +14,17 @@
 #undef ISP_GAMMA_TBL_LENGTH
 #undef ISP_LENS_TBL_SIZE
 
-#define isp_module_config   clean_isp_module_config
-#define isp_h3a_reg_win     clean_isp_h3a_reg_win
-#define isp_lsc_config      clean_isp_lsc_config
-/* clean struct tags that the SDK uses as *enum* tags of the same spelling */
-#define isp_gca_cfg         clean_isp_gca_cfg
-#define isp_lca_cfg         clean_isp_lca_cfg
-#define isp_sharp_cfg       clean_isp_sharp_cfg
+/* clean entry points, renamed apart from the SDK ones */
 #define isp_hardware_update clean_isp_hardware_update
 #define isp_map_addr        clean_isp_map_addr
 #include "module_cfg.h"
-#undef isp_module_config
-#undef isp_h3a_reg_win
-#undef isp_lsc_config
-#undef isp_gca_cfg
-#undef isp_lca_cfg
-#undef isp_sharp_cfg
 #undef isp_hardware_update
 #undef isp_map_addr
 
 #include "module_cfg_shim.h"
 
-/*
- * The SDK aggregate must be the deployed ABI: 37040 bytes (0x90b0) for the
- * v521 32-bit build.  The differential drives the vendor object and this shim
- * with the same `struct isp_module_config`, so any drift here is fatal.  The
- * check is only meaningful on the 32-bit target (host pointers are wider).
- */
+/* The SDK aggregate must match the vendor ABI: 37040 bytes (0x90b0) on the
+ * 32-bit target (host pointers are wider). */
 #if __SIZEOF_POINTER__ == 4
 typedef char module_cfg_shim_abi_check[
     (sizeof(struct fwi_hw_module_cfg) == 37040) ? 1 : -1];
@@ -73,19 +33,8 @@ typedef char module_cfg_shim_abi_check[
 /* ------------------------------------------------------------------ */
 /* Translation: SDK -> clean                                           */
 /* ------------------------------------------------------------------ */
-/*
- * Field correspondence was established with the private differential harness:
- * it is the interface fact for how the SDK layout maps onto the clean layout.
- * Where the clean decomposition differs from the SDK one the comments call it
- * out.
- *
- * Table pointers: on input the clean source arrays are filled from the SDK
- * source (an embedded SDK table, or, for linear, the `linear_table` pointer
- * target).  On output the clean destination arrays are written back to the SDK
- * pointer targets (see clean_to_sdk).
- */
 
-static void win_to_clean(isp_h3a_reg_win_t *d, const fwi_h3a_reg_window_t *s)
+static void win_to_clean(fwi_mod_h3a_reg_win_t *d, const fwi_h3a_reg_window_t *s)
 {
     d->hor_num   = s->horizontal_count;
     d->ver_num   = s->vertical_count;
@@ -95,7 +44,7 @@ static void win_to_clean(isp_h3a_reg_win_t *d, const fwi_h3a_reg_window_t *s)
     d->ver_start = s->vertical_start;
 }
 
-static void af_en_to_bits(isp_af_cfg_t *d, const fwi_af_en_cfg_t *e)
+static void af_en_to_bits(fwi_mod_af_cfg_t *d, const fwi_af_en_cfg_t *e)
 {
     uint32_t en = 0;
 
@@ -114,7 +63,7 @@ static void af_en_to_bits(isp_af_cfg_t *d, const fwi_af_en_cfg_t *e)
     d->en_bits = en;
 }
 
-static void sdk_to_clean(isp_module_config_t *c,
+static void sdk_to_clean(fwi_mod_config_t *c,
                          const struct fwi_hw_module_cfg *s)
 {
     const fwi_af_filter_cfg_t *f = &s->af_cfg.af_filter_cfg;
@@ -126,12 +75,8 @@ static void sdk_to_clean(isp_module_config_t *c,
     c->module_enable_flag = s->module_enable_flag;
     c->table_update       = s->table_update;
 
-    /* mode: the clean struct keeps only the selectors its writers consume.
-     * SDK mode_cfg.wdr_mode / saturation_mode / hist_mode are unused here;
-     * the saturation and histogram mode writers read the clean satu_cfg.mode
-     * and hist_cfg.mode, which map from the SDK's saturation_mode / hist_mode
-     * (differential correspondence).  d3d_mode has no SDK mode_cfg field: the
-     * deployed d3d writer is driven by tdf_cfg.k3d_increase_mode. */
+    /* Only the selectors the clean writers consume; d3d_mode has no SDK
+     * mode_cfg field (the vendor d3d writer uses k3d_increase_mode). */
     c->mode_cfg.input_fmt    = s->mode_cfg.input_fmt;
     c->mode_cfg.dg_mode      = s->mode_cfg.dg_mode;
     c->mode_cfg.cfa_mode     = s->mode_cfg.demosaic_mode;
@@ -211,10 +156,8 @@ static void sdk_to_clean(isp_module_config_t *c,
     memcpy(c->lca_pf_satu_lut, s->lateral_ca_cfg.lateral_ca_pf_saturation_lut, ISP_LCA_SATU_BYTES);
     memcpy(c->lca_gf_satu_lut, s->lateral_ca_cfg.lateral_ca_gf_saturation_lut, ISP_LCA_SATU_BYTES);
 
-    /* sharpness: the clean top-level LUT arrays are byte images of the SDK's
-     * u16 LUT arrays (the register writer stages raw bytes).  IS_LUT_TH_BYTES
-     * (0x42) is what both writers copy, so only that much is needed from the
-     * wider SDK sharp_hsv[46] array. */
+    /* Clean LUTs are byte images of the SDK u16 LUTs; both writers copy only
+     * ISP_LUT_TH_BYTES (0x42), less than the SDK sharp_hsv[46]. */
     c->sharp_cfg.edge_black_stren = s->sharp_cfg.edge_black_strength;
     c->sharp_cfg.edge_white_stren = s->sharp_cfg.edge_white_strength;
     c->sharp_cfg.hfrq_black_stren = s->sharp_cfg.high_frequency_black_strength;
@@ -260,9 +203,7 @@ static void sdk_to_clean(isp_module_config_t *c,
     memcpy(c->d2d_lp_lut[2], s->bayer_denoise_cfg.d2d_lp2_threshold, ISP_LUT_TH_BYTES);
     memcpy(c->d2d_lp_lut[3], s->bayer_denoise_cfg.d2d_lp3_threshold, ISP_LUT_TH_BYTES);
 
-    /* 3D denoise: the clean scalar block is isp_d3d_cfg_t (the writer reads
-     * that shape); the SDK carries the same parameters inside isp_tdnf_config.
-     * tdnf_lum_th / tdnf_bri_th are *outputs* the writer overwrites. */
+    /* 3D denoise: clean fwi_reg_d3d_cfg_t; tdnf_lum_th / tdnf_bri_th are outputs. */
     c->tdf_cfg.rec_en         = (uint8_t)s->denoise_3d_cfg.rec_en;
     c->tdf_cfg.noise_clip     = s->denoise_3d_cfg.noise_clip_ratio;
     c->tdf_cfg.bright_diff    = (uint8_t)s->denoise_3d_cfg.bright_diff_ratio;
@@ -406,10 +347,8 @@ static void sdk_to_clean(isp_module_config_t *c,
     memcpy(c->msc_cfg.blh_dlt, s->mesh_shading_cfg.mesh_shading_blh_delta_lut, sizeof(c->msc_cfg.blh_dlt));
     c->msc_table = (const uint16_t *)s->mesh_shading_table;
 
-    /* saturation: clean keeps the embedded table as the copy *source* and its
-     * satu_src pointer as the *destination*, so bind satu_src to the SDK
-     * saturation_table target: the clean embedded->pointer copy then lands in
-     * the SDK buffer directly, exactly as the deployed routine does. */
+    /* satu_src is the clean copy destination: bind it to the SDK target so the
+     * table lands in the SDK buffer directly, as in the vendor routine. */
     c->satu_cfg.satu_r = s->saturation_cfg.saturation_r;
     c->satu_cfg.satu_g = s->saturation_cfg.saturation_g;
     c->satu_cfg.satu_b = s->saturation_cfg.saturation_b;
@@ -418,17 +357,12 @@ static void sdk_to_clean(isp_module_config_t *c,
            sizeof(c->satu_cfg.table));
     c->satu_src = s->saturation_table;
 
-    /* linear: the deployed direction is linear_table -> fe_table, so the clean
-     * source (linear_src) is fed from the SDK linear_table pointer target and
-     * the clean destination (fe_table) is written back to the SDK fe_table. */
+    /* Vendor direction is linear_table -> fe_table; fe_table is written back. */
     if (s->linearize_table)
         memcpy(c->linear_src, s->linearize_table, ISP_LINEAR_TBL_SIZE);
 
-    /* Destination arrays alias the SDK table-pointer targets.  Mirror the
-     * target's current contents into the clean destination first, so a module
-     * that does not run (feature bit clear, or its pointer gate failing) leaves
-     * the target unchanged when clean_to_sdk writes it back -- exactly as the
-     * deployed routines, which only fill a target when they execute. */
+    /* Pre-seed destinations from the SDK targets so a module that does not run
+     * leaves its target unchanged on write-back, as the vendor does. */
     if (s->fe_table)
         memcpy(c->fe_table, s->fe_table, ISP_LINEAR_TBL_SIZE);
     if (s->colour_enhance_table)
@@ -448,21 +382,10 @@ static void sdk_to_clean(isp_module_config_t *c,
 /* ------------------------------------------------------------------ */
 /* Translation: clean -> SDK                                           */
 /* ------------------------------------------------------------------ */
-/*
- * Only the fields the clean dispatcher can mutate are copied back: the
- * table-update word (the clean update resets it to 0, as the deployed routine
- * does), the table pointer *targets* the prepare routines fill, and the two
- * embedded 3D-denoise outputs.  Scalar fields are read-only across a clean
- * update and need no write-back.
- *
- * `lens_table` is deliberately not written back: the deployed `isp_reg_prepare_lens`
- * routine performs no table copy (mode + lsc config + the lens_table gate only, as
- * established with the private differential harness).  The clean
- * core's internal lens_src -> lens_table copy has no SDK-visible counterpart,
- * so propagating it would diverge from the hardware behaviour.
- */
+/* Only table_update, table targets and the two d3d outputs are written back;
+ * lens_table is not (the vendor isp_reg_prepare_lens copies no table). */
 static void clean_to_sdk(struct fwi_hw_module_cfg *s,
-                         const isp_module_config_t *c)
+                         const fwi_mod_config_t *c)
 {
     s->table_update = c->table_update;
 
@@ -486,11 +409,8 @@ static void clean_to_sdk(struct fwi_hw_module_cfg *s,
 /* ------------------------------------------------------------------ */
 /* SDK entry points                                                    */
 /* ------------------------------------------------------------------ */
-/*
- * The clean dispatcher owns ~67 KB of context; keep it off the stack and
- * reuse it (the framework drives one ISP instance at a time).
- */
-static isp_module_config_t g_clean;
+/* ~67 KB context, kept off the stack (one ISP instance at a time). */
+static fwi_mod_config_t g_clean;
 
 void isp_map_addr(struct fwi_hw_module_cfg *cfg, unsigned long vaddr)
 {

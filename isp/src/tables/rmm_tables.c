@@ -1,12 +1,8 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
-/*
- * freeisp - locate + load the compiled-in libisp constant tables from a stock
- * on-camera `rmm` image.
- *
- * No table bytes are compiled in: only the two anchors and the offsets-only
- * layout (tables_layout.h).
- */
+/* rmm_tables.c - locate and load the libisp constant tables from a stock on-camera `rmm`
+ * image. No table bytes are compiled in: only the two anchors and the offsets-only
+ * layout (tables_layout.h). */
 #include <math.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -182,9 +178,8 @@ int freeisp_tables_load_rmm(const char *path, freeisp_tables_t *out)
 #define BUNDLE_MAGIC_LEN 8u
 #define BUNDLE_VERSION   1u
 #define BUNDLE_HDR_LEN   32u
-/* 16 MiB is far above any real table set (the two stock images yield < 80 KiB)
- * and far below the rmm image itself, so it both bounds a corrupt length field
- * and cannot be confused with an rmm image. */
+/* 16 MiB: far above any real table set (< 80 KiB) and far below an rmm image, so it
+ * bounds a corrupt length field and cannot be confused with an rmm image. */
 #define BUNDLE_MAX_LEN   (16u * 1024u * 1024u)
 
 static uint32_t crc32_update(uint32_t c, const void *buf, size_t n)
@@ -218,9 +213,8 @@ static void put32(unsigned char *p, uint32_t v)
     p[3] = (unsigned char)(v >> 24);
 }
 
-/* Architecture-independent fingerprint of the compiled layout: names plus
- * cluster/delta/size/writable, never a byte of table data and never a pointer
- * offset, so a host-written bundle stays valid on the 32-bit device. */
+/* Arch-independent layout fingerprint: names plus cluster/delta/size/writable, never table
+ * data or pointer offsets, so a host-written bundle stays valid on the 32-bit device. */
 static uint32_t layout_crc(void)
 {
     uint32_t c = 0;

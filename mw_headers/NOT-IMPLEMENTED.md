@@ -1,20 +1,20 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-only -->
-# Package D (`headers`) - NOT-IMPLEMENTED list
+# mw_headers - NOT-IMPLEMENTED list
 
 Clean-room interface tree for the `mediad` app translation units.  Tree root:
-`cleanroom/middleware/headers/include/` (private; see "Include roots" below).
-Source of truth: `SPEC.md` section 5 plus the deviations and gaps recorded here.
+`mw_headers/` (see "Include roots" below). It declares the symbols and records
+the daemon uses, with the deviations and gaps recorded here.
 
 ## 1. Whole headers deliberately not carried
 
 | Vendor path | Why absent |
 | --- | --- |
-| `$(MW)/include/utils/plat_defines.h`, `plat_math.h`, `aw_type.h` | no clean consumer (SPEC 2.10); empty stubs are carried instead so the spellings resolve |
+| `$(MW)/include/utils/plat_defines.h`, `plat_math.h`, `aw_type.h` | no clean consumer; empty stubs are carried instead so the spellings resolve |
 | `$(SW)/system/public/include/utils/cdx_list_type.h` | dragged in only by the vendor `plat_type.h`; the clean one does not include it |
-| `$(ISP)/isp_dev/media.h` | no clean consumer (SPEC 5) |
-| `$(ISP)/include/V4l2Camera/sunxi_camera_v2.h`, `.../linux/videodev2.h`, `v4l2-common.h`, `v4l2-controls.h`, `v4l2-mediabus.h` | replaced by the toolchain's `<linux/videodev2.h>` (SPEC 3.4): `v4l2_pix_format_mplane` is byte-identical (192 B, `plane_fmt` 20, `num_planes` 180) and carries the three `V4L2_*` constants used |
+| `$(ISP)/isp_dev/media.h` | no clean consumer |
+| `$(ISP)/include/V4l2Camera/sunxi_camera_v2.h`, `.../linux/videodev2.h`, `v4l2-common.h`, `v4l2-controls.h`, `v4l2-mediabus.h` | replaced by the toolchain's `<linux/videodev2.h>`: `v4l2_pix_format_mplane` is byte-identical (192 B, `plane_fmt` 20, `num_planes` 180) and carries the three `V4L2_*` constants used |
 | `$(CEDARC)/include/veInterface.h`, `sc_interface.h` | the two pointer-only `fwm_venc_base_config_t` fields (`engine_ops`, `engine`) are declared `void *`; no forward declaration of the vendor op structs is needed |
-| `mpi_videoformat_conversion.h` | `map_PIXEL_FORMAT_E_to_V4L2_PIX_FMT` is called by `main.c` with no visible declaration in the vendor include set either (SPEC 7.1); the clean tree matches that and does not declare it |
+| `mpi_videoformat_conversion.h` | `map_PIXEL_FORMAT_E_to_V4L2_PIX_FMT` is called by `main.c` with no visible declaration in the vendor include set either; the clean tree matches that and does not declare it |
 
 Empty stubs **are** carried for: `utils/plat_errno.h`, `utils/plat_defines.h`,
 `utils/plat_math.h`, `utils/aw_type.h`, `media/mm_comm_rc.h`, `isp_debug.h`,
@@ -40,7 +40,7 @@ Empty stubs **are** carried for: `utils/plat_errno.h`, `utils/plat_defines.h`,
   video-node layers; AF/AFS/MD/roll-off/ISO algorithm entry points other than as
   record members required by `isp_lib_context`; `FROM_REPO_BRANCH` /
   `FROM_REPO_COMMIT` / `isp_get_version`.  `AW_MPI_ISP_Init`/`Exit` are not
-  declared (the daemon calls only `Run`/`Stop`/`Exit`; SPEC 2.5).
+  declared (the daemon calls only `Run`/`Stop`/`Exit`).
 - **VENC (`vencoder.h`)**: JPEG (`JpegEncInfo`, `EXIFInfo`, `AWJpecEnc`), H.265,
   VP8, ROI copy, SVC/skip, motion, VUI/EXIF, `VencSaveBSFile`, `VencThumbInfo`,
   `VeProcSet`/`VeProcEncInfo`, `VencBrightnessS`, `VencEncodeTimeS`,
@@ -52,10 +52,10 @@ Empty stubs **are** carried for: `utils/plat_errno.h`, `utils/plat_defines.h`,
 - **All vendor comments, string literals, log macros and file banners.**  Each
   header carries only its own SPDX block and the declarations.
 
-## 3. Records reproduced only to their measured size (SPEC 4 gap)
+## 3. Records reproduced only to their measured size
 
-`SPEC.md` section 4 measures these records only by total size and the offsets of
-the fields the daemon uses; it does not enumerate their other members.  They are
+These records were measured only by total size and the offsets of the fields
+the daemon uses; their other members are not enumerated.  They are
 reproduced as opaque *aligned integer arrays* of exactly the measured size (so
 the record's alignment and the measured offsets hold without a separate padding
 member), never as whole-record byte arrays, and no daemon translation unit reads
@@ -68,27 +68,27 @@ them:
   it sits at `+10`) and the unnamed `fwm_venc_rate_control_t` gap fields
   (`+4..+56`, `+88..+128`).
 
-If package A/C ever needs a real field of one of these, `SPEC.md` section 4 must
-be extended with that record's measured layout first.
+If the capture runtime (`fcap_`) or the codec (`fenc_`) ever needs a real field
+of one of these, that record's layout must be measured first.
 
 `struct hw_isp_device` is declared **opaque** in `device/isp_dev.h`: the six app
 translation units only pass its pointer to `isp_set_load_reg`.  The measured
 956-byte record is owned by the device layer (`freeisp/isp_dev_uapi.h`), not by
 this package.
 
-## 4. Deviations from SPEC section 3.2's file mapping
+## 4. Deviations from the vendor header file mapping
 
 (Historical for the ISP headers: `isp_base.h`, `isp_comm.h`, `isp_3a_af.h` and
 `isp_manage.h` were deleted on 2026-09-26 with the rest of `isp*.h`, see
 section 7. The `utils/plat_type.h` note still applies.)
 
-- The shared base declarations (SPEC 3.2 maps `ISP_REG_TBL_LENGTH`,
+- The shared base declarations (the vendor set puts `ISP_REG_TBL_LENGTH`,
   `ISP_GAMMA_TBL_LENGTH`, `isp_rgb2rgb_gain_offset`, `isp_sensor_info_t` and the
-  module-config helper records to `isp_comm.h`) live in **`isp_base.h`**.  The
+  module-config helper records in `isp_comm.h`) live in **`isp_base.h`**.  The
   base records and the module-config records need them in both directions and C
   headers have no partial ordering; `isp_comm.h` includes `isp_base.h`, so every
   consumer of `isp_comm.h` still sees the same declarations unchanged.
-- `isp_af_settings_t` is declared in `isp_3a_af.h` (SPEC 3.2) rather than in
+- `isp_af_settings_t` is declared in `isp_3a_af.h` rather than in
   `isp_manage.h`.
 - `isp_image_params_t` (the only fragment of `sunxi_camera_v2.h` retained) is
   declared in `isp_manage.h`, because `struct isp_lib_context` embeds it and the
@@ -103,15 +103,15 @@ dropped vendor roots:
 
 | Clean root | Vendor root(s) it replaces |
 | --- | --- |
-| `<tree>/include` | `$(MW)/include`, `$(MEDIA)/include`, `$(CEDARC)/include`, `$(ISP)/include`, `$(ISP)/isp_tuning`, `$(ISP)` |
-| `<tree>/include/media` | `$(MW)/include/media` |
-| `<tree>/include/utils` | `$(MW)/include/utils` |
-| `<tree>/include/component` | `$(MEDIA)/include/component` |
+| `mw_headers/` | `$(MW)/include`, `$(MEDIA)/include`, `$(CEDARC)/include`, `$(ISP)/include`, `$(ISP)/isp_tuning`, `$(ISP)` |
+| `mw_headers/media` | `$(MW)/include/media` |
+| `mw_headers/utils` | `$(MW)/include/utils` |
+| `mw_headers/component` | `$(MEDIA)/include/component` |
 
 ## 6. Verification not performed by the implementer
 
-- SPEC section 6.5 (verbatim-line copy detector against
-  `repos/lindenis-v833-softwinner/`) was **not** run by the implementer: the
+- A verbatim-line copy check against the vendor SDK headers was **not** run
+  by the implementer: the
   clean-room firewall forbids the implementer from opening the vendor tree.
 - **Run since (independent `verifier`, 2026-09-23), with a result the reader
   must not misread as "no overlap":**
@@ -131,12 +131,13 @@ dropped vendor roots:
     *formatting* was not required. This is within the project's documented
     "interoperability ABI surfaces" exception (`CREDITS.md`, Provenance), but it
     is a **judgement
-    call under `AGENTS.md`'s flat "no vendor code"** and is flagged for Hutch.
+    call under a strict "no vendor code" reading** and is flagged for the
+    project owner.
     Remedy if the strict reading is adopted: re-author the declarations
     (comments + independent formatting, renaming anything not ABI-bound, as
     the generated `isp/include/fwi_*.h` and the `*_abi.h` headers already do).
-- SPEC section 6.4 (end-to-end link + on-camera ABI oracle) belongs to the
-  daemon owner.
+- The end-to-end link and the on-camera ABI check belong to the daemon's
+  build.
 
 ## 7. ISP headers removed (2026-09-26)
 

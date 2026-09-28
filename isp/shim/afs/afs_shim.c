@@ -1,55 +1,15 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
-/*
- * afs_shim.c - AFS (auto-flicker suppression) integration shim.
- *
- * Presents the clean-room AFS core (src/afs/afs_clean.c) to the
- * Yi/mediad ISP framework through the SDK isp_afs_core_ops_t contract.
- * Integration glue only: no algorithm is implemented here.  See the ISO
- * pilot (shim/iso_shim.c + DESIGN.md) for the template.
- *
- * Field mapping (SDK afs_param_t/afs_stats_t -> clean params/stats):
- *
- *   clean frame_index     <- afs_frame_id
- *   clean mode            <- flicker_mode (enum power_line_frequency 0..3)
- *   clean seed_type       <- flicker_type_ini
- *   clean min_peak_ratio  <- flicker_ratio
- *   clean enable          <- test_cfg.afs_en
- *   clean gain_level      <- afs_sensor_info.ae_gain     (the vendor reads
- *                            the AE gain word at sensor-info offset 108, not
- *                            ae_tbl_idx; see include/freeisp/
- *                            afs.h)
- *   clean image_width     <- afs_sensor_info.sensor_width
- *   clean param_kind      <- type             (clean: unused)
- *   clean platform_id     <- isp_platform_id  (clean: unused)
- *   clean auto_flag_param <- auto_afs_flag    (clean: unused)
- *   clean column_sum[128] <- afs_stats->afs_sum[128]
- *   clean stats_width     <- afs_stats->pic_width    (clean: unused)
- *   clean stats_height    <- afs_stats->pic_height   (clean: unused)
- *
- * Result translation (clean enum -> SDK enum):
- *   clean detected_type 0  -> FLICKER_NO
- *   clean detected_type 50 -> FLICKER_50HZ
- *   clean detected_type 60 -> FLICKER_60HZ
- *
- * Unmapped / pass-through SDK fields: afs_test_config.isp_test_mode (test
- * mode selector, no clean counterpart), and the parts of the embedded
- * isp_sensor_info_t other than sensor_width/ae_gain.  The SDK result has a
- * single field, so there is nothing else to translate.
- */
+/* afs_shim.c - glue presenting the clean AFS core (src/afs/afs_clean.c) through
+ * the fwi_afs_core_ops_t contract; no algorithm here.
+ * Field mapping: docs/shim-mappings.md#afs */
 #include <math.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
-/*
- * Clean-room side.  The clean AFS header already carries an `afs_clean_`
- * infix, but we keep the ISO pilot's collision discipline: the clean entry
- * points are renamed for this TU and afs_clean.c is compiled with the same
- * defines (see Makefile), so the shim owns the bare `afs_*` SDK symbols and
- * the clean object exports only `clean_afs_*`.  No file under src/,
- * yi-mediad/ or the vendor tree is modified.
- */
+/* Clean entry points are renamed to clean_afs_* here and in the Makefile, so
+ * the shim alone owns the bare afs_* SDK symbols. */
 #define afs_clean_init       clean_afs_init
 #define afs_clean_exit       clean_afs_exit
 #define afs_clean_get_params clean_afs_get_params
@@ -64,10 +24,7 @@
 #undef afs_clean_run
 #undef afs_clean_isr
 
-/*
- * Framework side: the generated fwi_* ABI.  The shim exports afs_init/afs_exit
- * and a fwi_afs_core_ops_t vtable; the framework calls it directly.
- */
+/* Framework side: the generated fwi_* ABI. */
 #include "fwi_isp_api.h"
 #include "freeisp/isp_dims.h"
 
@@ -92,12 +49,8 @@ static void ensure_default_trig(void)
     if (g_trig_ready)
         return;
 
-    /*
-     * Pilot placeholder only: an analytic sine/cosine pair.  The real
-     * hardware tables are supplied by the integration through
-     * afs_shim_set_trig_tables() before afs_init().  This is not tuning data
-     * and is never compiled into the clean core.
-     */
+    /* Placeholder analytic sin/cos, not tuning data; real tables come via
+     * afs_shim_set_trig_tables() before afs_init(). */
     for (m = 0; m < AFS_CLEAN_NTRIG; m++) {
         double a = 2.0 * 3.14159265358979323846 * (double)m /
                    (double)AFS_CLEAN_NTRIG;
@@ -129,12 +82,8 @@ void afs_shim_set_trig_tables(const void *trig)
 /* Entity                                                              */
 /* ------------------------------------------------------------------ */
 
-/*
- * `config` is the first member so the SDK mirror sits at entity offset 0
- * (matching the vendor entity layout); get_params() returns &config.
- * AFS's clean "entity" is the opaque afs_clean_state_t; it owns no separate
- * shared context, so only the live parameter block pointer is kept here.
- */
+/* `config` is first so the SDK mirror sits at entity offset 0, matching the
+ * vendor layout; get_params() returns &config. */
 typedef struct afs_shim_entity {
     fwi_afs_param_t         config;  /* SDK mirror at offset 0                */
     afs_clean_state_t  *clean;   /* clean-room instance                   */
@@ -160,9 +109,8 @@ static void map_params(afs_clean_params_t *c, const fwi_afs_param_t *s)
     c->auto_flag_param = (int)s->auto_afs_flag;
 }
 
-/* Re-publish the SDK mirror into the clean core's live parameter block.  The
- * vendor entity is read live every frame, so this runs on set and again on
- * every run (the framework may write the mirror through get_params). */
+/* Runs on set and on every run: the framework may write the mirror through
+ * get_params, and the vendor reads it live each frame. */
 static void sync_params(afs_shim_entity_t *e)
 {
     if (e->params)
@@ -172,39 +120,14 @@ static void sync_params(afs_shim_entity_t *e)
 /* ------------------------------------------------------------------ */
 /* SDK tuning/config corpus -> Afs parameter block                     */
 /* ------------------------------------------------------------------ */
-/*
- * The vendor algorithm never sees isp_lib_context directly: the framework
- * projects it onto afs_param_t before each frame.  The projection lives in the
- * framework (not the algorithm archive), and is mirrored
- * here so an integration can drive the clean core from the corpus alone:
- *
- *   vendor AFS context-update step  (once, on config change)
- *     flicker_ratio    <- isp_tunning_settings.flicker_ratio
- *     flicker_type_ini <- isp_tunning_settings.flicker_type
- *     test_cfg.isp_test_mode <- isp_test_settings.isp_test_mode
- *     test_cfg.afs_en  <- isp_test_settings.afs_en
- *
- *   vendor per-frame AFS param step (every frame)
- *     isp_platform_id  <- module_cfg.isp_platform_id
- *     afs_frame_id     <- af_frame_cnt
- *     afs_sensor_info  <- sensor_info   (whole descriptor)
- *
- * flicker_mode is deliberately NOT projected: the vendor framework never
- * writes afs_param->flicker_mode in either the deployed v521 or the v833
- * source, so the shim leaves it to the caller's get-params mirror.
- */
+/* Mirrors the framework's context -> afs_param_t projection; flicker_mode is
+ * never written by the vendor. Field mapping: docs/shim-mappings.md#afs */
 static void apply_ctx_cfg(fwi_afs_param_t *p, const struct fwi_isp_ctx *c)
 {
-    /* H "single source" (task 1 step 2): struct isp_lib_context is now the
-     * generated fwi_isp_ctx record; field names below follow that rename
-     * (mechanical, no behaviour change -- this writeback path is otherwise
-     * dead in the new framework, which drives AFS through manage.c's own
-     * adapter instead, but must still compile). */
+    /* Unused by the framework (manage.c has its own adapter); kept compiling. */
     p->platform_id = (int32_t)c->hw_cfg.platform_id;
     p->afs_frame_id = (int32_t)c->af_frame_count;
-    /* fwi_sensor_state_t is a different (renamed-field) struct from the SDK's
-     * own isp_sensor_info_t; translate the fields this dead writeback path's
-     * struct actually holds (no direct assignment is possible any more). */
+    /* fwi_sensor_state_t field names differ from afs_sensor_info's; copy by field. */
     memset(&p->afs_sensor_info, 0, sizeof(p->afs_sensor_info));
     p->afs_sensor_info.name = c->sensor.name;
     p->afs_sensor_info.hts = c->sensor.hts;
@@ -256,15 +179,8 @@ static fwi_detected_flicker_type_e to_sdk_flicker(int clean_type)
     }
 }
 
-/*
- * Result writeback.  The algorithm's only output is the flicker type, so the
- * SDK struct it writes is afs_result_t.  The framework then copies that value
- * into ae_settings.flicker_type in the vendor AFS run stage; when a context is linked
- * the shim performs the same copy so the clean path is observable end to end.
- * Frames < 3 and unknown modes leave detected_type at -1: the clean core wrote
- * nothing, so the SDK result (which is persistent, like the framework's
- * afs_result) is left untouched, exactly as the vendor object leaves it.
- */
+/* detected_type -1 (frames < 3, unknown mode) leaves the persistent result as
+ * is; a linked ctx also gets ae_ctl.flicker_type, as the vendor run stage does. */
 static void map_result_to_sdk(afs_shim_entity_t *e, fwi_afs_result_t *result,
                               const afs_clean_result_t *cr)
 {
@@ -320,11 +236,8 @@ static int32_t shim_run(void *obj, fwi_afs_stats_t *data, fwi_afs_result_t *resu
 
     sync_params(e);
 
-    /*
-     * A null SDK stats handle, or a null inner stats pointer, is fed to the
-     * clean core as "no statistics" (return -1, detected_type = 50) rather
-     * than dereferenced; the vendor would fault on the inner null.
-     */
+    /* Null stats -> "no statistics" (rc -1, detected_type 50); the vendor
+     * would fault on a null inner pointer. */
     memset(&cs, 0, sizeof(cs));
     if (stats && stats->afs_stats) {
         cs.column_sum  = stats->afs_stats->afs_sum;

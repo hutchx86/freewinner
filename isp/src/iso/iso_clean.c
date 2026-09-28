@@ -1,15 +1,8 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
-/*
- * iso_clean.c - clean-room ISO gain/luminance switchboard.
- *
- * Implements the behaviour specified in spec/iso.md.  The algorithm tuning
- * data arrives at runtime through freeisp_get_tables(); the AF IIR/FIR
- * coefficient banks in blk_af_cfg() are the only compiled-in tables in this
- * file.  See docs/provenance.md for the full provenance record (which lists
- * every compiled-in table in the library and how each was obtained).  Own
- * decomposition, own names.
- */
+/* iso_clean.c - ISO gain/luminance switchboard (spec/iso.md). Tuning data arrives via
+ * freeisp_get_tables(); the AF IIR/FIR banks in blk_af_cfg() are this file's only
+ * compiled-in tables (see docs/provenance.md). */
 #include "iso_clean.h"
 
 #include <math.h>
@@ -215,13 +208,8 @@ struct iso_entity {
     int32_t                  busy_flag;
 };
 
-/*
- * Module-global temporal-denoise warm-up marker (spec 5.3, 6.13).  One word is
- * shared by every instance and holds the frame at which accumulation last
- * (re)started.  The deployed object ships it initialised to 1 and its init never
- * clears it, so the clean core must start at 1 too: a zero start
- * would let rec_en assert one frame earlier than the deployed warm-up window.
- */
+/* Shared temporal-denoise warm-up marker (spec 5.3, 6.13): the frame accumulation last
+ * restarted. Starts at 1 and is never cleared, as deployed; 0 would assert rec_en a frame early. */
 static int32_t s_tdnr_start_frame = 1;
 
 static const iso_dyn_t *pick(const iso_entity_t *e, int32_t trig)
@@ -305,12 +293,8 @@ static void build_arrays(iso_entity_t *e)
         e->lum_axis[i] = p->lum_point[i];
     }
 
-    /*
-     * Gain-indexed array.  Spec 6.2.2 increments the segment index without a
-     * cap; spec 10 flags the resulting one-record overrun.  We cap at the last
-     * configured item (13) so the access stays defined, matching the luminance
-     * builder's documented cap.
-     */
+    /* Spec 6.2.2 increments the segment index uncapped (a one-record overrun, spec 10); cap
+     * at the last configured item (13), matching the luminance builder. */
     j = 0;
     for (x = 0; x < ISO_CURVE_N; x++) {
         int32_t lo, hi;
@@ -1246,28 +1230,16 @@ int iso_set_params(iso_entity_t *e, const iso_params_t *in,
     return 0;
 }
 
-/*
- * Override the frame counter the temporal-denoise warm-up window is measured
- * against.  The framework mutates the frame id in its stored parameter block in
- * place every frame without re-entering set-parameters; the shim forwards the
- * live value here before each run.
- */
+/* Override the warm-up frame counter: the framework updates the frame id in its stored
+ * parameters every frame without re-entering set-parameters; the shim forwards it here. */
 void iso_set_frame_id(iso_entity_t *e, int32_t frame_id)
 {
     if (e != NULL)
         e->param.frame_id = frame_id;
 }
 
-/*
- * Refresh the per-frame inputs the framework rewrites in its stored parameter
- * block in place without re-entering set-parameters: the per-block enable gates
- * it raises *after* the install call, the 2D-denoise core ratios, the frame
- * counter and the colour-to-gray window.  Everything else -- the interpolation
- * arrays, the configured breakpoints and the shared context pointer -- is left
- * as built, because set-parameters is re-entered only when that data changes.
- * The boundary shim calls this before each run so the core reads the live
- * mirror exactly as the deployed core does (spec 11).
- */
+/* Refresh inputs the framework rewrites in place without re-entering set-parameters:
+ * enable gates, 2D-denoise ratios, frame counter, colour-to-gray window (spec 11). */
 void iso_set_live_params(iso_entity_t *e, const iso_params_t *in)
 {
     iso_params_t *dst;

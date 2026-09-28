@@ -1,14 +1,7 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
-/*
- * test_pixel_format.c - host tests for the clean-room pixel-format maps.
- *
- * Behaviour source: spec/media_utils/pixel_format.md sections 3-6.
- * Both directions are checked against the complete documented tables by
- * symbolic name, the default/unknown behaviour is swept over the low value
- * domain plus boundary bit patterns, and the two required RAW asymmetries and
- * the round-trip non-identity sets are asserted exactly.
- */
+/* test_pixel_format.c - host tests for the pixel-format maps (spec
+ * media_utils/pixel_format.md 3-6): full tables, defaults, RAW asymmetries. */
 #include "utils/pixel_format.h"
 
 #include <stddef.h>

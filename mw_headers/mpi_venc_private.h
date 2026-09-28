@@ -1,13 +1,7 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
-/*
- * mpi_venc_private.h - clean-room interface declarations for the eyesee-mpp
- * middleware ABI (VENC subsystem + region hooks).  Declarations only;
- * re-authored from cleanroom/middleware/headers/SPEC.md section 2.12.  These
- * seven symbols are *defined* by the daemon's stub translation unit, so the
- * prototypes here are the signatures those definitions must match.  Nothing
- * here is copied from a vendor header.  See NOT-IMPLEMENTED.md.
- */
+/* VENC and region-hook MPI prototypes; the daemon's stub TU defines these seven
+ * symbols, so the signatures must match. Declarations only. */
 #ifndef FMW_MPI_VENC_PRIVATE_H
 #define FMW_MPI_VENC_PRIVATE_H
 

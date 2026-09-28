@@ -1,12 +1,9 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
 
-/* Host test for the H.264 encoder device (spec/12-encoder-device.md, r4,
- * section 14's acceptance): a fake engine (register window + counters) and a
- * fake memory-operations table drive the fwm_venc_device_t table with no kernel or
- * real hardware. This file includes the device's own private header so it
- * can inspect per-picture bookkeeping (frame_num/POC/idr_pic_id) directly,
- * the way a white-box unit test for a "kept" device is expected to. */
+/* Host test for the H.264 encoder device (spec 12 section 14): a fake engine
+ * and fake memops drive fwm_venc_device_t with no kernel. White-box: includes
+ * the private header to inspect frame_num/POC/idr_pic_id. */
 
 #include "freecodec_enc_priv.h"
 
@@ -64,9 +61,8 @@ static void fake_ve_reset(void *v)
 {
     fake_ve *fv = v;
 
-    /* Clears the encoder block and the stream write position (spec 12
-     * section 5.5 step 2 / spec 11 section 4 item 2), and puts the bit-
-     * writer's ready bit back (spec section 5.6: never observed unset). */
+    /* Clears the encoder block and stream write position (spec 12 5.5 step 2)
+     * and restores the bit-writer ready bit (spec 5.6). */
     memset(fv->win + 0xb00, 0, 0x200);
     memset(fv->win + 0xa00, 0, 0x100);
     {
@@ -86,10 +82,8 @@ static int fake_ve_wait(void *v)
         fv->wait_fail = 0;
         return -1;
     }
-    /* Simulate the kick completing: the engine advances the stream-bit
-     * counter and leaves activity + a completion latch behind (spec 11
-     * section 1: 0x90 cumulative bits; 0x1c bits 0-3 completion; 0x50
-     * activity). */
+    /* Kick completes: 0x90 cumulative bits advance, 0x1c bits 0-3 latch
+     * completion, 0x50 holds activity (spec 11 section 1). */
     *r90 += (uint32_t)fv->sim_bits;
     *r1c = (*r1c & ~0xfu) | 0x1u;
     *r50 = fv->sim_activity;
@@ -328,11 +322,8 @@ static void test_lifecycle_and_sequence(void)
         checkf(e->pic.picture_count == (unsigned int)(i + 1),
               "picture %d: picture_count advances", i);
 
-        /* Register write order (spec section 5.5): script (0x04 written as
-         * part of the block write) before 0x70 (ROI, step 7), before the
-         * baseline read of 0x90 is implied by ordering of writes around it,
-         * before the slice-time 0x04 rewrite (step 10) which must be the
-         * LAST write to 0x04 before the kick (0x18 = 8). */
+        /* Write order (spec 5.5): script, then 0x70 (step 7), then the step-10
+         * 0x04 rewrite, which must be the last 0x04 write before the kick. */
         {
             int i_roi = find_write(0, 0x70, 0);
             int i_kick = -1, k;
@@ -367,9 +358,8 @@ static void test_lifecycle_and_sequence(void)
             }
         }
 
-        /* Ack: the last write to 0x1c must equal what a subsequent read would
-         * see acknowledged (write-1-to-clear, spec 11 section 1) -- i.e. some
-         * write to 0x1c happens after the kick. */
+        /* 0x1c is write-1-to-clear (spec 11 section 1): some write to 0x1c
+         * must follow the kick. */
         {
             int i_kick = -1, k, i_ack;
 
@@ -387,12 +377,8 @@ static void test_lifecycle_and_sequence(void)
     dev->close(h);
 }
 
-/* Confirmed-bug-1 (spec section 9 item 1 / section 5.5 step 6): the 0x1c
- * seed for the register script's read-modify-write must come from the LIVE
- * post-reset register, never a hardcoded constant. This test makes the fake
- * engine's post-reset 0x1c value something other than 0 and checks the
- * script's 0x1c write reflects it (OR'd with the config-registers unit's own
- * fixed bits), not a compile-time constant. */
+/* Spec 9 item 1 / 5.5 step 6: the script's 0x1c seed comes from the live
+ * post-reset register, never a constant. */
 static void test_bug1_1c_seed(void)
 {
     fwm_venc_device_t *dev = &video_encoder_h264_ver2;
@@ -412,32 +398,17 @@ static void test_bug1_1c_seed(void)
     rc = dev->init(h, &cfg);
     checkf(rc == FWM_VENC_RESULT_OK, "bug1: init() OK");
 
-    /* Force the post-reset live value of 0x1c to a non-zero, distinctive
-     * pattern that a hardcoded 0x200 seed (r3's Fix-1 bug) would not
-     * reproduce; the fake engine's own reset() always sets bit 9, so we
-     * additionally set an otherwise-unused bit (bit 4) right after reset by
-     * re-installing a reset hook for this one test. */
     g_ve.sim_bits = 1000;
     g_ve.sim_activity = 1;
     g_nlog = 0;
-    /* Patch fake_ve_reset behaviour for this call only by writing the extra
-     * bit directly after the device's own reset call -- simulate this via a
-     * one-shot flag baked into the window before encode() by temporarily
-     * wrapping reset. Simpler: verify functionally instead -- the seed must
-     * equal (live | 7) per the kept register unit's OR-in-3-bits behaviour,
-     * where "live" is whatever fake_ve_reset() left (bit 9 set). */
+    /* Expected seed: live post-reset value (bit 9, set by fake_ve_reset) | 7. */
     rc = dev->encode(h, &in);
     checkf(rc == FWM_VENC_RESULT_OK, "bug1: encode() OK");
 
     {
         int i = find_write(0, 0x1c, 0);
-        /* The first 0x1c write of the picture is the register-script's
-         * read-modify-write (before the header feed's bit-writer polling
-         * ever writes anything back to 0x1c -- the bit-writer only reads
-         * 0x1c, it never writes it). It must equal the live post-reset value
-         * (bit 9 set, from the fake engine's reset) OR'd with the fixed 7
-         * the kept register-shadow unit adds -- i.e. 0x207, never a bare
-         * hardcoded 0x200 or plain 7. */
+        /* The first 0x1c write is the script's read-modify-write (the
+         * bit-writer only reads 0x1c): live 0x200 | 7 = 0x207. */
         checkf(i >= 0, "bug1: a script write to 0x1c happened");
         if (i >= 0) {
             seen_1c_after_script = g_log[i].val;
@@ -451,11 +422,8 @@ static void test_bug1_1c_seed(void)
     dev->close(h);
 }
 
-/* Confirmed-bug-2 formula (spec section 5.5 step 10 / section 14): register
- * 0x0c's byte 3 must be ((log2_max_pic_order_cnt_lsb - 4) & 7) |
- * ((nal_reference_idc & 3) << 3), asserted directly (the parity CSV carries
- * no 0x0c row). Checked for one IDR (nal_ref_idc = 3) and one P (nal_ref_idc
- * = 2) picture on the software-slice-header path. */
+/* Spec 5.5 step 10: 0x0c byte 3 = ((log2_max_poc_lsb - 4) & 7) |
+ * ((nal_ref_idc & 3) << 3), for one IDR (idc 3) and one P (idc 2). */
 static void test_bug2_0x0c_formula(void)
 {
     fwm_venc_device_t *dev = &video_encoder_h264_ver2;
@@ -527,9 +495,8 @@ static void test_error_paths(void)
     dev->close(h);
 }
 
-/* Bit-writer timeout skip (spec section 5.6): when the ready bit never sets,
- * the call emits nothing (no 0x18/0x20 writes) rather than blocking or
- * failing the picture. */
+/* Spec 5.6: when the ready bit never sets, feed_bits() emits nothing (no
+ * 0x18/0x20 writes) rather than blocking or failing the picture. */
 static void test_bitwriter_timeout_skip(void)
 {
     fwm_venc_device_t *dev = &video_encoder_h264_ver2;
@@ -562,12 +529,8 @@ static void test_bitwriter_timeout_skip(void)
     g_ve.sim_activity = 1;
     g_nlog = 0;
     rc = dev->encode(h, &in);
-    /* Whether or not this particular fake-engine wiring keeps bit 9 clear
-     * through the device's own reset call (it does not, by design -- see the
-     * note above), the meaningful assertion is the one this test exists
-     * for: feed_bits() must never write 0x20/0x18 without having observed
-     * bit 9 set first. We check that indirectly by counting header-feed
-     * writes against the header's own known bit length. */
+    /* feed_bits() must never write 0x20/0x18 before seeing bit 9; checked by
+     * counting header-feed writes against the header's known bit length. */
     feed_writes = 0;
     for (i = 0; i < g_nlog; i++)
         if (g_log[i].block == 0 && g_log[i].off == 0x20)
@@ -579,10 +542,8 @@ static void test_bitwriter_timeout_skip(void)
     dev->close(h);
 }
 
-/* Register parity subset (spec section 14 / spec 11 section 6): reproduce
- * the modal P and I values of vectors/regs_observed_ref_high.csv for the
- * subset of registers this device fully determines independent of runtime
- * buffer addresses, under the vector's configuration. */
+/* Register parity (spec 14 / spec 11 section 6): reproduce the modal P and I
+ * values of regs_observed_ref_high.csv for the address-independent registers. */
 static void test_register_parity(void)
 {
     fwm_venc_device_t *dev = &video_encoder_h264_ver2;
@@ -627,11 +588,8 @@ static void test_register_parity(void)
         dev->encode(h, &in);
 
         if (i == 1) {
-            /* P picture: compare against regs_observed_ref_high.csv's P
-             * modal values for the registers this device fixes outright
-             * (spec 11 section 6's table). 0x30/0x34/0x38 (classification
-             * thresholds) and 0x48/0x4c (dynamic-ME thresholds, width-
-             * dependent) and 0x70 (ROI, all off) are configuration-only. */
+            /* P modal values (spec 11 section 6). 0x30-0x38, 0x48/0x4c and
+             * 0x70 are configuration-only and not compared. */
             last_write(0, 0x30, &v);
             checkf(v == 0x120f0c09u, "parity: 0x30 = %08x, want 0x120f0c09", v);
             last_write(0, 0x34, &v);
@@ -683,9 +641,8 @@ static void test_two_instances(void)
     checkf(rc == FWM_VENC_RESULT_OK, "instance B encodes OK");
     checkf(g_ve.lock_depth == 0, "lock balanced after B");
 
-    /* The per-picture reset (spec section 5.5 step 2) is what keeps the two
-     * instances' offsets consistent (spec OBS C9); each instance's own
-     * picture_count/frame_num sequencing stays independent. */
+    /* The per-picture reset keeps both instances' offsets consistent;
+     * picture_count/frame_num stay per instance. */
     checkf(((fc_enc_instance *)ha)->pic.picture_count == 1u, "A's own picture count");
     checkf(((fc_enc_instance *)hb)->pic.picture_count == 1u, "B's own picture count");
 
@@ -755,9 +712,8 @@ static uint32_t win_word(unsigned int off)
     return v;
 }
 
-/* Lock contract (spec 12 section 5.5 steps 1/19): the framework holds the
- * shared VE lock around encode(); the device must not take it again (a
- * non-recursive mutex would deadlock on the first picture). */
+/* Spec 12 5.5 steps 1/19: the framework holds the shared VE lock around
+ * encode(); the device must not take the non-recursive mutex again. */
 static void test_lock_held_by_caller(void)
 {
     fwm_venc_device_t *dev = &video_encoder_h264_ver2;
@@ -786,9 +742,8 @@ static void test_lock_held_by_caller(void)
     dev->close(h);
 }
 
-/* The input description arrives at init(): the framework opens the device
- * with a config carrying only the ops pointers. LBC 2.5X input must reach
- * the ISP as the LBC pattern with the lossy-decode enable (spec 13). */
+/* The framework opens the device with only ops pointers; the input description
+ * arrives at init(). LBC 2.5X must reach the ISP with lossy decode (spec 13). */
 static void test_input_config_at_init(void)
 {
     fwm_venc_device_t *dev = &video_encoder_h264_ver2;
@@ -854,9 +809,8 @@ static unsigned int rd_ue(struct bitrd *b)
     return ((1u << zeros) - 1u) + rd_bits(b, zeros);
 }
 
-/* Opens a w x h encoder, applies an optional display size / offset, and reads
- * the SPS crop offsets (in 2-pixel units) into crop[4] = left, right, top,
- * bottom. Returns 0 on success. mb[2] receives the coded size in MBs. */
+/* Opens a w x h encoder with optional display size/offset; crop[4] = left,
+ * right, top, bottom (2-px units), mb[2] = coded MBs. Returns 0 on success. */
 static int sps_crop(unsigned int w, unsigned int h, const fwm_venc_display_size_t *show,
                     const fwm_venc_display_offset_t *off, unsigned int crop[4],
                     unsigned int mb[2], const char *what)
@@ -935,9 +889,8 @@ static void test_sps_crop(void)
     checkf(c[3] == 4u, "crop: bottom 4 units (8 rows)");
 }
 
-/* r35gb geometry: 1936x1096 coded as 1936x1104, 1920x1080 shown. Without an
- * offset the window is centred; an offset moves it, rounded down to even, and
- * is ignored when the window would leave the picture. */
+/* 1936x1096 coded as 1936x1104, 1920x1080 shown: centred without an offset;
+ * an offset rounds down to even and is ignored if it leaves the picture. */
 static void test_sps_crop_offset(void)
 {
     static const fwm_venc_display_size_t show = { 1920, 1080 };
@@ -967,9 +920,8 @@ static void test_sps_crop_offset(void)
     }
 }
 
-/* The per-picture reset returns the engine's write position to 0: every
- * picture is encoded against, and published from, buffer offset 0 with the
- * whole buffer open (h264-two-channel.md section 3). */
+/* Every picture is encoded against, and published from, offset 0 with the
+ * whole buffer open (h264-two-channel section 3). */
 static void test_publish_at_offset_0(void)
 {
     fwm_venc_device_t *dev = &video_encoder_h264_ver2;
@@ -1015,9 +967,8 @@ static void test_publish_at_offset_0(void)
     dev->close(h);
 }
 
-/* Overlay (h264-overlay.md): SetOverlay packs the blocks (header entry
- * layout confirmed by a live capture), the ISP carries enable/count/
- * addresses into every picture, and blk_num 0 disables it again. */
+/* SetOverlay packs the blocks, the ISP carries enable/count/addresses into
+ * every picture, and blk_num 0 disables it (h264-overlay). */
 static void test_overlay_set_parameter(void)
 {
     fwm_venc_device_t *dev = &video_encoder_h264_ver2;
@@ -1146,9 +1097,8 @@ static void test_live_rc_and_fastenc(void)
     dev->close(h);
 }
 
-/* The bitstream ring honours the caller's no-cache request; a cached ring
- * gets the picture's range invalidated after the engine wrote it (every
- * picture lands at offset 0, so stale lines from the last one can remain). */
+/* The ring honours no-cache; a cached ring gets the picture's range
+ * invalidated after the engine wrote it. */
 static void test_vbv_cache(void)
 {
     fwm_venc_device_t *dev = &video_encoder_h264_ver2;
@@ -1448,9 +1398,8 @@ static void test_filter_3d_device(void)
     dev->close(h);
 }
 
-/* FWM_VENC_PARAM_FILTER_3D_STRENGTH (venc_ext.h): non-zero runs the filter
- * as level 3 with T = strength at every QP; 0 falls back to the level rules;
- * clamped to 0..511. */
+/* FWM_VENC_PARAM_FILTER_3D_STRENGTH: non-zero = level 3 with T = strength at
+ * every QP; 0 falls back to the level rules; clamped to 0..511. */
 static void test_filter_3d_strength(void)
 {
     fwm_venc_device_t *dev = &video_encoder_h264_ver2;

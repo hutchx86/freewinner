@@ -1,15 +1,7 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
-/*
- * vencoder.h - the daemon's view of the encoder framework: forwards the
- * records and value sets to the codec's single definition
- * (codec/include/freecodec/venc_types.h) and declares the framework entry
- * points the daemon calls. The function names are fixed link symbols; every
- * type name is this project's own. See NOT-IMPLEMENTED.md.
- *
- * The daemon build never uses -fshort-enums for this TU (it shares the codec
- * ABI); venc_types.h asserts the 4-byte enum widths and every record layout.
- */
+/* Daemon view of the encoder framework: forwards the types to freecodec/venc_types.h
+ * and declares the entry points (fixed link symbols). Built without -fshort-enums. */
 #ifndef FMW_VENCODER_H
 #define FMW_VENCODER_H
 

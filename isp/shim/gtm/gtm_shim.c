@@ -1,23 +1,15 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
-/*
- * gtm_shim.c - GTM shim.
- *
- * Presents the clean-room GTM core (src/gtm/gtm_clean.c) to the Yi/mediad ISP
- * framework through the SDK isp_gtm_core_ops_t contract.  Integration glue
- * only: no algorithm is implemented here.  See DESIGN.md.
- */
+/* gtm_shim.c - glue presenting the clean GTM core (src/gtm/gtm_clean.c) through
+ * the fwi_gtm_core_ops_t contract; no algorithm here. See DESIGN.md.
+ * Field mapping: docs/shim-mappings.md#gtm */
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-/*
- * Clean-room side.  The clean entry points share names with the SDK ones
- * (gtm_init/gtm_exit) so rename the clean spellings for this translation unit
- * only.  The clean result/stats/params types are already prefixed
- * (gtm_clean_*), so they do not collide with the SDK gtm_* types.
- */
+/* Clean entry points share the SDK names; rename them for this TU (clean types
+ * are already gtm_clean_* prefixed). */
 #define gtm_init       clean_gtm_init
 #define gtm_exit       clean_gtm_exit
 #define gtm_get_params clean_gtm_get_params
@@ -30,20 +22,14 @@
 #undef gtm_set_params
 #undef gtm_run
 
-/*
- * Framework side: the generated fwi_* ABI.  The shim exports gtm_init/gtm_exit
- * and a fwi_gtm_core_ops_t vtable; the framework calls it directly.
- */
+/* Framework side: the generated fwi_* ABI. */
 #include "fwi_isp_api.h"
 #include "freeisp/isp_dims.h"
 
 #include "gtm_shim.h"
 
-/*
- * The SDK stats window array is ISP_AE_ROW * ISP_AE_COL (= 16*24 = 384 at
- * ISP_VERSION 521) words and the clean win_avg is GTM_NWIN = 384, so the byte
- * copy in map_stats() is exact.  Guard the assumption at compile time.
- */
+/* map_stats() byte-copies: SDK windows (16x24) must equal GTM_NWIN and the
+ * histogram length GTM_NCURVE. */
 typedef char gtm_win_size_check[
     (ISP_AE_ROW * ISP_AE_COL == GTM_NWIN) ? 1 : -1];
 typedef char gtm_hist_size_check[
@@ -77,11 +63,8 @@ static void ensure_defaults(void)
     if (g_defaults_ready)
         return;
 
-    /*
-     * Pilot placeholder data only.  Shaped so every clean builder keeps its
-     * indices in range; real tuning must be installed with
-     * gtm_shim_set_tables() before gtm_init().
-     */
+    /* Placeholder data, shaped so every clean builder stays in range; real
+     * tuning comes via gtm_shim_set_tables(). */
     for (r = 0; r < GTM_NCURVE; r++) {
         g_guide_linear[r] = (int16_t)(r * 16);
         g_guide_low[r] = (int16_t)(r * 24);
@@ -126,36 +109,12 @@ typedef struct gtm_shim_entity {
     gtm_entity_t *clean;    /* clean-room instance                           */
 } gtm_shim_entity_t;
 
-/*
- * The clean parameter block embeds its own curve/curve_prev/gamma_lut storage,
- * so no separate clean context has to be carried here (unlike ISO, whose
- * params keep a pointer to an embedded iso_ctx_t).
- */
-
 /* ------------------------------------------------------------------ */
 /* Parameter mapping: gtm_param_t -> gtm_clean_params_t                */
 /* ------------------------------------------------------------------ */
 
-/*
- * GTM_HEQ_* indices in gtm_ini.gtm_cfg[] are matched to the behaviour actually
- * implemented by the deployed object (see DESIGN.md):
- *
- *   [0] GTM_HEQ_GAIN        -> range_max
- *   [1] GTM_HEQ_EQ_RATIO    -> eq_gain
- *   [2] GTM_HEQ_EQ_SMOOTH   -> cover_bias
- *   [3] GTM_HEQ_BLACK       -> black_level
- *   [4] GTM_HEQ_WHITE       -> white_level
- *   [5] GTM_HEQ_BLACK_ALPHA -> white_slope  (highlight ramp term)
- *   [6] GTM_HEQ_WHITE_ALPHA -> black_slope  (shadow ramp term)
- *   [7] GTM_HEQ_GAMMA_IND   -> pre_gamma_offset
- *   [8] GTM_HEQ_GAMMA_PLUS  -> unused
- *
- * `gtm_ini.AutoAlphaEn`, `BrightPixellValue` and `DarkPixelValue` are
- * intentionally not mapped: the deployed object clears `AutoAlphaEn` to 0 at
- * the top of its histogram path before it reads either pixel value, and the
- * clean core's auto-alpha ramp is correspondingly hard-disabled, so only the
- * AutoAlphaEn == 0 behaviour is reachable.
- */
+/* gtm_cfg[] indices follow the deployed object's behaviour (note the swapped
+ * alpha/slope pair). Field mapping: docs/shim-mappings.md#gtm */
 static void map_tuning_scalars(gtm_clean_params_t *p, const fwi_gtm_param_t *s)
 {
     p->mode = (int)s->gtm_init.gtm_type;
@@ -309,24 +268,8 @@ static int32_t shim_set(void *obj, fwi_gtm_param_t *param, fwi_gtm_result_t *res
     return 0;
 }
 
-/*
- * On-camera real-input capture: FREEISP_GTM_DUMP=<path>.
- *
- * Inert unless the env var is set.  The path is opened once, lazily, on the
- * first run(); one fixed-size record is appended per run():
- *
- *   [gtm_param_t]                 offset 0      sizeof(gtm_param_t)          276
- *   [struct isp_gtm_stats_s]      offset 276    sizeof(struct isp_gtm_stats_s) 7172
- *   [HW_U16 gamma_tbl[3072]]      offset 7448   ISP_GAMMA_TBL_LENGTH*2      6144
- *   [HW_U16 drc_table[256]]       offset 13592  ISP_DRC_TBL_SIZE*2           512
- *   [HW_U16 drc_table_last[256]]  offset 14104  ISP_DRC_TBL_SIZE*2           512
- *
- * total 14616 bytes.  The gtm_param_t's three table pointers cannot be
- * replayed from the struct alone, so the pointed-to buffers are captured
- * inline (a NULL pointer is recorded as a zeroed buffer).  These are the exact
- * inputs the shim's map_tuning()/map_stats() consume.  A value of "1" selects
- * /tmp/freeisp_gtm_dump.bin.
- */
+/* Input capture when FREEISP_GTM_DUMP=<path> is set: param, stats and the three
+ * pointed-to tables per run. Record layout: docs/shim-mappings.md#gtm */
 static void gtm_dump_zeros(FILE *f, size_t n)
 {
     static const unsigned char z[256];
@@ -382,9 +325,8 @@ static void gtm_dump_record(const gtm_shim_entity_t *e, const fwi_gtm_stats_desc
 
 static int32_t shim_run(void *obj, fwi_gtm_stats_t *data, fwi_gtm_result_t *result)
 {
-    /* The fwi vtable hands over the stats data itself; keep the descriptor
-     * view for the code below.  GTM rejects a null stats handle (-1), so
-     * null data maps to a null descriptor, not an empty one. */
+    /* GTM rejects null stats (-1), so null data maps to a null descriptor,
+     * not an empty one. */
     fwi_gtm_stats_desc_t sd = { .gtm_stats = data };
     const fwi_gtm_stats_desc_t *stats = data ? &sd : NULL;
     gtm_shim_entity_t *e = (gtm_shim_entity_t *)obj;

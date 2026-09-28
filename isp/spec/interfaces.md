@@ -75,14 +75,14 @@ mapping functions consume.
 
 | Module | Env var | Record layout | Bytes |
 | --- | --- | --- | --- |
-| AE  | `FREEISP_AE_DUMP`  | `[ae_param_t][isp_ae_stats_s]` | 12116 |
-| GTM | `FREEISP_GTM_DUMP` | `[gtm_param_t][isp_gtm_stats_s][u16 gamma_tbl 3072][u16 drc_table 256][u16 drc_table_last 256]` | 14616 |
-| AWB | `FREEISP_AWB_DUMP` | `[awb_param_t][isp_awb_stats_s]` | 37592 |
-| ISO | `FREEISP_ISO_DUMP` | `[iso_param_t][struct isp_lib_context]` | 273712 |
+| AE  | `FREEISP_AE_DUMP`  | `[ae_param_t][fwi_ae_stats_t]` | 12116 |
+| GTM | `FREEISP_GTM_DUMP` | `[gtm_param_t][fwi_gtm_stats_t][u16 gamma_tbl 3072][u16 drc_table 256][u16 drc_table_last 256]` | 14616 |
+| AWB | `FREEISP_AWB_DUMP` | `[awb_param_t][fwi_awb_stats_t]` | 37592 |
+| ISO | `FREEISP_ISO_DUMP` | `[iso_param_t][struct fwi_isp_ctx]` | 273712 |
 
 The env value is a path; the legacy value `1` selects
 `/tmp/freeisp_<mod>_dump.bin`. `gtm_param_t`'s three table pointers and
-`struct isp_lib_context`'s `module_cfg` table pointers are not valid across a
+`struct fwi_isp_ctx`'s (vendor: `isp_lib_context`) `module_cfg` table pointers are not valid across a
 capture boundary: GTM's pointed buffers are captured inline, and ISO's pointers
 are re-pointed at side-local buffers by the replay.
 
