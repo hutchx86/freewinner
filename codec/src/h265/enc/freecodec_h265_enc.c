@@ -140,7 +140,9 @@ static int alloc_buffers(fc_h265_instance *e)
             goto fail;
         if (alloc_one(e, &e->bufs.aux[i], fc_aux_plane_bytes(g->dst_w, g->dst_h)) != 0)
             goto fail;
-        if (alloc_one(e, &e->bufs.tmvp[i], 0x1000u) != 0)
+        /* MV field: align16(ceil(w/32)) x ceil(h/32) x 16 (12 section 8.1). */
+        if (alloc_one(e, &e->bufs.tmvp[i],
+                      ((wc + 15u) & ~15u) * h32 * 16u) != 0)
             goto fail;
     }
 
@@ -413,9 +415,21 @@ static int enc_encode(void *h, fwm_venc_input_picture_t *in)
     fcfg.bitstream_offset = 0u;
     fcfg.bitstream_size = (unsigned int)BitStreamBufferSize(e->bufs.bs);
     fcfg.ctu_info_phy = (unsigned int)((uintptr_t)e->bufs.ctu_info.phy >> 8);
-    if (n >= 2u) {
-        fcfg.tmvp_write_phy = (unsigned int)((uintptr_t)e->bufs.tmvp[n % 2u].phy >> 8);
-        fcfg.tmvp_read_phy = (unsigned int)((uintptr_t)e->bufs.tmvp[(n + 1u) % 2u].phy >> 8);
+    /* MV fields (12 section 8.1): the reconstruction slot's field is written
+     * from the first P (its absence left the engine DMAing to address 0 and the
+     * next P reading an unwritten field — the P-frame corruption); the reference
+     * slot's field is read once the read is enabled. Read off on the first P
+     * after an IDR; write off on the P before the next IDR. */
+    {
+        unsigned int intra = e->params.intra_period ? e->params.intra_period : 40u;
+        unsigned int poc = e->poc_lsb;
+        int mv_write_en = !is_i && (((poc + 1u) % intra) != 0u);
+        int mv_read_en  = !is_i && ((poc % intra) != 1u);
+
+        fcfg.tmvp_write_phy = mv_write_en
+            ? (unsigned int)((uintptr_t)e->bufs.tmvp[rec_slot].phy >> 8) : 0u;
+        fcfg.tmvp_read_phy = mv_read_en
+            ? (unsigned int)((uintptr_t)e->bufs.tmvp[ref_slot].phy >> 8) : 0u;
     }
     fcfg.mb_rc_phy = (unsigned int)((uintptr_t)e->bufs.mbrc.phy >> 8);
     fcfg.ref_y_phy = (unsigned int)((uintptr_t)e->bufs.full[ref_slot].phy >> 8);

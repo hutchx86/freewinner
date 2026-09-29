@@ -290,11 +290,14 @@ static void test_encode_sequence(void)
         checkf((rd(0x68) & 0x3ffffu) == (i == 0 ? 0x18a00u : 0x31400u),
                "picture %d: lambda", i);
 
-        /* TMVP workspaces appear only once a reconstruction exists. */
-        if (i < 2)
-            checkf(rd(0x60) == 0 && rd(0x64) == 0, "picture %d: TMVP zero", i);
+        /* MV fields (12 section 8.1): the IDR has neither; the first P writes
+         * its field (0x64) but does not read (0x60); later P frames do both. */
+        if (i == 0)
+            checkf(rd(0x60) == 0 && rd(0x64) == 0, "picture %d: no MV fields", i);
+        else if (i == 1)
+            checkf(rd(0x60) == 0 && rd(0x64) != 0, "picture %d: MV write only", i);
         else
-            checkf(rd(0x60) != 0 && rd(0x64) != 0, "picture %d: TMVP live", i);
+            checkf(rd(0x60) != 0 && rd(0x64) != 0, "picture %d: MV read+write", i);
 
         /* Bitstream bounds: 8 MB default ring, offsets in bits. */
         checkf(rd(0x80) != 0 && rd(0x84) != 0, "picture %d: bitstream bounds", i);

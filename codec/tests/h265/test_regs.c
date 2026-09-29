@@ -113,6 +113,9 @@ static void test_config_a(void)
         c.qp = qps[i];
         c.rc_mode = FWM_VENC_H265_RC_CBR;
         c.dynamic_me_en = is_i[i] ? 0 : 1;
+        /* MV fields: write from the first P, read from the second (intra 40). */
+        c.tmvp_write_phy = is_i[i] ? 0u : 0x4500u;
+        c.tmvp_read_phy = (is_i[i] || i == 1) ? 0u : 0x4500u;
         c.lambda = is_i[i] ? 0x18a00u : 0x31400u;
         c.lambda_sqrt = is_i[i] ? 635u : 898u;
         c.lambda_c = is_i[i] ? 0x18a00u : 0x138b7u;
@@ -166,6 +169,9 @@ static void test_config_b(void)
         c.qp = qps[i];
         c.rc_mode = FWM_VENC_H265_RC_CBR;
         c.dynamic_me_en = is_i[i] ? 0 : 1;
+        /* MV fields: write from the first P, read from the second (intra 40). */
+        c.tmvp_write_phy = is_i[i] ? 0u : 0xcd00u;
+        c.tmvp_read_phy = (is_i[i] || i == 1) ? 0u : 0xcd00u;
         c.lambda = is_i[i] ? 0x18a00u : 0x31400u;
         c.lambda_sqrt = is_i[i] ? 635u : 898u;
         c.th_bright = 0xc8u;

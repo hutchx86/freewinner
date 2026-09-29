@@ -103,9 +103,13 @@ void freecodec_h265_config_registers(const freecodec_h265_frame_cfg *cfg,
     /* 0x10 ME control (11 section 3.3): cache_bl8 always; TMVP write disabled
      * only on the first picture and read only while no reconstruction exists
      * (picture_index < 2); intra prediction disabled on P. */
+    /* 0x10 ME control (11 section 3.3 / 12 section 8.1): bit 23 = MV write
+     * disabled, bit 22 = MV read disabled. Disabled iff the matching MV field
+     * address is not programmed; the device gates those by the POC-modulo rule
+     * (read off on the first P after an IDR, write off on the P before one). */
     regs[0x10u / 4u] = field(1u, 27, 1)
-                     | field((cfg->picture_index == 0u) ? 1u : 0u, 23, 1)
-                     | field((cfg->picture_index < 2u) ? 1u : 0u, 22, 1)
+                     | field((cfg->tmvp_write_phy == 0u) ? 1u : 0u, 23, 1)
+                     | field((cfg->tmvp_read_phy == 0u) ? 1u : 0u, 22, 1)
                      | field(cfg->is_i ? 0u : 1u, 0, 1);
 
     /* 0x28 cyclic intra refresh: off on this path (11 section 3.4). */
@@ -156,9 +160,10 @@ void freecodec_h265_config_registers(const freecodec_h265_frame_cfg *cfg,
     regs[0x48u / 4u] = field(th[0], 0, 10) | field(th[1], 16, 10);
     regs[0x4cu / 4u] = field(th[2], 0, 10) | field(th[3], 16, 10);
 
-    /* 0x60/0x64 TMVP write / read workspaces. */
-    regs[0x60u / 4u] = cfg->tmvp_write_phy;
-    regs[0x64u / 4u] = cfg->tmvp_read_phy;
+    /* 0x60 = MV field of the reference picture (read); 0x64 = MV field of the
+     * reconstruction picture (write) (12 section 8.1). */
+    regs[0x60u / 4u] = cfg->tmvp_read_phy;
+    regs[0x64u / 4u] = cfg->tmvp_write_phy;
 
     /* 0x68 lambda [17:0]; the high 14 bits are unassigned (11 section 7). */
     regs[0x68u / 4u] = cfg->lambda & 0x0003ffffu;

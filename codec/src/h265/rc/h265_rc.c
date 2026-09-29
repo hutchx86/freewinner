@@ -130,7 +130,11 @@ void freecodec_h265_rc_start_picture(freecodec_h265_rc *rc, long frame_index,
         (void)ratio_i;
 
         {
-            double est = gop_budget * ratio_frm / (double)rc->gop_size;
+            /* Measured calibration (spec 10 §3.1): the P budget tracks
+             * avr_frm_size at L ramping 0.30 -> 0.54 -> 0.72 -> 0.96 with the
+             * ratio_p=4 spike. 0.72 is the steady level; the exact adaptation
+             * of L is an open item, so use the steady value. */
+            double est = rc->avr_frm_size * 0.72 * ratio_frm;
 
             if (rc->frame_total > 16 && rc->have_est)
                 est = (9.0 * rc->bits_est_frm + est) / 10.0;
