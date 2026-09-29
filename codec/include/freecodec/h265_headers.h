@@ -91,6 +91,11 @@ int freecodec_h265_build_pps(const freecodec_h265_pps_cfg *cfg,
 int freecodec_h265_build_slice(const freecodec_h265_slice_cfg *cfg,
                                unsigned char *out, int cap, int *out_bits);
 
+/* Slice-header RBSP only (no start code, NAL header or emulation prevention),
+ * for the engine bit-writer; `out_bits` is the exact bit length. */
+int freecodec_h265_build_slice_rbsp(const freecodec_h265_slice_cfg *cfg,
+                                    unsigned char *out, int cap, int *out_bits);
+
 /* Encode one ue(v) / se(v) into a caller buffer (exposed for the tests). */
 int freecodec_h265_write_ue(unsigned char *out, int cap, unsigned int val);
 int freecodec_h265_write_se(unsigned char *out, int cap, int val);

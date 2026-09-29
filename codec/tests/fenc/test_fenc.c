@@ -94,8 +94,10 @@ static void test_create_selection(void)
     check(seam_ver2.open_cfg.memops == seam_fake_memops, "#1 open cfg memops");
     check(seam_ver2.open_cfg.engine_ops == &seam_ve_ops, "#1 open cfg veops");
     check(seam_ver2.open_cfg.engine == seam_ve_self, "#1 open cfg ve self");
+    /* work_mode is the encoder mode, never the codec number (codec 3 would
+     * alias FC_VE_WORK_JPEG_DECODE and mis-route the completion wait). */
     check(seam_last_ve_dec == 0 && seam_last_ve_enc == 1 &&
-          seam_last_ve_format == (unsigned)FWM_VENC_CODEC_H264, "#1 ve config");
+          seam_last_ve_format == (unsigned)FC_VE_WORK_ENCODE, "#1 ve config");
     check(seam_last_ve_afbc == 0 && seam_last_ve_reset == 0, "#1 ve flags");
     check(seam_ve_lock_n == 1 && seam_ve_unlock_n == 1, "#1 version read locked");
     VideoEncDestroy(e);
@@ -123,7 +125,8 @@ static void test_create_selection(void)
     check(seam_h265.open_n == 1 && seam_ver2.open_n == 0 && seam_ver1.open_n == 0,
           "#9 open on h265");
     check(seam_h265.open_ic == 0x1708u, "#9 h265 saw ic version");
-    check(seam_last_ve_format == (unsigned)FWM_VENC_CODEC_H265, "#9 ve work mode");
+    check(seam_last_ve_format == (unsigned)FC_VE_WORK_ENCODE,
+          "#9 ve work mode is encoder (codec 3 must not alias JPEG-decode)");
     VideoEncDestroy(e);
 }
 

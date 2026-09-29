@@ -373,12 +373,15 @@ int freecodec_h265_build_pps(const freecodec_h265_pps_cfg *cfg,
 
 /* ---------------------------------------------------------------- slice -- */
 
-int freecodec_h265_build_slice(const freecodec_h265_slice_cfg *cfg,
-                               unsigned char *out, int cap, int *out_bits)
+/* Build the slice-header RBSP (no start code, no NAL header, no emulation
+ * prevention) and its exact bit length. The engine's bit-writer takes these
+ * RBSP bytes with eptb_disable set, exactly as the H.264 device feeds its
+ * hardware slice header. */
+static int build_slice_rbsp(const freecodec_h265_slice_cfg *cfg,
+                            unsigned char *out, int cap, int *out_bits)
 {
     h265_bw bw;
-    unsigned char ebsp[H265_BW_MAX_BYTES];
-    int el, total, irap;
+    int n, irap;
     unsigned int nal_type;
 
     if (!cfg || !out || cap < 0)
@@ -434,13 +437,40 @@ int freecodec_h265_build_slice(const freecodec_h265_slice_cfg *cfg,
 
     if (bw.overflow)
         return -1;
+    n = bw_bytes(&bw);
+    if (n > cap)
+        return -1;
+    memcpy(out, bw.buf, (size_t)n);
+    if (out_bits != NULL)
+        *out_bits = (int)bw.nbits;       /* exact, byte-alignment included */
+    return n;
+}
+
+int freecodec_h265_build_slice_rbsp(const freecodec_h265_slice_cfg *cfg,
+                                    unsigned char *out, int cap, int *out_bits)
+{
+    return build_slice_rbsp(cfg, out, cap, out_bits);
+}
+
+int freecodec_h265_build_slice(const freecodec_h265_slice_cfg *cfg,
+                               unsigned char *out, int cap, int *out_bits)
+{
+    unsigned char rbsp[H265_BW_MAX_BYTES];
+    unsigned char ebsp[H265_BW_MAX_BYTES];
+    int n, el, total, bits = 0;
+
+    if (!cfg || !out || cap < 0)
+        return -1;
+    n = build_slice_rbsp(cfg, rbsp, (int)sizeof(rbsp), &bits);
+    if (n <= 0)
+        return -1;
 
     /* Start code and NAL header carry no emulation prevention; the RBSP does. */
-    el = add_epb(bw.buf, bw_bytes(&bw), ebsp, (int)sizeof(ebsp));
+    el = add_epb(rbsp, n, ebsp, (int)sizeof(ebsp));
     if (el < 0 || 6 + el > cap)
         return -1;
     out[0] = 0x00; out[1] = 0x00; out[2] = 0x00; out[3] = 0x01;
-    out[4] = (unsigned char)(nal_type << 1);
+    out[4] = (unsigned char)(cfg->nal_unit_type << 1);
     out[5] = 0x01;
     memcpy(out + 6, ebsp, (size_t)el);
     total = 6 + el;

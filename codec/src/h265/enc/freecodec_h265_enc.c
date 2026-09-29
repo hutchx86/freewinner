@@ -119,12 +119,17 @@ static void free_buffers(fc_h265_instance *e)
 static int alloc_buffers(fc_h265_instance *e)
 {
     const fc_h265_geom *g = &e->geom;
-    /* Luma follows the observed relation: coded width x (height + 8); chroma
-     * half of it; the ping-pong slot stride is that sum raised to 1 MB
-     * (derived from the [SHAPE] rows of 11 section 6). */
+    /* Frame-ring slot (spec 11 section 6): luma = W16*(H16+8); the chroma plane
+     * starts at that luma offset and is W16*H64/2 (height rounded up to 64),
+     * plus a 0xc00 tail on pictures below 577 lines. */
     unsigned int luma = g->w16 * (g->h16 + 8u);
-    unsigned int chroma = luma / 2u;
-    unsigned int full_size = luma + chroma;
+    unsigned int h64 = fc_h265_align_up(g->dst_h, 64u);
+    unsigned int chroma = g->w16 * h64 / 2u;
+    unsigned int tail = (g->dst_h < 577u) ? 0xc00u : 0u;
+    unsigned int full_size = luma + chroma + tail;
+    unsigned int w32 = fc_h265_align_up(g->dst_w, 32u);
+    unsigned int wc = w32 / 32u;
+    unsigned int h32 = fc_h265_align_up(g->dst_h, 32u) / 32u;
     int i;
 
     e->bufs.luma_size = luma;
@@ -141,9 +146,10 @@ static int alloc_buffers(fc_h265_instance *e)
 
     if (alloc_one(e, &e->bufs.mb_info, g->w16 * 8u) != 0)
         goto fail;
-    if (alloc_one(e, &e->bufs.dblk, g->w16 * 8u) != 0)
+    if (alloc_one(e, &e->bufs.dblk, w32 * 8u) != 0)
         goto fail;
-    if (alloc_one(e, &e->bufs.ctu_info, g->w16 * 8u) != 0)
+    /* CTU-info output: one 0x18-byte record per CTU (spec 11 section 6). */
+    if (alloc_one(e, &e->bufs.ctu_info, wc * h32 * 0x18u) != 0)
         goto fail;
 
     {
@@ -294,7 +300,7 @@ static void feed_slice_header(fc_h265_instance *e, const unsigned char *buf,
     int i;
 
     enc_write(e, 0x04u, pic_control | 0x80000000u);   /* eptb_disable = 1 */
-    enc_write(e, 0x18u, enc_read(e, 0x18u) | 0x00030000u);
+    enc_write(e, 0x18u, enc_read(e, 0x18u) | 0x00030000u);   /* open, mode 3 */
     for (i = 0; i < bytes; i++) {
         unsigned int tries;
         int ready = 0;
@@ -308,7 +314,7 @@ static void feed_slice_header(fc_h265_instance *e, const unsigned char *buf,
         if (!ready)
             return;
         enc_write(e, 0x20u, buf[i]);
-        enc_write(e, 0x18u, enc_read(e, 0x18u) | 0x00030801u);
+        enc_write(e, 0x18u, enc_read(e, 0x18u) | 0x00030801u);   /* mode 3, emit 8 bits */
     }
     enc_write(e, 0x04u, pic_control);                 /* eptb_disable = 0 */
 }
@@ -345,6 +351,7 @@ static int enc_encode(void *h, fwm_venc_input_picture_t *in)
 
     e->ve_ops->reset(e->ve_self);
     fc_ve_enc_on(e->ve_ops, e->ve_self);
+    enc_write(e, 0x18u, enc_read(e, 0x18u) | 0x00030000u);   /* mode 3 before the script (vendor order) */
 
     rec_slot = n % 2u;
     ref_slot = (n == 0u) ? 0u : ((n - 1u) % 2u);
@@ -365,6 +372,8 @@ static int enc_encode(void *h, fwm_venc_input_picture_t *in)
     scfg.num_ref_idx_active_override_flag = 0u;
     scfg.slice_qp = qp;
     scfg.loop_filter_across_slices_enabled = 1u;
+    /* Feed the slice-header RBSP (no start code, no NAL header); eptb_disable
+     * is set during the feed, mirroring the H.264 device's header feed. */
     slice_bytes = freecodec_h265_build_slice(&scfg, slice, (int)sizeof(slice), &slice_bits);
     if (slice_bytes <= 0)
         return FWM_VENC_RESULT_ERROR;
@@ -434,7 +443,7 @@ static int enc_encode(void *h, fwm_venc_input_picture_t *in)
 
     baseline = enc_read(e, 0x90u);
     feed_slice_header(e, slice, slice_bytes, regs[0x04u / 4u]);
-    enc_write(e, 0x18u, 0x00030008u);      /* kick */
+    enc_write(e, 0x18u, 0x00030008u);      /* kick, mode 3 */
 
     if (e->ve_ops->wait_irq(e->ve_self) != 0) {
         fc_ve_enc_off(e->ve_ops, e->ve_self);
@@ -470,7 +479,7 @@ static int enc_encode(void *h, fwm_venc_input_picture_t *in)
     fc_ve_enc_off(e->ve_ops, e->ve_self);
 
     if (is_i) {
-        e->poc_lsb = 0u;
+        e->poc_lsb = 1u;      /* the IDR is POC 0; the next P must not repeat it */
         e->frame_num = 0u;
     } else {
         e->poc_lsb = (e->poc_lsb + 1u) & 0xffu;

@@ -93,7 +93,10 @@ fwm_venc_handle_t *VideoEncCreate(fwm_venc_codec_e codecType)
     memset(&ve_cfg, 0, sizeof(ve_cfg));
     ve_cfg.use_decoder    = 0;
     ve_cfg.use_encoder    = 1;
-    ve_cfg.work_mode         = (int)codecType;
+    /* This framework only creates encoders. work_mode must be the encoder mode,
+     * never the codec number: codec 3 (H.265) equals FC_VE_WORK_JPEG_DECODE and
+     * would route the completion wait to the JPEG request. */
+    ve_cfg.work_mode         = FC_VE_WORK_ENCODE;
     ve_cfg.width_hint          = 0;
     ve_cfg.fbc_enable = 0;
     ve_cfg.reset_mode    = 0;
