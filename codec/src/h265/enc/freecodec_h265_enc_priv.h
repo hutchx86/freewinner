@@ -49,6 +49,9 @@ typedef struct fc_h265_buffers {
     fc_h265_buf   mbrc;
     unsigned char header[192];  /* VPS + SPS + PPS, 90 bytes at both geometries  */
     unsigned int  header_len;
+    /* Burned-in OSD overlay (shared encoder-internal ISP): grow-only header and
+     * data buffers plus the luma-invert scratch. */
+    fc_h265_buf   ovl_hdr, ovl_data, ovl_inv;
 } fc_h265_buffers;
 
 typedef struct fc_h265_params {
@@ -102,6 +105,7 @@ typedef struct fc_h265_instance {
     freecodec_h265_rc rc;
 
     freecodec_h264_isp *isp;
+    freecodec_h264_isp_info ovl;   /* only the overlay fields are used         */
     unsigned int capability[9];    /* the matched capability record            */
 
     unsigned int pic_count;        /* pictures encoded since init             */

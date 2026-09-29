@@ -114,6 +114,9 @@ static void free_buffers(fc_h265_instance *e)
     free_one(e, &e->bufs.dblk);
     free_one(e, &e->bufs.ctu_info);
     free_one(e, &e->bufs.mbrc);
+    free_one(e, &e->bufs.ovl_hdr);
+    free_one(e, &e->bufs.ovl_data);
+    free_one(e, &e->bufs.ovl_inv);
 }
 
 static int alloc_buffers(fc_h265_instance *e)
@@ -239,6 +242,113 @@ static void build_header(fc_h265_instance *e)
 
 /* ------------------------------------------------------------- ISP program */
 
+/* Burned-in OSD overlay (shared encoder-internal ISP): the same buffer/block
+ * layout as the H.264 device (h264-overlay). blk_num 0 disables. */
+#define FC_H265_OVL_REVERSE_LUMA   (1u << 29)
+#define FC_H265_OVL_INVERT_MODE    2
+#define FC_H265_OVL_INVERT_THRESH  96
+
+static void ovl_invert_setup(fc_h265_instance *e,
+                             const freecodec_h264_overlay_block *blocks, unsigned int n)
+{
+    const char *off = getenv("FREECODEC_OVL_INVERT");
+    int enable = !(off && off[0] == '0');
+    unsigned int i;
+
+    if (e->ic_version <= 0x2110fu)
+        return;
+    if (e->bufs.ovl_inv.vir == NULL) {
+        unsigned int sz = ((e->geom.in_w + 15u) / 16u) * 32u;
+
+        sz = (sz + 255u) & ~255u;
+        if (alloc_one(e, &e->bufs.ovl_inv, sz) != 0)
+            return;
+        memset(e->bufs.ovl_inv.vir, 0, e->bufs.ovl_inv.size);
+        e->memops->flush_cache(e->bufs.ovl_inv.vir, (int)e->bufs.ovl_inv.size);
+    }
+    e->ovl.phy_address_overlay_invert = (unsigned int)((uintptr_t)e->bufs.ovl_inv.phy >> 8);
+    e->ovl.invert_mode = enable ? FC_H265_OVL_INVERT_MODE : 0;
+    e->ovl.invert_threshold = enable ? FC_H265_OVL_INVERT_THRESH : 0;
+    if (!enable)
+        return;
+    for (i = 0; i < n; i++) {
+        unsigned char *h = (unsigned char *)e->bufs.ovl_hdr.vir +
+                           (uintptr_t)i * FREECODEC_H264_OVERLAY_HDR_STRIDE;
+        if (blocks[i].reverse_luma)
+            h[11] |= (unsigned char)(FC_H265_OVL_REVERSE_LUMA >> 24); /* +8, little-endian */
+    }
+}
+
+static int set_overlay(fc_h265_instance *e, const fwm_venc_overlay_t *oi)
+{
+    freecodec_h264_overlay_block blocks[FREECODEC_H264_OVERLAY_MAX_BLOCKS];
+    unsigned int n = oi->region_count, i, need;
+    int rc = FWM_VENC_RESULT_OK;
+
+    if (n > FREECODEC_H264_OVERLAY_MAX_BLOCKS)
+        return FWM_VENC_RESULT_ILLEGAL_PARAM;
+    for (i = 0; i < n; i++) {
+        const fwm_venc_overlay_region_t *s = &oi->regions[i];
+
+        if (s->overlay_type != FWM_VENC_OVERLAY_NORMAL &&
+            s->overlay_type != FWM_VENC_OVERLAY_LUMA_REVERSE)
+            return FWM_VENC_RESULT_NOT_SUPPORT;
+        blocks[i].start_mb_x = s->start_mb_x;
+        blocks[i].end_mb_x = s->end_mb_x;
+        blocks[i].start_mb_y = s->start_mb_y;
+        blocks[i].end_mb_y = s->end_mb_y;
+        blocks[i].bitmap_vir = s->bitmap;
+        blocks[i].bitmap_size = s->bitmap_size;
+        blocks[i].reverse_luma = (s->overlay_type == FWM_VENC_OVERLAY_LUMA_REVERSE) ? 1u : 0u;
+        blocks[i].reverse_unit_w_minus1 =
+            (unsigned char)(s->reverse_unit_mb_w_minus1 > 3u ? 3u : s->reverse_unit_mb_w_minus1);
+        blocks[i].reverse_unit_h_minus1 =
+            (unsigned char)(s->reverse_unit_mb_h_minus1 > 3u ? 3u : s->reverse_unit_mb_h_minus1);
+    }
+
+    if (e->ve_ops->lock)
+        e->ve_ops->lock(e->ve_self);
+
+    if (n == 0u) {
+        (void)freecodec_h264_isp_update_overlay(&e->ovl, NULL, 0u, (int)oi->argb_type,
+                                                NULL, NULL, 0u);
+        goto out;
+    }
+
+    need = freecodec_h264_overlay_data_size(blocks, n);
+    if (e->bufs.ovl_hdr.vir == NULL &&
+        alloc_one(e, &e->bufs.ovl_hdr, FREECODEC_H264_OVERLAY_HEADER_SIZE) != 0) {
+        rc = FWM_VENC_RESULT_NO_MEMORY;
+        goto out;
+    }
+    if (e->bufs.ovl_data.size < need) {
+        e->ovl.b_overlay = 0;
+        free_one(e, &e->bufs.ovl_data);
+        if (alloc_one(e, &e->bufs.ovl_data, need) != 0) {
+            rc = FWM_VENC_RESULT_NO_MEMORY;
+            goto out;
+        }
+    }
+    if (freecodec_h264_isp_update_overlay(&e->ovl, blocks, n, (int)oi->argb_type,
+                                          (unsigned char *)e->bufs.ovl_hdr.vir,
+                                          (unsigned char *)e->bufs.ovl_data.vir,
+                                          e->bufs.ovl_data.size) != 0) {
+        e->ovl.b_overlay = 0;
+        rc = FWM_VENC_RESULT_ILLEGAL_PARAM;
+        goto out;
+    }
+    ovl_invert_setup(e, blocks, n);
+    e->memops->flush_cache(e->bufs.ovl_hdr.vir, (int)e->bufs.ovl_hdr.size);
+    e->memops->flush_cache(e->bufs.ovl_data.vir, (int)e->bufs.ovl_data.size);
+    e->ovl.phy_address_overlay_header = (unsigned int)((uintptr_t)e->bufs.ovl_hdr.phy >> 8);
+    e->ovl.phy_address_overlay_data = (unsigned int)((uintptr_t)e->bufs.ovl_data.phy >> 8);
+
+out:
+    if (e->ve_ops->unlock)
+        e->ve_ops->unlock(e->ve_self);
+    return rc;
+}
+
 static void program_isp(fc_h265_instance *e, fwm_venc_input_picture_t *in)
 {
     freecodec_h264_isp_info info;
@@ -272,6 +382,17 @@ static void program_isp(fc_h265_instance *e, fwm_venc_input_picture_t *in)
     info.b_lbc_lossy_com_en_2_5x = (unsigned char)e->params.lbc_lossy_2_5x;
     info.ic_version = (int)e->ic_version;
     info.n_encode_format = 1;
+    if (e->ovl.b_overlay) {
+        info.b_overlay = 1;
+        info.n_overlay_num = e->ovl.n_overlay_num;
+        info.e_overlay_argb_type = e->ovl.e_overlay_argb_type;
+        info.n_blk_len = e->ovl.n_blk_len;
+        info.phy_address_overlay_header = e->ovl.phy_address_overlay_header;
+        info.phy_address_overlay_data = e->ovl.phy_address_overlay_data;
+        info.phy_address_overlay_invert = e->ovl.phy_address_overlay_invert;
+        info.invert_mode = e->ovl.invert_mode;
+        info.invert_threshold = e->ovl.invert_threshold;
+    }
     freecodec_h264_isp_set_register(e->isp, &info);
 }
 
@@ -847,6 +968,8 @@ static int enc_set_parameter(void *h, int index, void *param)
         (void)param;
         e->params.intra_period = 40u;    /* fixed by the handler (10 section 5) */
         return FWM_VENC_RESULT_OK;
+    case FWM_VENC_PARAM_OVERLAY:
+        return set_overlay(e, (const fwm_venc_overlay_t *)param);
     default:
         /* 0x40a HighPassFilter is deliberately not handled (12 section 3.1). */
         return FWM_VENC_RESULT_NOT_SUPPORT;
