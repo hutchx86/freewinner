@@ -58,6 +58,10 @@ typedef struct fc_h265_params {
     int           force_key;
     unsigned int  stride;
     fwm_venc_pixel_format_e color_fmt;
+    /* LBC input: the shared encoder-internal ISP needs these to program the
+     * compressed-input pattern/stride (12 section 8 / spec 14). */
+    unsigned int  lbc_lossy_2x;
+    unsigned int  lbc_lossy_2_5x;
     unsigned int  vbv_size;
     int           vbv_no_cache;
 

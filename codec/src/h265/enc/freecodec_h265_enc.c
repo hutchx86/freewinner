@@ -268,6 +268,8 @@ static void program_isp(fc_h265_instance *e, fwm_venc_input_picture_t *in)
         info.phy_address_c1_high8 = (unsigned char)(addr_c1 >> 32);
     }
     info.b_height_is8_align = ((e->geom.in_h & 7u) == 0u) ? 1u : 0u;
+    info.b_lbc_lossy_com_en_2x = (unsigned char)e->params.lbc_lossy_2x;
+    info.b_lbc_lossy_com_en_2_5x = (unsigned char)e->params.lbc_lossy_2_5x;
     info.ic_version = (int)e->ic_version;
     info.n_encode_format = 1;
     freecodec_h264_isp_set_register(e->isp, &info);
@@ -617,6 +619,8 @@ static int enc_init(void *h, fwm_venc_base_config_t *cfg)
 
     e->params.color_fmt = cfg->input_format;
     e->params.stride = cfg->input_stride;
+    e->params.lbc_lossy_2x = cfg->lbc_lossy_2x_en ? 1u : 0u;
+    e->params.lbc_lossy_2_5x = cfg->lbc_lossy_2_5x_en ? 1u : 0u;
     e->params.vbv_no_cache = cfg->bitstream_uncached_en ? 1 : 0;
     compute_geometry(e, cfg);
 
