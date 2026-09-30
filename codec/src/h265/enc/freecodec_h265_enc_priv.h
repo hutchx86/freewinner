@@ -98,6 +98,11 @@ typedef struct fc_h265_params {
     unsigned int  filter_3d_strength;
     unsigned int  filt3d_t;
     int           dyn_me;       /* dynamic-ME enable, latched at init (3D spec 6) */
+
+    /* Displayed window smaller than the coded picture, via the SPS conformance
+     * window (venc_ext.h; same semantics as the H.264 device). */
+    fwm_venc_display_size_t   display_size;
+    fwm_venc_display_offset_t display_offset;
 } fc_h265_params;
 
 typedef struct fc_h265_instance {

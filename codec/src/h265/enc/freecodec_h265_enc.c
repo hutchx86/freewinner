@@ -274,6 +274,32 @@ static void build_header(fc_h265_instance *e)
     sps.ptl = vps.ptl;
     sps.pic_width_in_luma_samples = e->geom.dst_w;
     sps.pic_height_in_luma_samples = e->geom.dst_h;
+    /* Displayed window: crop to the shown size (display_size or the whole
+     * picture), centred or at display_offset, in 2-pixel units (4:2:0). Same
+     * rules as the H.264 device's SPS crop. */
+    {
+        unsigned int show_w = e->geom.dst_w, show_h = e->geom.dst_h;
+        unsigned int left, top;
+
+        if (e->params.display_size.width > 0 && e->params.display_size.height > 0 &&
+            (unsigned int)e->params.display_size.width <= e->geom.dst_w &&
+            (unsigned int)e->params.display_size.height <= e->geom.dst_h) {
+            show_w = (unsigned int)e->params.display_size.width;
+            show_h = (unsigned int)e->params.display_size.height;
+        }
+        left = ((e->geom.dst_w - show_w) / 2u) & ~1u;
+        top = ((e->geom.dst_h - show_h) / 2u) & ~1u;
+        if (e->params.display_offset.left >= 0 &&
+            ((unsigned int)e->params.display_offset.left & ~1u) + show_w <= e->geom.dst_w)
+            left = (unsigned int)e->params.display_offset.left & ~1u;
+        if (e->params.display_offset.top >= 0 &&
+            ((unsigned int)e->params.display_offset.top & ~1u) + show_h <= e->geom.dst_h)
+            top = (unsigned int)e->params.display_offset.top & ~1u;
+        sps.conf_win_left_offset = left / 2u;
+        sps.conf_win_top_offset = top / 2u;
+        sps.conf_win_right_offset = (e->geom.dst_w - show_w - left) / 2u;
+        sps.conf_win_bottom_offset = (e->geom.dst_h - show_h - top) / 2u;
+    }
     sps.max_num_ref_pics = 1u;
     sps.num_short_term_ref_pic_sets = e->params.gop_size + 1u;
     sps.log2_max_pic_order_cnt_lsb_minus4 = 4u;
@@ -1018,6 +1044,12 @@ static int enc_set_parameter(void *h, int index, void *param)
         e->params.filter_3d_strength = s < 0 ? 0u : s > 511 ? 511u : (unsigned int)s;
         return FWM_VENC_RESULT_OK;
     }
+    case FWM_VENC_PARAM_DISPLAY_SIZE:
+        e->params.display_size = *(fwm_venc_display_size_t *)param;
+        return FWM_VENC_RESULT_OK;
+    case FWM_VENC_PARAM_DISPLAY_OFFSET:
+        e->params.display_offset = *(fwm_venc_display_offset_t *)param;
+        return FWM_VENC_RESULT_OK;
     case FWM_VENC_PARAM_H265_CONFIG: {
         fwm_venc_h265_config_t *p = (fwm_venc_h265_config_t *)param;
 
