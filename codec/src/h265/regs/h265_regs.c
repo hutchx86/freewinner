@@ -98,6 +98,7 @@ void freecodec_h265_config_registers(const freecodec_h265_frame_cfg *cfg,
                      | field(cfg->dynamic_me_en, 8, 1)
                      | field(cfg->length_stride, 10, 4)
                      | field(cfg->longterm_en, 14, 1)
+                     | field(cfg->fore_3d_filter_en, 22, 1)
                      | field(cfg->transform_8x8_en, 27, 1);
 
     /* 0x10 ME control (11 section 3.3): cache_bl8 always; TMVP write disabled
@@ -186,8 +187,12 @@ void freecodec_h265_config_registers(const freecodec_h265_frame_cfg *cfg,
     regs[0x88u / 4u] = cfg->bitstream_offset << 3;
     regs[0x8cu / 4u] = (cfg->bitstream_offset + cfg->bitstream_size) << 3;
 
-    /* 0x94 intra / 3-D thresholds. */
+    /* 0x94 intra / 3-D thresholds. The 3-D block threshold is 32 while the
+     * filter is off and the level-derived T when it is on. */
     regs[0x94u / 4u] = freecodec_h265_intra_thresholds(cfg->is_i);
+    if (cfg->fore_3d_filter_block_th != 0u)
+        regs[0x94u / 4u] = (regs[0x94u / 4u] & ~(0x1ffu << 23))
+                         | field(cfg->fore_3d_filter_block_th, 23, 9);
 
     /* 0x98/0xcc ROI QP offset records: zero when ROI is off. */
     regs[0x98u / 4u] = 0u;
@@ -201,6 +206,12 @@ void freecodec_h265_config_registers(const freecodec_h265_frame_cfg *cfg,
     regs[0xa4u / 4u] = cfg->ref_c_phy;
     regs[0xb0u / 4u] = cfg->rec_y_phy;
     regs[0xb4u / 4u] = cfg->rec_c_phy;
+
+    /* 0xa8/0xac 3-D-filter reference / reconstruction planes: 0 when the
+     * filter is off; 0xac whenever it is on, 0xa8 only while enabled (so the
+     * first picture leaves it 0). */
+    regs[0xa8u / 4u] = cfg->f3d_ref_phy;
+    regs[0xacu / 4u] = cfg->f3d_rec_phy;
 
     /* 0xb8/0xbc auxiliary reference / reconstruction (two separate registers). */
     regs[0xb8u / 4u] = cfg->aux_ref_phy;

@@ -117,6 +117,54 @@ static void free_buffers(fc_h265_instance *e)
     free_one(e, &e->bufs.ovl_hdr);
     free_one(e, &e->bufs.ovl_data);
     free_one(e, &e->bufs.ovl_inv);
+    free_one(e, &e->bufs.filt3d[0]);
+    free_one(e, &e->bufs.filt3d[1]);
+}
+
+/* Encoder 3-D (temporal noise) filter (3D-filter spec; 11 0xa8/0xac). Same
+ * rules as the H.264 device. */
+#define FC_H265_3D_FILL_MIN 0xccu
+
+static unsigned int h265_3d_enabled(unsigned int level, unsigned int picture_index)
+{
+    return (level != 0u && picture_index != 0u) ? 1u : 0u;
+}
+
+static unsigned int h265_3d_threshold(unsigned int level, int slice_qp, unsigned int prev_t)
+{
+    if (slice_qp >= 52)
+        return prev_t;
+    if (slice_qp >= 20 && slice_qp <= 30)
+        return 2u * level;
+    return level;
+}
+
+static unsigned int h265_3d_fill(unsigned int level)
+{
+    unsigned int f = ((16u - level) * 0x11u) & 0xffu;
+
+    return f > FC_H265_3D_FILL_MIN ? f : FC_H265_3D_FILL_MIN;
+}
+
+/* 11 section 7: H32 * (2-ctu-aligned width) * 0x30 + 0x400 per slot, the same
+ * 0x30-per-32x32-block shape as the H.264 plane (12 bytes per 16x16 macroblock). */
+static int alloc_filt3d(fc_h265_instance *e)
+{
+    unsigned int size = (fc_h265_align_up(e->geom.dst_w, 64u) / 32u)
+                      * (fc_h265_align_up(e->geom.dst_h, 32u) / 32u)
+                      * 0x30u + 0x400u;
+    int i;
+
+    size = (size + 255u) & ~255u;
+    for (i = 0; i < 2; i++) {
+        if (e->bufs.filt3d[i].vir != NULL)
+            continue;
+        if (alloc_one(e, &e->bufs.filt3d[i], size) != 0)
+            return -1;
+        memset(e->bufs.filt3d[i].vir, 0xff, size);
+        e->memops->flush_cache(e->bufs.filt3d[i].vir, (int)size);
+    }
+    return 0;
 }
 
 static int alloc_buffers(fc_h265_instance *e)
@@ -165,6 +213,11 @@ static int alloc_buffers(fc_h265_instance *e)
         memset(e->bufs.mbrc.vir, 0, mbrc_size);
         e->memops->flush_cache(e->bufs.mbrc.vir, (int)mbrc_size);
     }
+
+    /* 3-D-filter scratch planes: allocated regardless of the level (3D-filter
+     * spec 5), so a live level change needs no allocation. */
+    if (alloc_filt3d(e) != 0)
+        goto fail;
 
     e->bufs.bs = BitStreamCreate(e->params.vbv_no_cache ? 1 : 0,
                                  (int)e->params.vbv_size, e->memops,
@@ -512,7 +565,33 @@ static int enc_encode(void *h, fwm_venc_input_picture_t *in)
     fcfg.picture_index = n;
     fcfg.qp = qp;
     fcfg.rc_mode = e->params.rc_mode;
-    fcfg.dynamic_me_en = is_i ? 0 : 1;
+    /* 3-D (temporal noise) filter (3D-filter spec; 11 0xa8/0xac). The level is
+     * read every picture; a direct strength runs as level 3 with its own T. */
+    {
+        unsigned int f3d_level = e->params.filter_3d_strength ? 3u : e->params.filter_3d_level;
+
+        if (f3d_level != 0u) {
+            if (e->bufs.filt3d[0].vir == NULL || e->bufs.filt3d[1].vir == NULL)
+                alloc_filt3d(e);
+            e->params.filt3d_t = e->params.filter_3d_strength
+                                 ? e->params.filter_3d_strength
+                                 : h265_3d_threshold(f3d_level, qp, e->params.filt3d_t);
+            if (e->bufs.filt3d[ref_slot].vir != NULL) {
+                memset(e->bufs.filt3d[ref_slot].vir, (int)h265_3d_fill(f3d_level),
+                       e->bufs.filt3d[ref_slot].size);
+                e->memops->flush_cache(e->bufs.filt3d[ref_slot].vir,
+                                       (int)e->bufs.filt3d[ref_slot].size);
+            }
+            fcfg.f3d_rec_phy = (unsigned int)((uintptr_t)e->bufs.filt3d[rec_slot].phy >> 8);
+            if (h265_3d_enabled(f3d_level, (unsigned int)n)) {
+                fcfg.fore_3d_filter_en = 1u;
+                fcfg.fore_3d_filter_block_th = e->params.filt3d_t;
+                fcfg.f3d_ref_phy = (unsigned int)((uintptr_t)e->bufs.filt3d[ref_slot].phy >> 8);
+            }
+        }
+    }
+    /* Dynamic ME follows the init-time latch, on P pictures only (3D spec 6). */
+    fcfg.dynamic_me_en = (!is_i && e->params.dyn_me) ? 1u : 0u;
     fcfg.img_bin_enable = ((e->params.rc_mode == FWM_VENC_H265_RC_VBR ||
                             e->params.rc_mode == FWM_VENC_H265_RC_ABR ||
                             e->params.rc_mode == FWM_VENC_H265_RC_AVBR) && n >= 1u) ? 1 : 0;
@@ -743,6 +822,9 @@ static int enc_init(void *h, fwm_venc_base_config_t *cfg)
     e->params.lbc_lossy_2x = cfg->lbc_lossy_2x_en ? 1u : 0u;
     e->params.lbc_lossy_2_5x = cfg->lbc_lossy_2_5x_en ? 1u : 0u;
     e->params.vbv_no_cache = cfg->bitstream_uncached_en ? 1 : 0;
+    /* Dynamic ME is mutually exclusive with the 3-D filter only w.r.t. the
+     * level programmed before init (3D-filter spec 6). */
+    e->params.dyn_me = (e->params.filter_3d_level == 0u) ? 1 : 0;
     compute_geometry(e, cfg);
 
     /* SoC limit from the capability record's width/height words (12 section 2.2). */
@@ -919,6 +1001,23 @@ static int enc_set_parameter(void *h, int index, void *param)
     case FWM_VENC_PARAM_FAST_ENCODE:
         e->params.fast_enc = *(int *)param;
         return FWM_VENC_RESULT_OK;
+    case FWM_VENC_PARAM_FILTER_3D: {
+        unsigned int lvl = *(unsigned char *)param;
+
+        /* 0..6 stored unchanged; above 6 falls back to 3 (3D-filter spec 7). */
+        if (lvl > 6u) {
+            FC_H265_LOG("3D filter level %u out of range, using 3\n", lvl);
+            lvl = 3u;
+        }
+        e->params.filter_3d_level = lvl;
+        return FWM_VENC_RESULT_OK;
+    }
+    case FWM_VENC_PARAM_FILTER_3D_STRENGTH: {
+        int s = *(int *)param;
+
+        e->params.filter_3d_strength = s < 0 ? 0u : s > 511 ? 511u : (unsigned int)s;
+        return FWM_VENC_RESULT_OK;
+    }
     case FWM_VENC_PARAM_H265_CONFIG: {
         fwm_venc_h265_config_t *p = (fwm_venc_h265_config_t *)param;
 

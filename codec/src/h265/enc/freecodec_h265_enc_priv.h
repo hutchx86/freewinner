@@ -16,6 +16,7 @@
 #include "freecodec/h265_headers.h"
 #include "freecodec/h265_rc.h"
 #include "freecodec/h265_regs.h"
+#include "freecodec/venc_ext.h"
 #include "freecodec/vencoder.h"
 
 #ifdef __cplusplus
@@ -47,6 +48,7 @@ typedef struct fc_h265_buffers {
     fc_h265_buf   tmvp[2];      /* TMVP workspaces, live from the second P       */
     fc_h265_buf   mb_info, dblk, ctu_info;
     fc_h265_buf   mbrc;
+    fc_h265_buf   filt3d[2];    /* 3-D filter reference/reconstruction planes */
     unsigned char header[192];  /* VPS + SPS + PPS, 90 bytes at both geometries  */
     unsigned int  header_len;
     /* Burned-in OSD overlay (shared encoder-internal ISP): grow-only header and
@@ -88,6 +90,14 @@ typedef struct fc_h265_params {
     int           fixed_qp_enable;
     int           fixed_i_qp, fixed_p_qp;
     int           fast_enc;
+
+    /* Encoder 3-D (temporal noise) filter (11 sections 3.2/3.14; 3D-filter
+     * spec): level 0 off / 1..6, an optional direct strength, and T carried
+     * across pictures. */
+    unsigned int  filter_3d_level;
+    unsigned int  filter_3d_strength;
+    unsigned int  filt3d_t;
+    int           dyn_me;       /* dynamic-ME enable, latched at init (3D spec 6) */
 } fc_h265_params;
 
 typedef struct fc_h265_instance {

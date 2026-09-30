@@ -44,6 +44,13 @@ typedef struct freecodec_h265_frame_cfg {
     unsigned int longterm_en;        /* +0x08 bit 14                         */
     unsigned int eptb_disable;       /* +0x04 bit 31 (header feed)           */
     unsigned int frame_num;          /* +0x04 [27:24]                        */
+    /* 3-D (temporal noise) filter (11 sections 3.2/3.14; 0xa8/0xac): enable
+     * bit and block threshold, plus the reference/reconstruction plane
+     * addresses. Zero keeps the feature off and the registers as before. */
+    unsigned int fore_3d_filter_en;       /* +0x08 bit 22                     */
+    unsigned int fore_3d_filter_block_th; /* +0x94 [31:23]; 0 = keep 32       */
+    unsigned int f3d_ref_phy;             /* +0xa8 (only while enabled)       */
+    unsigned int f3d_rec_phy;             /* +0xac (whenever the filter is on)*/
 
     /* Address words (engine form). */
     unsigned int bitstream_base_phy; /* +0x80                                */
