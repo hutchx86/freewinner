@@ -29,4 +29,8 @@ typedef struct fwm_venc_display_offset {
  * filter as level 3 at every QP, 0 = level rules. Read per picture. */
 #define FWM_VENC_PARAM_FILTER_3D_STRENGTH 0x7f000003
 
+/* int *: H.265 rate control target-tracking (1) or the vendor open-loop model
+ * (0, default). Set before init; see freecodec_h265_rc_set_tracking(). */
+#define FWM_VENC_PARAM_H265_RC_TRACK 0x7f000004
+
 #endif

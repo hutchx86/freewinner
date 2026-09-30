@@ -93,9 +93,51 @@ static void test_state(void)
            "P QP within the +/-5 step");
 }
 
+
+/* Plant: a quiet scene, bits per P frame ~ 260 kbit * 0.88^(qp-18); an I frame
+ * costs 8x. Drives the RC for `frames` pictures and returns mean Mbps and the
+ * last P QP. */
+static double run_plant(int track, int frames, int *last_qp)
+{
+    freecodec_h265_rc rc;
+    double total = 0.0;
+    int i, qp = 0;
+
+    freecodec_h265_rc_configure(&rc, 2000000.0, 20u, 2304u, 1296u, 18, 45, 20u, 100u);
+    freecodec_h265_rc_set_tracking(&rc, track);
+    for (i = 0; i < frames; i++) {
+        int is_i = (i % 100) == 0;
+        double bits;
+
+        freecodec_h265_rc_start_picture(&rc, (long)i, is_i);
+        qp = rc.cur_qp;
+        bits = 260000.0 * pow(0.88, (double)(qp - 18)) * (is_i ? 8.0 : 1.0);
+        freecodec_h265_rc_finish_picture(&rc, (long long)bits);
+        total += bits;
+    }
+    if (last_qp)
+        *last_qp = qp;
+    return total / ((double)frames / 20.0) / 1e6;
+}
+
+static void test_target_tracking(void)
+{
+    int qp_open = 0, qp_trk = 0;
+    double open = run_plant(0, 1000, &qp_open);
+    double trk = run_plant(1, 1000, &qp_trk);
+
+    /* The vendor model collapses to the QP ceiling on a quiet scene... */
+    checkf(qp_open == 45, "open-loop P QP pinned at the ceiling, got %d", qp_open);
+    checkf(open < 1.0, "open-loop under-spends a 2 Mbps target, got %.2f Mbps", open);
+    /* ...the tracking mode reaches the target. */
+    checkf(trk > 1.7 && trk < 2.3, "tracking mode within 15%% of 2 Mbps, got %.2f Mbps", trk);
+    checkf(qp_trk < 45 && qp_trk >= 18, "tracking QP inside the window, got %d", qp_trk);
+}
+
 int main(void)
 {
     test_ratio_tables();
+    test_target_tracking();
     test_lambda();
     test_state();
 

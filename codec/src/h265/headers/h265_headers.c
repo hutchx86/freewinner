@@ -308,7 +308,25 @@ int freecodec_h265_build_sps(const freecodec_h265_sps_cfg *cfg,
     bw_bit(&bw, 0u);                     /* long_term_ref_pics_present_flag */
     bw_bit(&bw, cfg->temporal_mvp_enabled);
     bw_bit(&bw, 0u);                     /* strong_intra_smoothing_enabled_flag */
-    bw_bit(&bw, 0u);                     /* vui_parameters_present_flag     */
+    if (cfg->vui_num_units_in_tick != 0u && cfg->vui_time_scale != 0u) {
+        bw_bit(&bw, 1u);                 /* vui_parameters_present_flag     */
+        bw_bit(&bw, 0u);                 /* aspect_ratio_info_present_flag  */
+        bw_bit(&bw, 0u);                 /* overscan_info_present_flag      */
+        bw_bit(&bw, 0u);                 /* video_signal_type_present_flag  */
+        bw_bit(&bw, 0u);                 /* chroma_loc_info_present_flag    */
+        bw_bit(&bw, 0u);                 /* neutral_chroma_indication_flag  */
+        bw_bit(&bw, 0u);                 /* field_seq_flag                  */
+        bw_bit(&bw, 0u);                 /* frame_field_info_present_flag   */
+        bw_bit(&bw, 0u);                 /* default_display_window_flag     */
+        bw_bit(&bw, 1u);                 /* vui_timing_info_present_flag    */
+        bw_bits(&bw, cfg->vui_num_units_in_tick, 32);
+        bw_bits(&bw, cfg->vui_time_scale, 32);
+        bw_bit(&bw, 0u);                 /* vui_poc_proportional_to_timing_flag */
+        bw_bit(&bw, 0u);                 /* vui_hrd_parameters_present_flag */
+        bw_bit(&bw, 0u);                 /* bitstream_restriction_flag      */
+    } else {
+        bw_bit(&bw, 0u);                 /* vui_parameters_present_flag     */
+    }
     bw_bit(&bw, 0u);                     /* sps_extension_present_flag      */
     bw_trailing(&bw);
 

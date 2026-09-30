@@ -305,6 +305,12 @@ static void build_header(fc_h265_instance *e)
     sps.log2_max_pic_order_cnt_lsb_minus4 = 4u;
     sps.sao_enabled = e->params.sao.enabled ? 1u : 0u;
     sps.temporal_mvp_enabled = 1u;
+    /* VUI timing info only when the caller set both fields (the default record
+     * has num_units_in_tick == 0, i.e. the vendor's no-VUI stream). */
+    if (e->params.timing.num_units_in_tick != 0u && e->params.timing.time_scale != 0u) {
+        sps.vui_num_units_in_tick = e->params.timing.num_units_in_tick;
+        sps.vui_time_scale = e->params.timing.time_scale;
+    }
     n = freecodec_h265_build_sps(&sps, out + off, (int)(cap - off));
     if (n > 0) { off += (unsigned int)n; e->bufs.header_len += (unsigned int)n; }
 
@@ -869,6 +875,7 @@ static int enc_init(void *h, fwm_venc_base_config_t *cfg)
                                 e->geom.w16, e->geom.h16,
                                 e->params.qp_min, e->params.qp_max,
                                 e->params.gop_size, e->params.idr_period);
+    freecodec_h265_rc_set_tracking(&e->rc, (int)e->params.rc_track);
     build_header(e);
 
     e->pic_count = 0;
@@ -915,6 +922,7 @@ static void reconfigure_rc(fc_h265_instance *e)
                                 e->geom.h16 ? e->geom.h16 : e->geom.dst_h,
                                 e->params.qp_min, e->params.qp_max,
                                 e->params.gop_size, e->params.idr_period);
+    freecodec_h265_rc_set_tracking(&e->rc, (int)e->params.rc_track);
 }
 
 static int enc_get_parameter(void *h, int index, void *param)
@@ -1038,6 +1046,10 @@ static int enc_set_parameter(void *h, int index, void *param)
         e->params.filter_3d_level = lvl;
         return FWM_VENC_RESULT_OK;
     }
+    case FWM_VENC_PARAM_H265_RC_TRACK:
+        e->params.rc_track = (*(int *)param != 0) ? 1u : 0u;
+        freecodec_h265_rc_set_tracking(&e->rc, (int)e->params.rc_track);
+        return FWM_VENC_RESULT_OK;
     case FWM_VENC_PARAM_FILTER_3D_STRENGTH: {
         int s = *(int *)param;
 
@@ -1062,11 +1074,17 @@ static int enc_set_parameter(void *h, int index, void *param)
         e->params.rc_mode = p->rc_mode;
         e->params.min_i_qp = p->min_i_qp;
         e->params.gop = p->gop;
-        /* idr_period/intra_period are overwritten with a fixed 40 and gop_size
-         * with 20 (12 section 2.2 / 10 section 5). */
-        e->params.idr_period = 40u;
-        e->params.intra_period = 40u;
+        /* gop_size is fixed at 20 (12 section 2.2 / 10 section 5). The vendor
+         * also pins idr_period/intra_period to 40; here a configured period is
+         * kept when it is a whole number of GOPs (and the 8-bit POC LSB cannot
+         * wrap inside it), otherwise the vendor's 40. */
         e->params.gop_size = 20u;
+        {
+            unsigned int want = (unsigned int)p->idr_period;
+            unsigned int keep = (want >= 40u && want <= 200u && (want % 20u) == 0u) ? want : 40u;
+            e->params.idr_period = keep;
+            e->params.intra_period = keep;
+        }
         e->params.gop.gop_size = 20;
         e->params.fixed_qp_enable = p->fixed_qp.enable;
         e->params.fixed_i_qp = p->fixed_qp.i_qp;
@@ -1097,7 +1115,7 @@ static int enc_set_parameter(void *h, int index, void *param)
         return FWM_VENC_RESULT_OK;
     case FWM_VENC_PARAM_H265_INTRA_PERIOD:
         (void)param;
-        e->params.intra_period = 40u;    /* fixed by the handler (10 section 5) */
+        e->params.intra_period = e->params.idr_period;   /* keep equal to the IDR period */
         return FWM_VENC_RESULT_OK;
     case FWM_VENC_PARAM_OVERLAY:
         return set_overlay(e, (const fwm_venc_overlay_t *)param);

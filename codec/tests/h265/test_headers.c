@@ -7,6 +7,7 @@
 
 #include <stdarg.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "freecodec/h265_headers.h"
@@ -113,6 +114,46 @@ static void test_parameter_sets(void)
     checkf(b[4] == 0x44 && b[5] == 0x01, "PPS NAL header type 34, got %02x %02x", b[4], b[5]);
     checkf(rbsp_payload_bytes(b, n) == 5, "PPS RBSP is 5 bytes, got %d",
            rbsp_payload_bytes(b, n));
+}
+
+/* VUI timing info: absent by default (the vendor stream), present only when both
+ * fields are set. Dumps the SPS to $H265_VUI_DUMP for an external parser. */
+static void test_vui_timing(void)
+{
+    unsigned char b0[256], b1[256];
+    freecodec_h265_sps_cfg s;
+    int n0, n1;
+
+    n0 = build_sps(b0, sizeof(b0), 2304, 1296);
+
+    memset(&s, 0, sizeof(s));
+    make_ptl(&s.ptl);
+    s.pic_width_in_luma_samples = 2304;
+    s.pic_height_in_luma_samples = 1296;
+    s.max_num_ref_pics = 1;
+    s.num_short_term_ref_pic_sets = 21;
+    s.log2_max_pic_order_cnt_lsb_minus4 = 4;
+    s.sao_enabled = 1;
+    s.temporal_mvp_enabled = 1;
+    s.vui_num_units_in_tick = 1000;
+    s.vui_time_scale = 20000;
+    n1 = freecodec_h265_build_sps(&s, b1, sizeof(b1));
+    checkf(n1 > n0 && n1 <= n0 + 12, "VUI SPS grows by ~76 bits, %d -> %d", n0, n1);
+    checkf(b1[4] == 0x42 && b1[5] == 0x01, "VUI SPS NAL header");
+
+    s.vui_num_units_in_tick = 0;               /* one field alone: no VUI */
+    n1 = freecodec_h265_build_sps(&s, b1, sizeof(b1));
+    checkf(n1 == n0, "half-set timing emits no VUI, %d vs %d", n1, n0);
+
+    s.vui_num_units_in_tick = 1000;
+    n1 = freecodec_h265_build_sps(&s, b1, sizeof(b1));
+    {
+        const char *path = getenv("H265_VUI_DUMP");
+        if (path && *path) {
+            FILE *f = fopen(path, "wb");
+            if (f) { fwrite(b1, 1, (size_t)n1, f); fclose(f); }
+        }
+    }
 }
 
 static void test_slice_headers(void)
@@ -240,6 +281,7 @@ static void test_golden_bytes(void)
 int main(void)
 {
     test_parameter_sets();
+    test_vui_timing();
     test_slice_headers();
     test_exp_golomb();
     test_emulation_prevention();

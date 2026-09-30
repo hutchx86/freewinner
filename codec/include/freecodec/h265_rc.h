@@ -46,11 +46,21 @@ typedef struct freecodec_h265_rc {
     int          have_i_qp;
     int          i_qp;
 
+    /* target-tracking mode (freecodec extension; off = the vendor-model above) */
+    int          track;
+    double       trk_surplus;      /* target - actual bits, running (bits)  */
+
     /* picture in progress */
     int          cur_is_i;
     int          cur_qp;
     long long    cur_budget;
 } freecodec_h265_rc;
+
+/* Closed-loop mode: steer P QP so the output tracks bit_rate. The vendor model
+ * feeds its own running mean frame size back into the next budget, so on a quiet
+ * scene it collapses to the QP ceiling and never spends the target. Call after
+ * freecodec_h265_rc_configure() (which clears it). */
+void freecodec_h265_rc_set_tracking(freecodec_h265_rc *rc, int on);
 
 /* Arm the unit (zeroes all state but the configuration). */
 void freecodec_h265_rc_configure(freecodec_h265_rc *rc, double bit_rate,

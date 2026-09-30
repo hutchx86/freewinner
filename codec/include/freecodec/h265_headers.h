@@ -44,6 +44,10 @@ typedef struct freecodec_h265_sps_cfg {
     unsigned int log2_max_pic_order_cnt_lsb_minus4;
     unsigned int sao_enabled;
     unsigned int temporal_mvp_enabled;
+    /* VUI timing info (H.265 E.2.1): emitted when both are non-zero, so a
+     * client can derive the frame rate from the stream. */
+    unsigned int vui_num_units_in_tick;
+    unsigned int vui_time_scale;
 } freecodec_h265_sps_cfg;
 
 /* PPS inputs (13 section 6). */

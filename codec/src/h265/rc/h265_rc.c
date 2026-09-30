@@ -84,6 +84,12 @@ void freecodec_h265_rc_configure(freecodec_h265_rc *rc, double bit_rate,
     rc->avr_frm_size = rc->bit_rate / (double)rc->frame_rate;
 }
 
+void freecodec_h265_rc_set_tracking(freecodec_h265_rc *rc, int on)
+{
+    rc->track = on ? 1 : 0;
+    rc->trk_surplus = 0.0;
+}
+
 void freecodec_h265_rc_start_picture(freecodec_h265_rc *rc, long frame_index,
                                      int is_i)
 {
@@ -114,6 +120,22 @@ void freecodec_h265_rc_start_picture(freecodec_h265_rc *rc, long frame_index,
             rc->have_i_qp = 1;
         }
         qp = clamp_int(rc->i_qp, rc->qp_min, rc->qp_max);
+    } else if (rc->track) {
+        /* Integral steering on the running surplus (target - actual), in units
+         * of one target frame. Dead zone so it does not chase noise; capped step
+         * so the picture does not pump. */
+        double tgt = rc->bit_rate / (double)rc->frame_rate;
+        double err = tgt > 0.0 ? rc->trk_surplus / tgt : 0.0;
+        int q = rc->prev_p_valid ? rc->prev_p_qp : rc->i_qp + 8;
+
+        if (err > 6.0)       q -= 2;
+        else if (err > 1.5)  q -= 1;
+        else if (err < -6.0) q += 2;
+        else if (err < -1.5) q += 1;
+        qp = clamp_int(q, rc->qp_min, rc->qp_max);
+        rc->prev_p_qp = qp;
+        rc->prev_p_valid = 1;
+        rc->cur_budget = (long long)tgt;
     } else {
         remaining = (double)rc->idr_period - (double)rc->gop_index;
         if (remaining < 1.0)
@@ -169,6 +191,12 @@ void freecodec_h265_rc_finish_picture(freecodec_h265_rc *rc, long long bits)
 {
     double b = (double)bits;
 
+    if (rc->track && rc->frame_rate) {
+        double tgt = rc->bit_rate / (double)rc->frame_rate;
+        rc->trk_surplus += tgt - b;
+        if (rc->trk_surplus > 40.0 * tgt)  rc->trk_surplus = 40.0 * tgt;   /* anti-windup, 2 s */
+        if (rc->trk_surplus < -40.0 * tgt) rc->trk_surplus = -40.0 * tgt;
+    }
     rc->frame_total++;
     rc->bits_accu_gop += b;
     if (rc->frame_total % H265_RC_WINDOW == 0) {
@@ -180,5 +208,6 @@ void freecodec_h265_rc_finish_picture(freecodec_h265_rc *rc, long long bits)
         rc->bits_accu_gop = 0.0;
     }
     /* Running mean frame size drives the next GOP estimate (10 section 2). */
-    rc->avr_frm_size = rc->avr_frm_size * 0.9 + b * 0.1;
+    if (!rc->track)
+        rc->avr_frm_size = rc->avr_frm_size * 0.9 + b * 0.1;
 }

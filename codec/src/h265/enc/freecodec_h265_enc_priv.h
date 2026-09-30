@@ -96,6 +96,7 @@ typedef struct fc_h265_params {
      * across pictures. */
     unsigned int  filter_3d_level;
     unsigned int  filter_3d_strength;
+    unsigned int  rc_track;           /* target-tracking RC (extension)      */
     unsigned int  filt3d_t;
     int           dyn_me;       /* dynamic-ME enable, latched at init (3D spec 6) */
 
