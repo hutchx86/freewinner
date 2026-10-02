@@ -3,6 +3,7 @@
 /* rmm_tables.c - locate and load the libisp constant tables from a stock on-camera `rmm`
  * image. No table bytes are compiled in: only the two anchors and the offsets-only
  * layout (tables_layout.h). */
+#include <limits.h>
 #include <math.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -132,6 +133,30 @@ static long find_anchor_str(const unsigned char *img, size_t len, size_t min_off
     return -1;
 }
 
+/*
+ * The offsets-only layout was derived from one rmm build.  Recompiles can pad
+ * an array differently, shifting later tables in the same cluster by a few
+ * bytes (observed: h51ga's rmm places the high-delta rodata tables 4 B before
+ * the y623-derived positions).  A table whose validator is content-specific
+ * ("strong") can be re-located by probing +-LOC_TOL bytes around its nominal
+ * offset; a table whose validator is only structural (monotonic/non-zero) is
+ * ambiguous on its own (a 4-byte-shifted monotonic array still looks
+ * monotonic), so it inherits the shift of the nearest strong table.
+ */
+#define LOC_TOL 64
+
+static int strong_name(const char *name)
+{
+    return strcmp(name, "Ae_Log2") == 0 ||
+           strcmp(name, "AeGammaPre") == 0 ||
+           strcmp(name, "AeConverData") == 0 ||
+           strcmp(name, "Ae_LumWeight_avg") == 0 ||
+           strcmp(name, "Ae_DeltaLvTbl") == 0 ||
+           strcmp(name, "AwbLightClassName") == 0 ||
+           strcmp(name, "af_square_lut") == 0 ||
+           strncmp(name, "gd_curve_", 9) == 0;
+}
+
 int freeisp_tables_locate(const void *image, size_t len, freeisp_tables_t *out)
 {
     const unsigned char *img = image;
@@ -147,9 +172,46 @@ int freeisp_tables_locate(const void *image, size_t len, freeisp_tables_t *out)
 
     long base[2] = { rodata, data };
 
+    /* Pass 1: resolve the local shift for every content-validated ("strong")
+     * table. nom[]/shift[] are parallel to freeisp_table_locs, but only strong
+     * entries are populated and scanned. */
+    long nom[FREEISP_TABLE_LOC_COUNT];
+    int shift[FREEISP_TABLE_LOC_COUNT];
     for (size_t i = 0; i < FREEISP_TABLE_LOC_COUNT; i++) {
         const freeisp_table_loc_t *L = &freeisp_table_locs[i];
-        long off = base[L->cluster] + L->delta;
+        long n = base[L->cluster] + L->delta;
+        nom[i] = n;
+        shift[i] = 0;
+        if (!strong_name(L->name)) continue;
+
+        long best = -1;
+        for (int d = 0; d <= LOC_TOL && best < 0; d++) {
+            long cand[2] = { n + d, n - d };
+            for (int k = 0; k < 2; k++) {
+                long o = cand[k];
+                if (k == 1 && d == 0) continue;    /* same as +0 */
+                if (o < 0 || (size_t)o + L->size > len) continue;
+                if (validate(L->name, img + o, L->size)) { best = o; break; }
+            }
+        }
+        if (best < 0) goto fail;
+        shift[i] = (int)(best - n);
+    }
+
+    /* Pass 2: slice every table at its nominal offset plus the shift of the
+     * nearest strong table. */
+    for (size_t i = 0; i < FREEISP_TABLE_LOC_COUNT; i++) {
+        const freeisp_table_loc_t *L = &freeisp_table_locs[i];
+        long bestd = LONG_MAX;
+        int bestshift = 0;
+        for (size_t k = 0; k < FREEISP_TABLE_LOC_COUNT; k++) {
+            if (!strong_name(freeisp_table_locs[k].name)) continue;
+            long d = nom[i] - nom[k];
+            if (d < 0) d = -d;
+            if (d < bestd) { bestd = d; bestshift = shift[k]; }
+        }
+
+        long off = nom[i] + bestshift;
         if (off < 0 || (size_t)off + L->size > len) goto fail;
         if (!validate(L->name, img + off, L->size)) goto fail;
         void *copy = malloc(L->size);
