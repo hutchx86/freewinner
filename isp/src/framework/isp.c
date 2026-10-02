@@ -77,23 +77,6 @@ static void sensor_update_from_ae(fwi_isp_ctx_t *ctx)
     s->frame_time = 1000 / fps;
 }
 
-void isp_set_params_helper(fwi_isp_ctx_t *ctx, int module)
-{
-    switch (module) {
-    case 0: /* AE */
-        if (ctx->ae_entity.ae_entity && ctx->ae_entity.ops &&
-            ctx->ae_entity.ae_param) {
-            ctx->ae_entity.ae_param->type = FWI_ISP_AE_INIT_DATA;
-            ctx->ae_entity.ops->ae_set_params(ctx->ae_entity.ae_entity,
-                                              ctx->ae_entity.ae_param,
-                                              &ctx->ae_entity.ae_result);
-        }
-        break;
-    default:
-        break;
-    }
-}
-
 void isp_ae_set_params_helper(fwi_ae_entity_t *ae, fwi_ae_param_type_e cmd)
 {
     if (ae == NULL || ae->ae_entity == NULL || ae->ops == NULL ||

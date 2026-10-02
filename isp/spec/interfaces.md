@@ -45,9 +45,7 @@ the fields the algorithm actually consumes.
 AFS is named differently from the other five. Its clean core keeps the
 `afs_clean_` infix (`include/afs_clean.h:104-121`); the library's own surface
 defines none of the bare names `afs_get_params`, `afs_set_params` or `afs_isr`,
-and no bare `afs_run` either (the only `afs_run` in the tree is a file-local
-stand-in inside `tests/test_framework_manage.c:439`, which fills the ops member
-for the test and is not library surface). The framework-facing AFS surface is
+and no bare `afs_run` either. The framework-facing AFS surface is
 the shim's `afs_init`/`afs_exit` plus the `afs_set_params`/`afs_get_params`/
 `afs_run` members of `fwi_afs_core_ops_t` (`shim/afs/afs_shim.c` installs them;
 `include/framework_isp.h` declares `afs_init`; same shape as the SDK's

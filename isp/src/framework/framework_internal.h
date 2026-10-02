@@ -88,7 +88,6 @@ void isp_afs_feed(fwi_isp_ctx_t *ctx);
 void isp_iso_feed(fwi_isp_ctx_t *ctx);
 void isp_gtm_feed(fwi_isp_ctx_t *ctx);
 void isp_pltm_feed(fwi_isp_ctx_t *ctx);
-void isp_set_params_helper(fwi_isp_ctx_t *ctx, int module);
 void isp_frame_process(fwi_isp_ctx_t *ctx);
 
 struct fwi_event_loop *isp_loop_for(int id);

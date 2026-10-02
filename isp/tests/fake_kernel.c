@@ -291,7 +291,6 @@ static int fk_enum_links(struct media_links_enum *le)
 
 static int fk_ioctl(int fd, unsigned long req, void *arg)
 {
-    struct fk_call *c;
     int ret = 0;
 
     if (req == fk.fail_req && fk.fail_nth > 0) {

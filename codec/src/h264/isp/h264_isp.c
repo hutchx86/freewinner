@@ -275,12 +275,6 @@ unsigned int freecodec_h264_overlay_data_size(const freecodec_h264_overlay_block
     return total + FREECODEC_H264_OVERLAY_DATA_SLACK;
 }
 
-static void overlay_put_u16(unsigned char *p, unsigned int v)
-{
-    p[0] = (unsigned char)(v & 0xffu);
-    p[1] = (unsigned char)((v >> 8) & 0xffu);
-}
-
 static void overlay_put_u32(unsigned char *p, unsigned int v)
 {
     p[0] = (unsigned char)(v & 0xffu);

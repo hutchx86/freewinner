@@ -325,11 +325,6 @@ static void sync_mirror(fwi_ae_param_t *sdk, ae_entity_t *clean)
 /* Statistics mapping: fwi_ae_stats_t -> ae_stats_t                   */
 /* ------------------------------------------------------------------ */
 
-static uint8_t sat_u8(uint32_t v)
-{
-    return (uint8_t)(v > 255u ? 255u : v);
-}
-
 static void map_stats(clean_ae_stats_t *c, const fwi_ae_stats_desc_t *s)
 {
     const struct fwi_ae_stats *st = s->ae_stats;

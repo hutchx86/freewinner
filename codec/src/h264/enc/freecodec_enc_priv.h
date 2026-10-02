@@ -28,10 +28,6 @@ extern "C" {
 uint32_t fc_enc_reg_read(volatile uint32_t *base, unsigned int word_off);
 void     fc_enc_reg_write(volatile uint32_t *base, unsigned int word_off, uint32_t val);
 
-/* Write `n` words from word offset 0: the per-picture register script (spec 12
- * 5.5 step 6) and the ISP block (spec 13 s1), both rebuilt every picture. */
-void fc_enc_reg_write_block(volatile uint32_t *base, const uint32_t *words,
-                            unsigned int n);
 
 /* -------------------------------------------------------------- geometry -- */
 

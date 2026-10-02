@@ -19,12 +19,3 @@ void fc_enc_reg_write(volatile uint32_t *base, unsigned int word_off, uint32_t v
     base[word_off] = val;
 }
 
-__attribute__((noinline))
-void fc_enc_reg_write_block(volatile uint32_t *base, const uint32_t *words,
-                            unsigned int n)
-{
-    unsigned int i;
-
-    for (i = 0; i < n; i++)
-        base[i] = words[i];
-}
