@@ -225,7 +225,7 @@ int main(void)
               "0x104 carries a NULL arg on encoder init");
     if (i_clk >= 0)
         check(g_log[i_clk].arg == (void *)(uintptr_t)300u,
-              "0x107 carries the 300 MHz V833 clock");
+              "0x107 carries the 300 MHz V831 clock");
 
     /* Engine-top state after init (spec 14 §3, §6). */
     {

@@ -264,7 +264,7 @@ static void test_lifecycle_and_sequence(void)
     install_fake_memops();
     g_nlog = 0;
 
-    h = dev->open(&cfg, 0x21210u);   /* V833, above the aux-plane threshold */
+    h = dev->open(&cfg, 0x21210u);   /* V831, above the aux-plane threshold */
     checkf(h != NULL, "open() returns a handle");
     if (!h) return;
 

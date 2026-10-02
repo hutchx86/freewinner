@@ -6,7 +6,7 @@ Provenance and compiled-in data — freecodec
 An independently written replacement for the two Allwinner codec blobs the Yi
 camera media daemon links — the AAC-LC encoder (`libaacenc.a`) and the H.264
 hardware-encoder driver/encoder (`libvenc_codec.a` + `libVE.a`) — for
-sun8iw19p1 / V833-class hardware, produced for interoperability with hardware
+sun8iw19p1 / V831-class hardware, produced for interoperability with hardware
 we own.
 
 Copyright (C) 2026 freewinner contributors.

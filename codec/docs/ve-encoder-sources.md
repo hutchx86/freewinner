@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-only -->
 # VE H.264 encoder — legal sources, prior art, and same-block SoCs
 
-Status: research output, 2026-09-22. Question asked: for the V833
+Status: research output, 2026-09-22. Question asked: for the V831
 (`sun8iw19p1`) H.264 encoder — the AVC block at `0xB00` and the ISP-in-VE block
 at `0xA00` inside the VETOP window of `/dev/cedar_dev` — (a) is there anything we
 may legally use, (b) what documents *writing* one, (c) which other SoCs share the
@@ -15,7 +15,7 @@ This is a bibliography/evidence document. It changes no code. See
 The `0xB00` AVC encoder map (PICINFO 0x00, PARA0 0x04, PARA1 0x08, PARA2 0x0C,
 MEPARA 0x10, INT_ENABLE 0x14, STARTTRIG 0x18, STATUS 0x1C, PUTBITSDATA 0x20,
 RC_INIT 0x2C, RC_MAD_TH0–3 0x30–0x3C, MVBUFADDR 0x60, STM* 0x80–0x90,
-REF/REC/SUBPIX/MBINFO 0xA0–0xC4) is the same across the A10…V3s…V833 family —
+REF/REC/SUBPIX/MBINFO 0xA0–0xC4) is the same across the A10…V3s…V831 family —
 it is what Allwinner's own published header, the linux-sunxi register guide,
 jemk/cedrus's `ve.h`, libv's `cedar_regs.h` and Bootlin's `cedrus_regs.h` all
 describe. What differs:
@@ -23,11 +23,11 @@ describe. What differs:
 - **Bitfield layout inside the words** (`PARA1` chiefly): a version-0 vs
   version-1 split at `ic_version == 0x1667` (neutral basis: the register-shadow
   golden, spec `h264-reg-shadow.md`, and public linux-sunxi/Bootlin material).
-  **V833 uses version-1.**
+  **V831 uses version-1.**
 - **Which H.264 engine class applies**: a split at `ic_version >= 0x1708`,
   above which the consumer requests the version-2 H.264 codec kind
   (spec `h264-enc-flow.md`, `00-vendor-interface-surface.md`).
-  **V833 is in the ≥0x1708 ("ver2") class**; H3 is not.
+  **V831 is in the ≥0x1708 ("ver2") class**; H3 is not.
 
 The `VE_CTRL`/`VE_MODE` word (`0x00`) enables the encoder with **bits 7 and 6**
 ("Enable AVC encoder (1633 and newer)", "ISP enable") — Bootlin's
@@ -126,10 +126,10 @@ replaces that.
    (LGPL-2.1+) and `h264enc` (GPL-2.0+), and libv's `userspace/` (GPL-2.0+),
    could be incorporated under AGPLv3 §13 — unlike the vendor material. No such
    incorporation is proposed here.
-3. **Same-block transfer:** V3/V3s/S3 (0x1681), V536/V316, and V833 share the
+3. **Same-block transfer:** V3/V3s/S3 (0x1681), V536/V316, and V831 share the
    block and the `PARA1` v1 bitfields; H3/A20 share the map but differ in
-   bitfields; ≥0x1708 selects the "ver2" H.264 engine class (V833's class).
-4. **The kernel is not the source of truth:** both V833 and V853 BSP
+   bitfields; ≥0x1708 selects the "ver2" H.264 engine class (V831's class).
+4. **The kernel is not the source of truth:** both V831 and V853 BSP
    `drivers/media/cedar-ve/` are decode-only; the encoder is driven from
    userspace via `/dev/cedar_dev` register read/write ioctls. The register
    sequence has to come from the blob/MPP userspace or be reconstructed — as

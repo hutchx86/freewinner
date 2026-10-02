@@ -1341,7 +1341,7 @@ fwm_venc_device_t video_encoder_h264_ver2 = {
     enc_valid_count, enc_get_frame, enc_free_frame, enc_reset_frames
 };
 
-/* ver1 aliases ver2 (spec 12): V833 always selects ver2, so this exposes a
+/* ver1 aliases ver2 (spec 12): V831 always selects ver2, so this exposes a
  * working encoder under either symbol. */
 fwm_venc_device_t video_encoder_h264_ver1 = {
     "video_encoder_h264_ver1",

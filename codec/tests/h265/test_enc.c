@@ -192,7 +192,7 @@ static void test_capability_and_lifecycle(void)
     checkf(dev->open(&cfg, 0x1708u) == NULL, "open rejects an IC with no capability record");
 
     h = dev->open(&cfg, 0x21110u);
-    checkf(h != NULL, "open accepts the V833 IC id");
+    checkf(h != NULL, "open accepts the V831 IC id");
     if (!h)
         return;
     checkf(dev->init(h, &cfg) == 0, "init returns OK");

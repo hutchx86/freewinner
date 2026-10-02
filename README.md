@@ -1,9 +1,9 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-only -->
 
-# freewinner — a vendor-free ISP and H.264 codec for Yi/V833 IP cameras
+# freewinner — a vendor-free ISP and H.264 codec for Yi/V831 IP cameras
 
 Two independently written replacements for the proprietary Allwinner media stack
-on sun8iw19p1 / V833-class Yi IP cameras: the **libisp 3A core** (AE, AWB, AFS,
+on sun8iw19p1 / V831-class Yi IP cameras: the **libisp 3A core** (AE, AWB, AFS,
 ISO, PLTM and GTM, plus the register and framework tiers) and the **H.264 encoder
 and VE driver**. Most modules were written clean-room from behaviour-only
 specifications; the register tier is a disclosed exception (an earlier version
@@ -38,7 +38,7 @@ the camera.
 |  |  |
 | --- | --- |
 | **What** | Reimplementations of the Allwinner libisp 3A core and the H.264 encoder / VE driver |
-| **Hardware** | Yi IP cameras on sun8iw19p1 / V833 (y623 verified) |
+| **Hardware** | Yi IP cameras on sun8iw19p1 / V831 (y623 verified) |
 | **Language** | C (ARMv7, musl) |
 | **Status** | Proof of concept — both components verified on real hardware |
 | **License** | AGPL-3.0-only (+ section 7 vendor-encoder linking permission) |

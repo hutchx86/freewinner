@@ -30,7 +30,7 @@
 #define VE_REG_TOP_CTRL       0x00u
 #define VE_TOP_ENC_ENABLE     0xC0u
 
-/* DRAM-type field is at VETOP 0x00 bits [17:16], not 0x08; V833 uses 0x30000.
+/* DRAM-type field is at VETOP 0x00 bits [17:16], not 0x08; V831 uses 0x30000.
  * Without it the encoder sub-block does not latch its script (cold boot). */
 #define VE_TOP_DRAM_TYPE      0x30000u
 #define VE_REG_TOP_DDR_MODE   0x0cu
@@ -39,11 +39,11 @@
 #define VE_TOP_RESET_BIT       0x01000000u
 
 /* Encoder-performance frequency/voltage; exact numbers are open (spec §11), and
- * the path is not taken on V833 (IC version >= 0x1708). */
+ * the path is not taken on V831 (IC version >= 0x1708). */
 #define VE_PERF_VOLTAGE      0u
 #define VE_PERF_FREQ_DEFAULT 480u
 
-/* Per-IC VE clock for the V833 entry (spec §6.3), passed to SET_VE_FREQ in MHz
+/* Per-IC VE clock for the V831 entry (spec §6.3), passed to SET_VE_FREQ in MHz
  * like the ioctl's other callers. */
 #define VE_PERF_FREQ_V833    300u
 
@@ -320,7 +320,7 @@ static void ve_reset(void *p)
     if (!e->reg_base)
         return;
 
-    /* V833 reset (ic 0x00021110_00021210): pulse VETOP+0x04 bit 24, no ioctl
+    /* V831 reset (ic 0x00021110_00021210): pulse VETOP+0x04 bit 24, no ioctl
      * 0x104 and no +0x10/+0x14 (the 0x104 form cleared the write pointer). */
     {
         uint32_t v = ve_reg_read(e, VE_REG_TOP_RESET_PULSE);

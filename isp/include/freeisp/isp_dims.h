@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* Copyright (C) 2026 freewinner contributors */
-/* isp_dims.h - V833 ISP statistics-grid and table dimensions used by the shim tier;
+/* isp_dims.h - V831 ISP statistics-grid and table dimensions used by the shim tier;
  * must match the array extents in the generated fwi_isp_abi.h. */
 #ifndef FREEISP_ISP_DIMS_H
 #define FREEISP_ISP_DIMS_H

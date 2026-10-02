@@ -4,7 +4,7 @@
 
 An independent, clean implementation of the Allwinner codec blobs the Yi camera
 media daemon (`mediad`) linked: the AAC-LC encoder and the H.264 hardware
-encoder driver, for sun8iw19p1 / V833-class hardware.
+encoder driver, for sun8iw19p1 / V831-class hardware.
 
 Copyright (C) 2026 freewinner contributors.
 

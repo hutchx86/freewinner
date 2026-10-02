@@ -4,7 +4,7 @@ Provenance and deviations — freewinner
 ===============================
 
 An independently written implementation of the Allwinner `libisp` 3A algorithms
-(AE / AWB / AFS anti-flicker / ISO / PLTM / GTM) for sun8iw19p1 / V833-class Yi IP
+(AE / AWB / AFS anti-flicker / ISO / PLTM / GTM) for sun8iw19p1 / V831-class Yi IP
 cameras, produced for interoperability with hardware we own.
 
 Copyright (C) 2026 freewinner contributors.

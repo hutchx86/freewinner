@@ -4,7 +4,7 @@
 
 An independent, clean implementation of the Allwinner proprietary codec
 libraries linked into the Yi-camera media daemon (`mediad`), for
-sun8iw19p1 / V833-class hardware:
+sun8iw19p1 / V831-class hardware:
 
 - **AAC-LC encoder** — replacement for `libaacenc.a`, built on upstream FAAC
   (LGPL-2.1-or-later).

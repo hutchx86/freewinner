@@ -5,7 +5,7 @@
 An independently written C reimplementation of the Allwinner **libisp 3A**
 algorithms — AE (auto exposure), AWB (auto white balance), AFS (anti-flicker),
 ISO, PLTM and GTM tone-mapping — together with the register/config tier that
-drives them, for sun8iw19p1 / V833-class Yi IP cameras.
+drives them, for sun8iw19p1 / V831-class Yi IP cameras.
 
 > [!WARNING]
 > **Early stage — not fully functional.** The clean 3A cores and register tier

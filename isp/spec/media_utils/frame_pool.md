@@ -5,7 +5,7 @@ Phase 3c of the media-utils reimplementation. This unit is the only stateful med
 component: a three-list frame-header pool. It is classified CLEAN-ROOM because
 its observable behaviour is a fixed state machine and, uniquely for this tier,
 its **struct layout and vtable order are hard ABI** crossed to the VI glue.
-Target ABI: Lindenis V833 / sun8iw19p1, ARMv7 LE, ILP32, **4-byte enums**, musl.
+Target ABI: Lindenis V831 / sun8iw19p1, ARMv7 LE, ILP32, **4-byte enums**, musl.
 
 Audience split: this file is the only input the
 implementation team may use for this unit. It contains interface facts (type

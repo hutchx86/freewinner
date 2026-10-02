@@ -459,7 +459,7 @@ void freecodec_h264_config_registers(const freecodec_h264_config_reg_cfg *cfg,
     regs[0x84u / 4u] = cfg->bitstream_end_phy;
 
     /* 0x88 write offset / 0x8c end offset in bits. End clamps to 0x0FFF0000 when
-     * greater and IC version <= 0x2110F; V833 (0x21110/0x21210) is not clamped. */
+     * greater and IC version <= 0x2110F; V831 (0x21110/0x21210) is not clamped. */
     regs[0x88u / 4u] = cfg->out_buffer_offset << 3;
     {
         uint32_t end_bits =

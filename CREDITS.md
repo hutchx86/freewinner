@@ -147,8 +147,8 @@ independently written (see the provenance statements above and in
 - **Community Cedar H.264 encoders** — the Jemk proof-of-concept, ubobrov's H3
   port, the `libv` cedar encoder, and
   `carroarmato0/allwinner-cedar-tools`. These target older VE revisions; they
-  were treated as prior art and revalidated against V833 behaviour.
-- **The vendor V833 `cedar_ve.c` kernel driver** — Allwinner's own
+  were treated as prior art and revalidated against V831 behaviour.
+- **The vendor V831 `cedar_ve.c` kernel driver** — Allwinner's own
   GPL-2.0-or-later kernel source, analysed read-only as the deployed reference
   for the vendor encoder IRQ and register semantics. It is not reproduced here
   and is not part of this repository.
