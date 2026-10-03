@@ -1,6 +1,7 @@
 # build output (any depth)
 build/
-build_arm/
+build_*/
+build-*/
 *.o
 *.a
 *.so
@@ -9,6 +10,9 @@ build_arm/
 *.arm
 *.bin
 *.deb
+
+# built archives (root)
+/*.tar.gz
 
 # editor / OS
 *.swp
