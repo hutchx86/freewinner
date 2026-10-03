@@ -682,7 +682,7 @@ Runtime table feed: `isp/shim/integration/freeisp_shim_tables.c`. No tuning byte
 - awb.safe_gain: the rmm image has no no-statistics fallback gains; the clean core treats NULL as "not supplied" and skips the fallback. `awb_shim_set_safe_gain()` only writes the shim's built-in table, so with external tables installed the caller must point its own table at the gains.
 - iso.af_iir_s: the rmm image has no AF IIR feedback coefficients; NULL makes the clean core program zero feedback coefficients (iso_clean.c blk_af_cfg). No ISO setter exists for the field.
 - PLTM presets are resolved separately from the table bundle (own text cache) and survive `freeisp_shim_tables_free()`.
-- Bundle cache path defaults to the directory of yi-mediad's vendor-tuning cache (`/tmp/sd/unifi/isp_cfg`); the kill switch MEDIAD_NO_RMM_TUNING is applied by the caller and disables both the cache and the locator. An empty bundle path gives pure-locator behaviour (e.g. for auditing).
+- Bundle cache path defaults to the directory of yi-mediad's vendor-tuning cache (`/tmp/sd/yi-protect/isp_cfg`); the kill switch MEDIAD_NO_RMM_TUNING is applied by the caller and disables both the cache and the locator. An empty bundle path gives pure-locator behaviour (e.g. for auditing).
 
 ## framework context
 

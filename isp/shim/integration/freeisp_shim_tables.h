@@ -15,19 +15,19 @@ extern "C" {
 /* Pre-located bundle, beside yi-mediad's vendor-tuning cache so all ISP data
  * lives in one directory. */
 #ifndef FREEISP_TABLE_BUNDLE_PATH
-#define FREEISP_TABLE_BUNDLE_PATH "/tmp/sd/unifi/isp_cfg/freeisp_tables.bin"
+#define FREEISP_TABLE_BUNDLE_PATH "/tmp/sd/yi-protect/isp_cfg/freeisp_tables.bin"
 #endif
 
 /* PLTM preset cache (freeisp/pltm_presets.h), extracted from the device
  * firmware on first boot; without it PLTM runs neutral. */
 #ifndef FREEISP_PLTM_PRESETS_PATH
-#define FREEISP_PLTM_PRESETS_PATH "/tmp/sd/unifi/isp_cfg/pltm_presets.txt"
+#define FREEISP_PLTM_PRESETS_PATH "/tmp/sd/yi-protect/isp_cfg/pltm_presets.txt"
 #endif
 
 /* AE backlight-network output-bias cache (freeisp/ae_out_bias.h), extracted
  * the same way; without it the network is off and backlight stays 32. */
 #ifndef FREEISP_AE_OUT_BIAS_PATH
-#define FREEISP_AE_OUT_BIAS_PATH "/tmp/sd/unifi/isp_cfg/ae_out_bias.txt"
+#define FREEISP_AE_OUT_BIAS_PATH "/tmp/sd/yi-protect/isp_cfg/ae_out_bias.txt"
 #endif
 
 typedef enum freeisp_shim_table_id {

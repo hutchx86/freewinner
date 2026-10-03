@@ -49,7 +49,7 @@ fallback for the first boot (or a lost cache), and re-seeds the bundle.
 
 | Property | Value |
 | --- | --- |
-| Default path | `FREEISP_TABLE_BUNDLE_PATH` = `/tmp/sd/unifi/isp_cfg/freeisp_tables.bin` (same directory as yi-mediad's `RMM_TUNING_CACHE_DIR`) |
+| Default path | `FREEISP_TABLE_BUNDLE_PATH` = `/tmp/sd/yi-protect/isp_cfg/freeisp_tables.bin` (same directory as yi-mediad's `RMM_TUNING_CACHE_DIR`) |
 | Format | 32-byte header (`"FWTABL01"`, version, count, layout CRC32, total size, payload CRC32, header CRC32) + the located tables in layout order, little-endian |
 | Portability | `layout_crc` covers only architecture-independent descriptor fields, so a host-written bundle is byte-identical to an ARM-written one (verified) |
 | Atomic write | `<path>.tmp` + `rename()`; parent directory created on first write |

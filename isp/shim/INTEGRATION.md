@@ -686,7 +686,7 @@ Notes:
   embed the vendor tables. On the *first* boot with no bundle,
   `load_shim_tables()` locates them in the stock `rmm` image (present and
   untouched at `/home/app/rmm` on y623) and writes the bundle to
-  `/tmp/sd/unifi/isp_cfg/freeisp_tables.bin` (the same directory yi-mediad
+  `/tmp/sd/yi-protect/isp_cfg/freeisp_tables.bin` (the same directory yi-mediad
   already uses for its extracted vendor blobs). Every boot thereafter installs
   from the bundle and does not open `rmm`; a lost/corrupt bundle silently falls
   back to the locator and re-seeds. Today's running daemon is `mediad` (not
