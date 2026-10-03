@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 340" width="900" height="340" font-family="Segoe UI,Helvetica,Arial,sans-serif" font-size="13">
+  <defs>
+    <marker id="arr" markerWidth="9" markerHeight="9" refX="7.5" refY="3" orient="auto">
+      <path d="M0,0 L7.5,3 L0,6 z" fill="#334155"/>
+    </marker>
+  </defs>
+  <rect width="900" height="340" fill="#ffffff"/>
+
+  <rect x="340" y="20" width="220" height="54" rx="8" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.5"/>
+  <text x="450" y="44" text-anchor="middle" font-weight="600" fill="#1e3a8a">mediad</text>
+  <text x="450" y="62" text-anchor="middle" fill="#1d4ed8">replacement media daemon</text>
+
+  <rect x="620" y="110" width="250" height="54" rx="8" fill="#f1f5f9" stroke="#64748b" stroke-width="1.5"/>
+  <text x="745" y="134" text-anchor="middle" font-weight="600" fill="#0f172a">SDK-boundary shim layer</text>
+  <text x="745" y="152" text-anchor="middle" fill="#475569">presents the vendor entry points</text>
+
+  <rect x="60" y="180" width="240" height="82" rx="8" fill="#ecfdf5" stroke="#10b981" stroke-width="1.5"/>
+  <text x="180" y="205" text-anchor="middle" font-weight="600" fill="#065f46">freewinner isp/</text>
+  <text x="180" y="224" text-anchor="middle" fill="#047857">AE . AWB . AFS . ISO . PLTM . GTM</text>
+  <text x="180" y="242" text-anchor="middle" fill="#047857">register + framework tiers</text>
+
+  <rect x="330" y="180" width="240" height="82" rx="8" fill="#ecfdf5" stroke="#10b981" stroke-width="1.5"/>
+  <text x="450" y="205" text-anchor="middle" font-weight="600" fill="#065f46">freecodec codec/</text>
+  <text x="450" y="224" text-anchor="middle" fill="#047857">H.264 / H.265 encoder + VE driver</text>
+  <text x="450" y="242" text-anchor="middle" fill="#047857">AAC over FAAC . libvenc_base.so</text>
+
+  <rect x="620" y="180" width="250" height="82" rx="8" fill="#f8fafc" stroke="#cbd5e1" stroke-dasharray="5 4"/>
+  <text x="745" y="205" text-anchor="middle" font-weight="600" fill="#94a3b8">vendor archives</text>
+  <text x="745" y="224" text-anchor="middle" fill="#94a3b8">libisp_algo_rtos.a . libaacenc.a</text>
+  <text x="745" y="242" text-anchor="middle" fill="#94a3b8">libvenc_codec.so . libVE.so</text>
+  <line x1="630" y1="190" x2="860" y2="252" stroke="#ef4444" stroke-width="2.5"/>
+  <line x1="630" y1="252" x2="860" y2="190" stroke="#ef4444" stroke-width="2.5"/>
+
+  <rect x="330" y="290" width="240" height="40" rx="8" fill="#fff7ed" stroke="#f59e0b" stroke-width="1.5"/>
+  <text x="450" y="315" text-anchor="middle" fill="#92400e">camera's stock rmm image (tuning read at runtime, cached)</text>
+
+  <!-- arrows -->
+  <path d="M180,180 L180,90 L338,90" fill="none" stroke="#10b981" stroke-width="1.6" marker-end="url(#arr)"/>
+  <path d="M450,180 L450,76" fill="none" stroke="#10b981" stroke-width="1.6" marker-end="url(#arr)"/>
+  <path d="M745,110 L745,90 L562,90" fill="none" stroke="#64748b" stroke-width="1.6" marker-end="url(#arr)"/>
+  <path d="M450,290 L450,264" fill="none" stroke="#f59e0b" stroke-width="1.6" marker-end="url(#arr)"/>
+
+  <text x="196" y="120" fill="#047857">clean-room</text>
+  <text x="466" y="120" fill="#047857">clean-room</text>
+  <text x="600" y="120" fill="#475569">shims</text>
+</svg>
